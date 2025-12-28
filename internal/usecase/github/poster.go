@@ -91,6 +91,10 @@ type PostReviewRequest struct {
 	// Findings are the positioned findings to post as inline comments.
 	Findings []github.PositionedFinding
 
+	// Diff is the parsed diff for summary generation (Issue #125).
+	// If provided, the summary is rebuilt after deduplication to show accurate counts.
+	Diff *domain.Diff
+
 	// OverrideEvent optionally overrides the automatically determined event.
 	// If set, this event will be used instead of determining from severities.
 	OverrideEvent github.ReviewEvent
@@ -217,8 +221,18 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		event = determineEffectiveEvent(req.Findings, existingStatuses, req.ReviewActions)
 	}
 
-	// Build the summary with status section appended (if applicable)
-	summary := req.Review.Summary + formatStatusSection(statusCounts)
+	// Build the summary AFTER deduplication so counts reflect what's actually posted (Issue #125).
+	// If Diff is provided, rebuild the programmatic summary with deduplicated findings.
+	var summary string
+	if req.Diff != nil {
+		// Rebuild summary with accurate counts from deduplicated findings
+		programmaticSummary := github.BuildProgrammaticSummary(findings, *req.Diff, req.ReviewActions)
+		appendix := github.BuildSummaryAppendix(findings, *req.Diff)
+		summary = github.AppendSections(programmaticSummary, appendix) + formatStatusSection(statusCounts)
+	} else {
+		// Fall back to pre-built summary (legacy behavior)
+		summary = req.Review.Summary + formatStatusSection(statusCounts)
+	}
 
 	// Call the client to create the new review first
 	input := github.CreateReviewInput{
