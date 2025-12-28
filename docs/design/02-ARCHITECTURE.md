@@ -617,6 +617,87 @@ sequenceDiagram
     MCP-->>CC: [success + commit sha]
 ```
 
+### 6.3 GitHub Posting Flow (with Deduplication)
+
+The GitHub Poster handles posting review findings as inline PR comments. Understanding this flow is critical because **GitHub PR comments accumulate forever** — they persist even after reviews are dismissed or code is fixed.
+
+```mermaid
+flowchart TB
+    subgraph Input["Input"]
+        Findings["Findings from LLM"]
+        ExistingComments["Existing PR Comments<br/>(from GitHub API)"]
+    end
+
+    subgraph Dedup["Two-Stage Deduplication"]
+        Stage1["Stage 1: Fingerprint Match<br/>(exact hash match)"]
+        Stage2["Stage 2: Semantic Match<br/>(LLM-based similarity)"]
+    end
+
+    subgraph Output["Output"]
+        Summary["Build Summary<br/>(post-dedup counts)"]
+        Post["POST to GitHub API"]
+    end
+
+    Findings --> Stage1
+    ExistingComments --> Stage1
+    Stage1 -->|"non-duplicates"| Stage2
+    Stage2 -->|"unique findings"| Summary
+    Summary --> Post
+```
+
+#### Critical Behavior: Comment Accumulation (Issue #125)
+
+**GitHub API Behavior:**
+- PR comments **never disappear**, even when:
+  - The review is dismissed
+  - The code is fixed
+  - A new review is posted
+- Each `CreateReview` API call creates **new** inline comments
+- Dismissing a review only changes its state; comments remain visible
+
+**Implication:** Without deduplication, each review cycle posts duplicate comments for the same issues.
+
+#### Two-Stage Deduplication
+
+| Stage | Method | Catches | Performance |
+|-------|--------|---------|-------------|
+| **Stage 1: Fingerprint** | SHA-256 hash of `file + category + severity + description[0:100]` | Exact duplicates | O(1) lookup |
+| **Stage 2: Semantic** | LLM comparison (Claude Haiku) | Same issue, different wording | ~2s per batch |
+
+**Why both stages?**
+- LLMs generate varied wording for the same issue across runs
+- Example: "constructs with nil dependencies" vs "started with nil dependencies"
+- These have different fingerprints but are semantically identical
+
+#### Summary Generation Timing
+
+**Critical:** The programmatic summary must be built **AFTER** deduplication.
+
+```go
+// WRONG: Summary shows raw findings (stale counts)
+summary := BuildProgrammaticSummary(rawFindings, diff)
+findings = deduplicate(rawFindings, existingComments)
+post(summary, findings)  // Summary says "17 findings" but only 3 posted
+
+// CORRECT: Summary reflects what's actually posted
+findings = deduplicate(rawFindings, existingComments)
+summary := BuildProgrammaticSummary(findings, diff)  // After dedup!
+post(summary, findings)  // Summary says "3 findings" matching posts
+```
+
+#### Configuration
+
+```yaml
+deduplication:
+  semantic:
+    enabled: true                    # Default: true
+    provider: anthropic              # Default: anthropic
+    model: claude-haiku-4-5          # Default: claude-haiku-4-5
+    maxTokens: 64000                 # Default: 64000
+    lineThreshold: 10                # Max line distance for candidates
+    maxCandidates: 50                # Cost guard per review
+```
+
 ---
 
 ## 7. Interface Definitions
