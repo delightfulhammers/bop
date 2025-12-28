@@ -199,8 +199,6 @@ func run() error {
 				semanticConfig.MaxCandidates = usecasedeup.DefaultConfig().MaxCandidates
 			}
 			posterOpts = append(posterOpts, usecasegithub.WithSemanticComparer(semanticComparer, semanticConfig))
-			log.Printf("[INFO] Semantic deduplication enabled (provider=%s, model=%s)",
-				cfg.Deduplication.Semantic.Provider, cfg.Deduplication.Semantic.Model)
 		}
 
 		reviewPoster := usecasegithub.NewReviewPoster(githubClient, posterOpts...)
@@ -880,7 +878,7 @@ func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 
 	model := semanticCfg.Model
 	if model == "" {
-		model = "claude-haiku-4-5-latest"
+		model = "claude-haiku-4-5"
 	}
 
 	maxTokens := semanticCfg.MaxTokens
@@ -908,6 +906,8 @@ func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 
 	// Create the Anthropic client for semantic comparison
 	anthropicClient := dedupadapter.NewAnthropicClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
+
+	log.Printf("[INFO] Semantic deduplication enabled (provider=%s, model=%s)", provider, model)
 
 	// Create and return the semantic comparer
 	return dedupadapter.NewComparer(anthropicClient, maxTokens)

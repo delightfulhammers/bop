@@ -37,6 +37,67 @@ gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
 
 **Why this matters:** If you query PR comments, you'll see 20+ findings from old commits when the actual latest review might only have 3. This leads to triaging already-fixed issues.
 
+---
+
+## Understanding Comment Accumulation (Issue #125 Learnings)
+
+### PR Comments NEVER Disappear
+
+**CRITICAL:** PR comments persist forever, even when:
+- The review is dismissed
+- The code is fixed
+- A new review is posted
+- The finding no longer exists in current code
+
+Each review cycle creates NEW comments. Dismissing old reviews only changes their state; inline comments remain visible.
+
+### Why You See "Stale" Findings
+
+The LLM generates slightly different wording each run:
+- Run 1: "The MCP **binary constructs** the triage service with all dependencies **set to nil**..."
+- Run 2: "The MCP **server is started with** a triage service **constructed with nil** dependencies..."
+
+Different wording → different fingerprints → not deduplicated → duplicate comments posted.
+
+**Semantic deduplication** (Issue #125) catches these, but only when enabled.
+
+### To See Only NEW Comments (After Your Last Push)
+
+```bash
+# Get timestamp of your last push
+LAST_PUSH=$(git log -1 --format='%aI' HEAD)
+
+# Filter comments created after that time
+gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100" \
+  --jq "[.[] | select(.created_at > \"$LAST_PUSH\") | {id, path, created_at, body: .body[0:80]}]"
+```
+
+### To Identify Which Review Cycle a Comment Belongs To
+
+```bash
+# Group comments by review ID with timestamps
+gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100" \
+  --jq 'group_by(.pull_request_review_id) | map({
+    review_id: .[0].pull_request_review_id,
+    created: .[0].created_at,
+    count: length
+  })'
+```
+
+### Check Workflow Logs for Deduplication Stats
+
+```bash
+# Find the latest review workflow run
+RUN_ID=$(gh run list --workflow="AI Code Review" --limit 1 --json databaseId -q '.[0].databaseId')
+
+# Check deduplication stats in logs
+gh run view $RUN_ID --log 2>&1 | grep -E "duplicate|dedup|skipped|posted"
+```
+
+Look for: `commentsPosted=X duplicatesSkipped=Y semanticDuplicatesSkipped=Z`
+
+---
+
 ## Pre-Flight Checklist
 
 Before presenting triage results, verify you have checked ALL sources:
