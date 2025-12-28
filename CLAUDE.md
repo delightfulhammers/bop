@@ -1,22 +1,22 @@
 # Code Reviewer - Claude Context
 
 **Project:** AI-Powered Code Review Tool
-**Status:** Phase 2 Complete
-**Version:** v0.4.0
-**Last Updated:** 2025-12-27
+**Status:** Phase 3 In Development
+**Version:** v0.4.2 (targeting v0.5.0)
+**Last Updated:** 2025-12-28
 
 ---
 
 ## Quick Start
 
-1. **First:** Read `docs/PROJECT_RESET_PLAN.md` for MVP scope and phase structure
+1. **First:** Read Phase 3 design docs in `docs/design/` for current scope
 2. **Build:** `go build -o cr ./cmd/cr`
 3. **Test:** `go test ./...`
 4. **Run:** `./cr review branch main` (reviews current branch against main)
 
 ---
 
-## Current Phase: Phase 3 - Production Hardening
+## Current Phase: Phase 3 - Triage & Intelligence
 
 ### Phase Status
 
@@ -24,36 +24,35 @@
 |-------|--------|-------------|
 | Phase 1: Foundation | ✅ Complete | Multi-provider LLM, local CLI, basic GitHub workflow |
 | Phase 2: GitHub Native | ✅ Complete | First-class reviewer with inline annotations |
-| **Phase 3: Production** | 🚧 Next | Feedback loops, cost visibility, hardening |
+| **Phase 3: Production** | 🚧 In Progress | Triage automation, reviewer personas, model selection |
 | Phase 4: Enterprise | Planned | Multi-platform, org-wide learning |
 
-### Phase 2 Summary (Complete)
+### Phase 3 Focus Areas
 
-| Milestone | Status |
+| Sub-Phase | Focus | Priority |
+|-----------|-------|----------|
+| **3.1 Triage Automation** | MCP server, CLI, skill for triage workflow | P0 |
+| **3.2 Reviewer Personas** | Specialized reviewers with distinct prompts | P0 |
+| **3.3 Dynamic Model Selection** | Right-size models to change characteristics | P1 |
+
+### Phase 3.1 Deliverables (Triage MCP Server)
+
+| Component | Status |
 |-----------|--------|
-| 2.1 Inline Annotations | ✅ Complete |
-| 2.2 Review API | ✅ Complete |
-| 2.3 Request Changes | ✅ Complete |
-| 2.4 Skip Trigger | ✅ Complete |
-| 2.5 Incremental Reviews | ⏸️ Deferred |
-| 2.6 Finding Deduplication | ✅ Complete |
-| 2.7 PR Size Guards | ✅ Complete |
-| 2.8 Finding Verification | ✅ Complete |
-
-### v0.4.0 Features
-
-- **Skip Triggers:** Bypass reviews with `[skip code-review]` in head commit, PR title, or description
-- **Finding Deduplication:** Comment-based state using fingerprints to avoid re-posting same findings
-- **Semantic Deduplication:** LLM-based detection of similar findings across review cycles
-- **Status-Aware Reviews:** Detect acknowledged/disputed replies for accurate review status
-- **PR Size Guards:** Warn and truncate when PRs exceed token limits
-- **Severity Thresholds:** Configurable blocking behavior per severity level
+| `code-reviewer-mcp` binary | 🚧 Planned |
+| `internal/usecase/triage/` | 🚧 Planned |
+| 9 MCP tool handlers | 🚧 Planned |
+| Claude Code skill update | 🚧 Planned |
+| `cr triage` CLI (P2) | 🚧 Planned |
 
 ### Key Documents
 
-- **MVP Scope:** `docs/PROJECT_RESET_PLAN.md`
-- **Architecture:** `docs/ARCHITECTURE.md`
+- **Phase 3 PRD:** `docs/design/01-PRD.md`
+- **Phase 3 Architecture:** `docs/design/02-ARCHITECTURE.md`
+- **MCP Server TDD:** `docs/design/03-TDD-TRIAGE-MCP-SERVER.md`
+- **Phase 3.1 Roadmap:** `docs/design/04-ROADMAP-PHASE-3.1.md`
 - **Security:** `docs/SECURITY.md`
+- **Archived Docs:** `docs/archive/` (historical reference)
 
 ---
 
@@ -137,26 +136,32 @@ Use these skills for targeted context instead of reading docs manually:
 ## Project Structure
 
 ```
-cmd/cr/              # CLI entry point
+cmd/
+  cr/                    # CLI entry point
+  code-reviewer-mcp/     # MCP server (Phase 3.1 - planned)
 internal/
-  adapter/           # External integrations
-    cli/             # Command-line interface
-    git/             # Git operations
-    llm/             # LLM provider clients
+  adapter/               # External integrations
+    cli/                 # Command-line interface
+    git/                 # Git operations
+    llm/                 # LLM provider clients
       anthropic/
       gemini/
       ollama/
       openai/
-    output/          # Output formatters (markdown, json, sarif)
-    store/           # SQLite persistence
-  config/            # Configuration loading
-  domain/            # Core domain types (no dependencies)
-  redaction/         # Secret redaction
-  usecase/           # Business logic
-    merge/           # Multi-provider merge
-    review/          # Review orchestration
-docs/                # Documentation
-security-tests/      # Security test cases
+    mcp/                 # MCP tool handlers (Phase 3.1 - planned)
+    output/              # Output formatters (markdown, json, sarif)
+    store/               # SQLite persistence
+  config/                # Configuration loading
+  domain/                # Core domain types (no dependencies)
+  redaction/             # Secret redaction
+  usecase/               # Business logic
+    merge/               # Multi-provider merge
+    review/              # Review orchestration
+    triage/              # Triage workflow (Phase 3.1 - planned)
+docs/
+  design/                # Active design docs (Phase 3)
+  archive/               # Historical docs
+security-tests/          # Security test cases
 ```
 
 ---
@@ -173,17 +178,18 @@ security-tests/      # Security test cases
 
 ## When You're Stuck
 
-**Current work:**
-- Project Reset Plan: `docs/PROJECT_RESET_PLAN.md`
-- Known Issues: See "Security Testing Findings" in `ROADMAP.md`
+**Current work (Phase 3):**
+- PRD: `docs/design/01-PRD.md`
+- Architecture: `docs/design/02-ARCHITECTURE.md`
+- MCP Server TDD: `docs/design/03-TDD-TRIAGE-MCP-SERVER.md`
+- Roadmap: `docs/design/04-ROADMAP-PHASE-3.1.md`
 
 **Reference documentation:**
-- Architecture: `docs/ARCHITECTURE.md`
 - Security: `docs/SECURITY.md`
 - GitHub Setup: `docs/GITHUB_ACTION_SETUP.md`
 
 **Historical context:**
-- Original roadmap: `ROADMAP.md` (detailed, being archived)
+- Archived docs: `docs/archive/` (old architecture, phase docs, checklists)
 - Session summaries: `docs/session-summaries/`
 
 ---

@@ -1,14 +1,15 @@
 # Continue Work
 
-Figure out where we left off and resume, with awareness of the Phase 2 plan.
+Figure out where we left off and resume, with awareness of the Phase 3 plan.
 
 ## 1. Check Planning State First
 
-**Read the planning documents to understand current priorities:**
+**Read the design documents to understand current priorities:**
 
 ```
-# Quick check of project reset plan status
-head -100 docs/PROJECT_RESET_PLAN.md
+# Check Phase 3 design docs
+ls docs/design/
+head -50 docs/design/04-ROADMAP-PHASE-3.1.md
 ```
 
 ## 2. Gather Git Context
@@ -40,28 +41,39 @@ head -100 docs/PROJECT_RESET_PLAN.md
    gh pr list --state open
    ```
 
-## 3. Check Phase 2 Issue Status
+## 3. Check Phase 3 Issue Status
 
 ```
-# See high-priority Phase 2 issues
-gh issue list --state open --label "phase:2" --label "priority:high" --limit 10
+# See high-priority Phase 3 issues
+gh issue list --state open --label "phase:3" --label "priority:high" --limit 10
 
-# See medium-priority Phase 2 issues
-gh issue list --state open --label "phase:2" --label "priority:medium" --limit 10
+# See all Phase 3 issues
+gh issue list --state open --label "phase:3" --limit 20
 
-# See low-priority Phase 2 issues
-gh issue list --state open --label "phase:2" --label "priority:low" --limit 10
+# See issues without phase label (may need triage)
+gh issue list --state open --limit 10
 ```
 
-**Phase 2 Priority Order (from PROJECT_RESET_PLAN.md):**
+**Phase 3 Priority Order (from design docs):**
 
-1. **Milestone 2.1:** Inline Annotations (diff position mapping, line-specific comments)
-2. **Milestone 2.2:** Review API (use GitHub review API instead of comments)
-3. **Milestone 2.3:** Request Changes (configurable blocking behavior)
-4. **Milestone 2.4:** Skip Trigger (`[skip code-review]` support)
-5. **Milestone 2.5:** Incremental Reviews (only review new changes)
-6. **Milestone 2.6:** Finding Deduplication (track findings, don't re-flag)
-7. **Milestone 2.7:** PR Size Guards (warn/truncate/split large PRs)
+### Phase 3.1: Triage Automation (P0)
+1. MCP Server skeleton (`cmd/code-reviewer-mcp/`)
+2. Domain types (`internal/domain/triage.go`)
+3. Triage service (`internal/usecase/triage/`)
+4. MCP tool handlers (9 tools)
+5. Claude Code skill update
+6. `cr triage` CLI (P2)
+
+### Phase 3.2: Reviewer Personas (P0)
+1. Reviewer configuration schema
+2. Persona prompt builder
+3. Orchestrator updates
+4. Merger role awareness
+
+### Phase 3.3: Dynamic Model Selection (P1)
+1. Model selector interface
+2. Token-tier routing
+3. Change-type routing
 
 ## 4. Present Findings
 
@@ -70,7 +82,7 @@ Summarize:
 - Any uncommitted or stashed changes
 - Open PRs that might need attention
 - Best guess at what was being worked on
-- **Current Phase 2 priorities** based on issue labels
+- **Current Phase 3.1 priorities** based on roadmap
 - **Any recently closed issues** that may need follow-up
 
 ## 5. Suggest Next Steps
@@ -81,9 +93,8 @@ Based on the context:
    "It looks like you were working on #XXX. Should I continue?"
 
 2. **If on main with clean state:**
-   "You're on main with no pending work. Based on Phase 2 priorities, I suggest:
-   - High priority: [next uncompleted high-priority issue]
-   - Medium priority: [next uncompleted medium-priority issue]
+   "You're on main with no pending work. Based on Phase 3.1 roadmap, I suggest:
+   - Start with: [next milestone task from 04-ROADMAP-PHASE-3.1.md]
    Which would you like to work on?"
 
 3. **If there's an open PR:**
@@ -95,7 +106,7 @@ Do NOT start implementation until the user confirms.
 
 When they confirm:
 1. If starting a new issue, create feature branch: `git checkout -b feature/<issue-number>-short-description`
-2. Read the issue details: `gh issue view <number>`
+2. Read the relevant design doc section
 3. Begin implementation following TDD workflow
 
 ## 7. Remember the Definition of Done
@@ -107,3 +118,11 @@ Before marking any work as complete:
 - [ ] All tests pass (`go test ./...`)
 - [ ] Build succeeds (`go build -o cr ./cmd/cr`)
 - [ ] No race conditions (`go test -race ./...`)
+
+## 8. Key Design Documents
+
+When working on Phase 3 features, reference:
+- `docs/design/01-PRD.md` - Requirements and user personas
+- `docs/design/02-ARCHITECTURE.md` - System architecture and component design
+- `docs/design/03-TDD-TRIAGE-MCP-SERVER.md` - MCP server implementation details
+- `docs/design/04-ROADMAP-PHASE-3.1.md` - Task breakdown and milestones
