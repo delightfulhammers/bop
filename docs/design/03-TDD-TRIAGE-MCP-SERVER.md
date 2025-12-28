@@ -55,7 +55,8 @@ This approach:
 
 ### Dependencies
 
-- [mcp-go](https://github.com/mark3labs/mcp-go) — Go MCP SDK
+- [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk) — Official Go MCP SDK
+  - **Note:** This doc originally specified `mark3labs/mcp-go`, but we deliberately chose the official SDK during M1 implementation for better long-term support and API stability. Code examples in this doc may reference the old SDK and should be updated.
 - Existing `internal/adapter/github/` — Extended for triage operations
 - Existing `internal/adapter/git/` — File content retrieval
 

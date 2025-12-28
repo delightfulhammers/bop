@@ -11,6 +11,16 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// notImplementedResult returns a standard "not implemented" MCP result with IsError=true.
+func notImplementedResult(scope string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		IsError: true,
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: fmt.Sprintf("Tool not yet implemented (%s scope)", scope)},
+		},
+	}
+}
+
 // registerStartSessionTool registers the start_triage_session tool.
 func (s *Server) registerStartSessionTool() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
@@ -23,11 +33,7 @@ func (s *Server) handleStartSession(ctx context.Context, req *mcp.CallToolReques
 	session, err := s.deps.TriageService.StartSession(ctx, input.Repository, input.PRNumber)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M2 scope)"},
-				},
-			}, StartSessionOutput{Message: "Not implemented"}, nil
+			return notImplementedResult("M2"), StartSessionOutput{}, nil
 		}
 		return nil, StartSessionOutput{}, fmt.Errorf("failed to start session: %w", err)
 	}
@@ -55,11 +61,7 @@ func (s *Server) handleGetCurrentFinding(ctx context.Context, req *mcp.CallToolR
 	finding, err := s.deps.TriageService.GetCurrentFinding(ctx, input.SessionID)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M2 scope)"},
-				},
-			}, FindingOutput{}, nil
+			return notImplementedResult("M2"), FindingOutput{}, nil
 		}
 		return nil, FindingOutput{}, fmt.Errorf("failed to get current finding: %w", err)
 	}
@@ -103,11 +105,7 @@ func (s *Server) handleGetFindingContext(ctx context.Context, req *mcp.CallToolR
 	triageCtx, err := s.deps.TriageService.GetFindingContext(ctx, input.SessionID, input.FindingID)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M2 scope)"},
-				},
-			}, ContextOutput{}, nil
+			return notImplementedResult("M2"), ContextOutput{}, nil
 		}
 		return nil, ContextOutput{}, fmt.Errorf("failed to get finding context: %w", err)
 	}
@@ -143,21 +141,25 @@ func (s *Server) registerListFindingsTool() {
 }
 
 func (s *Server) handleListFindings(ctx context.Context, req *mcp.CallToolRequest, input ListFindingsInput) (*mcp.CallToolResult, ListFindingsOutput, error) {
-	// Convert status filter if provided
+	// Convert and validate status filter if provided
 	var statusFilter *domain.TriageStatus
 	if input.StatusFilter != nil {
 		status := domain.TriageStatus(*input.StatusFilter)
+		if !status.IsValid() {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("invalid status filter: %s (valid: pending, accepted, disputed, question, resolved, wont_fix)", *input.StatusFilter)},
+				},
+			}, ListFindingsOutput{}, nil
+		}
 		statusFilter = &status
 	}
 
 	findings, err := s.deps.TriageService.ListFindings(ctx, input.SessionID, statusFilter)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M2 scope)"},
-				},
-			}, ListFindingsOutput{}, nil
+			return notImplementedResult("M2"), ListFindingsOutput{}, nil
 		}
 		return nil, ListFindingsOutput{}, fmt.Errorf("failed to list findings: %w", err)
 	}
@@ -200,11 +202,7 @@ func (s *Server) handleGetProgress(ctx context.Context, req *mcp.CallToolRequest
 	triaged, total, err := s.deps.TriageService.GetProgress(ctx, input.SessionID)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M2 scope)"},
-				},
-			}, GetProgressOutput{}, nil
+			return notImplementedResult("M2"), GetProgressOutput{}, nil
 		}
 		return nil, GetProgressOutput{}, fmt.Errorf("failed to get progress: %w", err)
 	}
@@ -237,9 +235,20 @@ func (s *Server) registerTriageFindingTool() {
 }
 
 func (s *Server) handleTriageFinding(ctx context.Context, req *mcp.CallToolRequest, input TriageFindingInput) (*mcp.CallToolResult, TriageFindingOutput, error) {
+	// Validate status before creating decision
+	status := domain.TriageStatus(input.Status)
+	if !status.IsValid() {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("invalid triage status: %s (valid: pending, accepted, disputed, question, resolved, wont_fix)", input.Status)},
+			},
+		}, TriageFindingOutput{Success: false, Message: "Invalid status"}, nil
+	}
+
 	decision := domain.TriageDecision{
 		FindingID: input.FindingID,
-		Status:    domain.TriageStatus(input.Status),
+		Status:    status,
 		Reason:    input.Reason,
 		TriagedAt: time.Now(),
 	}
@@ -247,11 +256,7 @@ func (s *Server) handleTriageFinding(ctx context.Context, req *mcp.CallToolReque
 	err := s.deps.TriageService.TriageFinding(ctx, input.SessionID, input.FindingID, decision)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M3 scope)"},
-				},
-			}, TriageFindingOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), TriageFindingOutput{Success: false, Message: "Not implemented"}, nil
 		}
 		return nil, TriageFindingOutput{}, fmt.Errorf("failed to triage finding: %w", err)
 	}
@@ -278,11 +283,7 @@ func (s *Server) handlePostComment(ctx context.Context, req *mcp.CallToolRequest
 	err := s.deps.TriageService.PostComment(ctx, input.SessionID, input.FindingID, input.Body)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M3 scope)"},
-				},
-			}, PostCommentOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), PostCommentOutput{Success: false, Message: "Not implemented"}, nil
 		}
 		return nil, PostCommentOutput{}, fmt.Errorf("failed to post comment: %w", err)
 	}
@@ -309,11 +310,7 @@ func (s *Server) handleReplyToThread(ctx context.Context, req *mcp.CallToolReque
 	err := s.deps.TriageService.ReplyToFinding(ctx, input.SessionID, input.FindingID, input.Body)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M3 scope)"},
-				},
-			}, ReplyToThreadOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), ReplyToThreadOutput{Success: false, Message: "Not implemented"}, nil
 		}
 		return nil, ReplyToThreadOutput{}, fmt.Errorf("failed to reply to thread: %w", err)
 	}
@@ -340,11 +337,7 @@ func (s *Server) handleResolveThread(ctx context.Context, req *mcp.CallToolReque
 	err := s.deps.TriageService.ResolveFinding(ctx, input.SessionID, input.FindingID)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{Text: "Tool not yet implemented (M3 scope)"},
-				},
-			}, ResolveThreadOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), ResolveThreadOutput{Success: false, Message: "Not implemented"}, nil
 		}
 		return nil, ResolveThreadOutput{}, fmt.Errorf("failed to resolve thread: %w", err)
 	}

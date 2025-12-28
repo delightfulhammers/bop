@@ -178,8 +178,16 @@ func (s *TriageSession) FindingByFingerprint(fp string) *TriageFinding {
 	return nil
 }
 
+// ErrInvalidTriageStatus is returned when a triage status is not valid.
+var ErrInvalidTriageStatus = fmt.Errorf("invalid triage status")
+
 // ApplyDecision applies a triage decision to the session.
 func (s *TriageSession) ApplyDecision(decision TriageDecision) error {
+	// Validate status before applying
+	if !decision.Status.IsValid() {
+		return fmt.Errorf("%w: %s", ErrInvalidTriageStatus, decision.Status)
+	}
+
 	finding := s.FindingByID(decision.FindingID)
 	if finding == nil {
 		finding = s.FindingByFingerprint(decision.Fingerprint)

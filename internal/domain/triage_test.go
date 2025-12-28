@@ -248,3 +248,36 @@ func TestTriageSession_ApplyDecision_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "finding not found")
 }
+
+func TestTriageSession_ApplyDecision_InvalidStatus(t *testing.T) {
+	findings := []Finding{{ID: "f1"}}
+	session := NewTriageSession(1, "owner/repo", findings)
+
+	decision := TriageDecision{
+		FindingID: "f1",
+		Status:    TriageStatus("invalid_status"),
+	}
+
+	err := session.ApplyDecision(decision)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidTriageStatus)
+	assert.Contains(t, err.Error(), "invalid_status")
+
+	// Verify the finding was NOT modified
+	assert.Equal(t, TriageStatusPending, session.Findings[0].TriageStatus)
+	assert.Empty(t, session.Decisions)
+}
+
+func TestTriageSession_ApplyDecision_EmptyStatus(t *testing.T) {
+	findings := []Finding{{ID: "f1"}}
+	session := NewTriageSession(1, "owner/repo", findings)
+
+	decision := TriageDecision{
+		FindingID: "f1",
+		Status:    TriageStatus(""),
+	}
+
+	err := session.ApplyDecision(decision)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidTriageStatus)
+}

@@ -127,7 +127,7 @@ type CommentOutput struct {
 // ListFindingsInput is the input for the list_findings tool.
 type ListFindingsInput struct {
 	SessionID    string  `json:"session_id" jsonschema:"description=Triage session ID"`
-	StatusFilter *string `json:"status_filter,omitempty" jsonschema:"description=Filter by triage status (pending/accepted/disputed/question/resolved/wont_fix)"`
+	StatusFilter *string `json:"status_filter,omitempty" jsonschema:"description=Filter by triage status,enum=pending,enum=accepted,enum=disputed,enum=question,enum=resolved,enum=wont_fix"`
 }
 
 // ListFindingsOutput is the output for the list_findings tool.
@@ -153,7 +153,7 @@ type GetProgressOutput struct {
 type TriageFindingInput struct {
 	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
 	FindingID string `json:"finding_id" jsonschema:"description=Finding ID to triage"`
-	Status    string `json:"status" jsonschema:"description=New status (accepted/disputed/question/resolved/wont_fix)"`
+	Status    string `json:"status" jsonschema:"description=New triage status,enum=accepted,enum=disputed,enum=question,enum=resolved,enum=wont_fix"`
 	Reason    string `json:"reason,omitempty" jsonschema:"description=Reason for the triage decision"`
 }
 
