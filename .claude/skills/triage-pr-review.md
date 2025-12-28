@@ -37,6 +37,17 @@ gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
 
 **Why this matters:** If you query PR comments, you'll see 20+ findings from old commits when the actual latest review might only have 3. This leads to triaging already-fixed issues.
 
+## Pre-Flight Checklist
+
+Before presenting triage results, verify you have checked ALL sources:
+
+- [ ] **Check Run Annotations** - `gh api repos/{owner}/{repo}/check-runs/{id}/annotations`
+- [ ] **PR Comments** - `gh api repos/{owner}/{repo}/pulls/{pr}/comments`
+
+**Both must be queried.** If one source has no findings, explicitly state "0 findings from [source]" in your output.
+
+---
+
 ## Workflow
 
 ### Step 1: Gather Feedback from LATEST Review
@@ -210,25 +221,36 @@ gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
 
 ## Output Format
 
+**IMPORTANT:** You MUST show findings from BOTH sources explicitly. Never skip one.
+
 After triaging, summarize actions taken:
 
 ```markdown
 ## PR Review Triage Summary
 
-### Fixed (X issues)
-| Finding | Fix |
-|---------|-----|
-| [description] | [commit/change] |
+### Sources Checked
+- [ ] Check Run Annotations (SARIF): X findings from check run ID [id]
+- [ ] PR Comments: Y comments from human/bot reviewers
 
-### Disputed (Y issues)
-| Finding | Response |
-|---------|----------|
-| [description] | [reasoning] |
+### Findings by Source
 
-### Deferred (Z issues)
-| Finding | Reason |
-|---------|--------|
-| [description] | [why deferred] |
+#### Check Run Annotations (Static Analysis)
+| # | File:Line | Severity | Finding | Decision | Reason |
+|---|-----------|----------|---------|----------|--------|
+| 1 | path:line | error/warning/note | [description] | accept/dispute/defer | [reason] |
+
+#### PR Comments (Reviewer Feedback)
+| # | File:Line | Author | Finding | Decision | Reason |
+|---|-----------|--------|---------|----------|--------|
+| 1 | path:line | user | [description] | accept/dispute/defer | [reason] |
+
+### Action Summary
+| Decision | Count | Details |
+|----------|-------|---------|
+| Accept (will fix) | X | [brief list] |
+| Dispute (won't fix) | Y | [brief list] |
+| Defer | Z | [brief list] |
+| Duplicate | N | [findings that appear in both sources] |
 
 ### Status
 - Blocking errors: X fixed, Y remaining
@@ -236,11 +258,16 @@ After triaging, summarize actions taken:
 - Ready for next review: [yes/no]
 ```
 
+**If either source has 0 findings, explicitly state it** (e.g., "No check run annotations found" or "No PR comments").
+
 ## After Loading Context
 
-1. Identify the current PR
-2. Gather all feedback sources
-3. Categorize and triage findings
-4. Fix blocking issues first
-5. Reply to disputed findings
-6. Report summary of actions taken
+1. Identify the current PR and HEAD commit SHA
+2. **Query BOTH sources** (check this off mentally):
+   - Check run annotations (SARIF/static analysis)
+   - PR comments (reviewer feedback)
+3. Present findings **by source** in separate tables
+4. Categorize each finding: accept, dispute, or defer
+5. Fix accepted issues
+6. Reply to disputed findings on GitHub
+7. Report summary with counts from each source
