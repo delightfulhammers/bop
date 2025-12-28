@@ -108,11 +108,13 @@ golangci-lint run
 3. **Functional Style:** Prefer immutability, SOLID principles
 4. **Format Before Commit:** `gofmt -w .`
 5. **All Tests Pass:** `go test ./...` must succeed
+6. **Fix All Lint Errors:** Fix ANY lint errors you encounter, even if you didn't cause them
 
 ### Definition of Done
 
 - [ ] Tests written (TDD)
 - [ ] Code formatted (`gofmt`)
+- [ ] Lint passes (`golangci-lint run`) - fix ALL errors, not just yours
 - [ ] All tests pass
 - [ ] Build succeeds
 - [ ] No race conditions (`go test -race`)
@@ -173,6 +175,17 @@ security-tests/          # Security test cases
 3. **Don't** commit secrets - redaction exists but prevention is better
 4. **Don't** ignore race detector - `go test -race` must pass
 5. **Don't** forget to format - `gofmt -w .` before committing
+6. **Don't** ignore lint errors - fix ALL errors you find, even pre-existing ones
+
+### Code Hygiene (IMPORTANT)
+
+When running `golangci-lint run`, fix **every error** you encounter - not just errors in files you modified. This codebase accumulated technical debt from ignoring pre-existing issues. The only way to recover is:
+
+1. Fix issues as you find them
+2. Eventually do a full codebase lint cleanup
+3. Stay vigilant going forward
+
+**This applies to:** lint errors, test failures, build warnings, race conditions - anything that indicates code quality issues.
 
 ---
 

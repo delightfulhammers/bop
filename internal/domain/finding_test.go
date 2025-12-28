@@ -88,7 +88,7 @@ func TestFinding_Fingerprint_Deterministic(t *testing.T) {
 		t.Errorf("fingerprint should be 32 hex characters, got %d: %s", len(fp), fp)
 	}
 	for _, c := range fp {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("fingerprint should be lowercase hex, found char: %c in %s", c, fp)
 			break
 		}
