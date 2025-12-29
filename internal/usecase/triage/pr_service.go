@@ -91,7 +91,7 @@ func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumb
 
 	// Validate severity filter if provided
 	if severity != nil && !isValidSeverity(*severity) {
-		return nil, fmt.Errorf("invalid severity filter: %s (valid: critical, high, medium, low)", *severity)
+		return nil, fmt.Errorf("%w: severity %q (valid: %v)", ErrInvalidFilter, *severity, ValidSeverities)
 	}
 
 	// Get all comments with fingerprints (code reviewer findings)
@@ -128,7 +128,7 @@ func (s *PRService) GetFinding(ctx context.Context, owner, repo string, prNumber
 		return s.deps.CommentReader.GetPRCommentByFingerprint(ctx, owner, repo, prNumber, fingerprint)
 	}
 
-	return s.deps.CommentReader.GetPRComment(ctx, owner, repo, commentID)
+	return s.deps.CommentReader.GetPRComment(ctx, owner, repo, prNumber, commentID)
 }
 
 // GetSuggestion extracts a structured code suggestion from a finding.
@@ -176,11 +176,12 @@ func (s *PRService) GetDiffContext(ctx context.Context, owner, repo string, prNu
 }
 
 // isValidSeverity checks if a severity string is a valid value.
+// Uses ValidSeverities to ensure consistency.
 func isValidSeverity(s string) bool {
-	switch s {
-	case "critical", "high", "medium", "low":
-		return true
-	default:
-		return false
+	for _, valid := range ValidSeverities {
+		if s == valid {
+			return true
+		}
 	}
+	return false
 }

@@ -166,6 +166,14 @@ func (s *Server) handleListFindings(ctx context.Context, req *mcp.CallToolReques
 		if errors.Is(err, triage.ErrNotImplemented) {
 			return notImplementedResult("M2 - CommentReader"), ListFindingsOutput{}, nil
 		}
+		if errors.Is(err, triage.ErrInvalidFilter) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: err.Error()},
+				},
+			}, ListFindingsOutput{}, nil
+		}
 		return nil, ListFindingsOutput{}, fmt.Errorf("list findings: %w", err)
 	}
 
@@ -224,10 +232,11 @@ func (s *Server) handleGetFinding(ctx context.Context, req *mcp.CallToolRequest,
 		}, GetFindingOutput{}, nil
 	}
 
-	// Safely truncate body for display
+	// Safely truncate body for display (UTF-8 safe - truncate by runes, not bytes)
 	bodyPreview := finding.Body
-	if len(bodyPreview) > 100 {
-		bodyPreview = bodyPreview[:100] + "..."
+	bodyRunes := []rune(bodyPreview)
+	if len(bodyRunes) > 100 {
+		bodyPreview = string(bodyRunes[:100]) + "..."
 	}
 
 	return &mcp.CallToolResult{

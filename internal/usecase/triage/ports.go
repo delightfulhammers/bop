@@ -11,7 +11,8 @@ import (
 type AnnotationReader interface {
 	// ListCheckRuns returns check runs for a commit, optionally filtered by name.
 	// If checkName is nil, all check runs are returned.
-	// Returns check runs sorted by completion time (most recent first).
+	// Note: Returns up to 100 check runs in GitHub API order (not guaranteed to be sorted).
+	// Callers should sort results if ordering is important.
 	ListCheckRuns(ctx context.Context, owner, repo, ref string, checkName *string) ([]domain.CheckRunSummary, error)
 
 	// GetAnnotations retrieves all annotations for a specific check run.
@@ -31,8 +32,9 @@ type CommentReader interface {
 	ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error)
 
 	// GetPRComment retrieves a single comment by ID.
-	// Returns ErrCommentNotFound if the comment doesn't exist.
-	GetPRComment(ctx context.Context, owner, repo string, commentID int64) (*domain.PRFinding, error)
+	// Returns ErrCommentNotFound if the comment doesn't exist or doesn't belong to the PR.
+	// The prNumber is required to validate the comment belongs to the expected PR.
+	GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error)
 
 	// GetPRCommentByFingerprint retrieves a comment by its CR_FP fingerprint.
 	// Returns ErrCommentNotFound if no matching comment exists.

@@ -34,3 +34,10 @@ var ErrNoSuggestion = errors.New("no suggestion found in content")
 
 // ErrFileTruncated is returned when a file exceeds the maximum read size.
 var ErrFileTruncated = errors.New("file truncated: exceeds 10MB limit")
+
+// ErrInvalidFilter is returned when a filter value (severity, category, etc.) is invalid.
+var ErrInvalidFilter = errors.New("invalid filter value")
+
+// ValidSeverities contains all valid severity filter values.
+// Used by ListFindings to validate the severity parameter.
+var ValidSeverities = []string{"critical", "high", "medium", "low"}
