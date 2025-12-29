@@ -1468,3 +1468,190 @@ func TestReviewPoster_PostReview_SummaryOmitsStatusSectionWhenEmpty(t *testing.T
 
 	require.NoError(t, err)
 }
+
+// ==== Comment Verification Tests (Issue #129) ====
+
+func TestReviewPoster_PostReview_VerifiesCommentCount(t *testing.T) {
+	// When posting a review, verify that all expected comments were actually posted.
+	const newReviewID = int64(456)
+
+	client := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: newReviewID, HTMLURL: "https://example.com/review"}, nil
+		},
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			// Return comments that match the review ID
+			return []github.PullRequestComment{
+				{ID: 1, PullRequestReviewID: newReviewID, Path: "file1.go", User: github.User{Login: "bot[bot]"}},
+				{ID: 2, PullRequestReviewID: newReviewID, Path: "file2.go", User: github.User{Login: "bot[bot]"}},
+			}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: makeFinding("file1.go", 10, "high", "Issue 1"), DiffPosition: diff.IntPtr(5)},
+		{Finding: makeFinding("file2.go", 20, "medium", "Issue 2"), DiffPosition: diff.IntPtr(15)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.CommentsPosted, "expected comments sent")
+	assert.Equal(t, 2, result.CommentsVerified, "actual comments verified")
+	assert.False(t, result.CommentMismatch, "no mismatch expected")
+}
+
+func TestReviewPoster_PostReview_DetectsCommentMismatch(t *testing.T) {
+	// When GitHub silently drops comments, we should detect the mismatch.
+	const newReviewID = int64(456)
+
+	client := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: newReviewID, HTMLURL: "https://example.com/review"}, nil
+		},
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			// GitHub only accepted 1 of the 3 comments (silently dropped 2)
+			return []github.PullRequestComment{
+				{ID: 1, PullRequestReviewID: newReviewID, Path: "file1.go", User: github.User{Login: "bot[bot]"}},
+			}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: makeFinding("file1.go", 10, "high", "Issue 1"), DiffPosition: diff.IntPtr(5)},
+		{Finding: makeFinding("file2.go", 20, "medium", "Issue 2"), DiffPosition: diff.IntPtr(15)},
+		{Finding: makeFinding("file3.go", 30, "low", "Issue 3"), DiffPosition: diff.IntPtr(25)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, result.CommentsPosted, "expected comments sent")
+	assert.Equal(t, 1, result.CommentsVerified, "only 1 comment was actually posted")
+	assert.True(t, result.CommentMismatch, "mismatch should be detected")
+}
+
+func TestReviewPoster_PostReview_VerificationSkippedWithoutBotUsername(t *testing.T) {
+	// Without BotUsername, verification is skipped (no way to fetch comments for comparison).
+	client := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123, HTMLURL: "https://example.com/review"}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: makeFinding("file1.go", 10, "high", "Issue"), DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "", // No bot username - verification skipped
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CommentsPosted)
+	assert.Equal(t, 0, result.CommentsVerified, "verification skipped without BotUsername")
+	assert.False(t, result.CommentMismatch, "no mismatch when verification is skipped")
+}
+
+func TestReviewPoster_PostReview_VerificationErrorContinues(t *testing.T) {
+	// If fetching comments for verification fails, the review posting still succeeds.
+	// We already fetched comments before for deduplication, but after posting the
+	// review, the second fetch (for verification) might fail.
+	const newReviewID = int64(456)
+	fetchCount := 0
+
+	client := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: newReviewID, HTMLURL: "https://example.com/review"}, nil
+		},
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			fetchCount++
+			if fetchCount == 1 {
+				// First call (for deduplication) succeeds
+				return []github.PullRequestComment{}, nil
+			}
+			// Second call (for verification) fails
+			return nil, errors.New("rate limited")
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: makeFinding("file1.go", 10, "high", "Issue"), DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	// Review should still succeed despite verification failure
+	require.NoError(t, err)
+	assert.Equal(t, int64(456), result.ReviewID)
+	assert.Equal(t, 1, result.CommentsPosted)
+	// Verification failed, so CommentsVerified is -1 to indicate error
+	assert.Equal(t, -1, result.CommentsVerified, "verification failed indicator")
+	assert.False(t, result.CommentMismatch, "no mismatch when verification failed")
+}
+
+func TestReviewPoster_PostReview_NoMismatchWhenZeroComments(t *testing.T) {
+	// When we expect 0 comments (all out of diff), no mismatch should be reported.
+	const newReviewID = int64(456)
+
+	client := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: newReviewID, HTMLURL: "https://example.com/review"}, nil
+		},
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			// No comments for this review (as expected)
+			return []github.PullRequestComment{}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	// All findings are out of diff
+	findings := []github.PositionedFinding{
+		{Finding: makeFinding("file1.go", 10, "high", "Issue 1"), DiffPosition: nil},
+		{Finding: makeFinding("file2.go", 20, "medium", "Issue 2"), DiffPosition: nil},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.CommentsPosted, "no comments expected")
+	assert.Equal(t, 0, result.CommentsVerified, "no comments verified")
+	assert.False(t, result.CommentMismatch, "no mismatch when 0 comments expected")
+}

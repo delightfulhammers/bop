@@ -54,21 +54,22 @@ func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error)
 		return "", fmt.Errorf("get file %s: %w", path, err)
 	}
 
+	// Check file size before reading to avoid allocating memory for oversized files.
+	// file.Size is from the embedded Blob and is available without reading content.
+	if file.Size > maxFileSize {
+		return "", triage.ErrFileTruncated
+	}
+
 	reader, err := file.Reader()
 	if err != nil {
 		return "", fmt.Errorf("read file %s: %w", path, err)
 	}
 	defer func() { _ = reader.Close() }()
 
-	// Read up to maxFileSize + 1 bytes to detect truncation
-	content, err := io.ReadAll(io.LimitReader(reader, maxFileSize+1))
+	// Read the file content (size already validated above)
+	content, err := io.ReadAll(reader)
 	if err != nil {
 		return "", fmt.Errorf("read content: %w", err)
-	}
-
-	// If we read more than maxFileSize, file was truncated
-	if len(content) > maxFileSize {
-		return "", triage.ErrFileTruncated
 	}
 
 	return string(content), nil
