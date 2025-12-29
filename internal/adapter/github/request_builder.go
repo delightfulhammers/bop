@@ -181,7 +181,8 @@ func isValidFingerprint(fp string) bool {
 		return false
 	}
 	for _, c := range fp {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		// Check if character is not a valid hex digit (0-9 or a-f)
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

@@ -15,15 +15,6 @@ type PrecisionStore interface {
 	GetPrecisionPriors(ctx context.Context) (map[string]map[string]store.PrecisionPrior, error)
 }
 
-// precisionStoreAdapter adapts any store with precision priors to the PrecisionStore interface.
-type precisionStoreAdapter struct {
-	getPriors func(ctx context.Context) (map[string]map[string]store.PrecisionPrior, error)
-}
-
-func (a *precisionStoreAdapter) GetPrecisionPriors(ctx context.Context) (map[string]map[string]store.PrecisionPrior, error) {
-	return a.getPriors(ctx)
-}
-
 // SynthesisProvider defines the interface for LLM-based summary synthesis.
 // This is intentionally a simple interface to avoid circular dependencies with review.Provider.
 type SynthesisProvider interface {

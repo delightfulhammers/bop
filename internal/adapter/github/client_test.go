@@ -41,7 +41,7 @@ func TestSetBaseURL_TrimsTrailingSlashes(t *testing.T) {
 
 				resp := github.CreateReviewResponse{ID: 1, State: "COMMENTED", HTMLURL: "https://example.com"}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(resp)
 			}))
 			defer server.Close()
 
@@ -91,7 +91,7 @@ func TestClient_CreateReview_Success(t *testing.T) {
 			HTMLURL: "https://github.com/owner/repo/pull/123#pullrequestreview-456",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -129,11 +129,11 @@ func TestClient_CreateReview_FiltersDiffPosition(t *testing.T) {
 	var receivedCommentCount int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req github.CreateReviewRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		receivedCommentCount = len(req.Comments)
 
 		resp := github.CreateReviewResponse{ID: 1}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -164,7 +164,7 @@ func TestClient_CreateReview_FiltersDiffPosition(t *testing.T) {
 func TestClient_CreateReview_AuthenticationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+		_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 			Message: "Bad credentials",
 		})
 	}))
@@ -187,7 +187,7 @@ func TestClient_CreateReview_AuthenticationError(t *testing.T) {
 func TestClient_CreateReview_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+		_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 			Message: "Not Found",
 		})
 	}))
@@ -210,7 +210,7 @@ func TestClient_CreateReview_NotFound(t *testing.T) {
 func TestClient_CreateReview_ValidationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+		_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 			Message: "Validation Failed",
 			Errors: []struct {
 				Resource string `json:"resource"`
@@ -244,14 +244,14 @@ func TestClient_CreateReview_RateLimitWithRetry(t *testing.T) {
 		callCount++
 		if callCount < 3 {
 			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+			_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 				Message: "API rate limit exceeded",
 			})
 			return
 		}
 		// Succeed on third try
 		resp := github.CreateReviewResponse{ID: 1}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -278,14 +278,14 @@ func TestClient_CreateReview_ServerError(t *testing.T) {
 		callCount++
 		if callCount < 2 {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+			_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 				Message: "Service temporarily unavailable",
 			})
 			return
 		}
 		// Succeed on retry
 		resp := github.CreateReviewResponse{ID: 1}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -310,7 +310,7 @@ func TestClient_CreateReview_ContextCanceled(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond) // Slow response
 		resp := github.CreateReviewResponse{ID: 1}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -334,9 +334,9 @@ func TestClient_CreateReview_ContextCanceled(t *testing.T) {
 func TestClient_CreateReview_EmptyFindings(t *testing.T) {
 	var receivedRequest github.CreateReviewRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewDecoder(r.Body).Decode(&receivedRequest)
+		_ = json.NewDecoder(r.Body).Decode(&receivedRequest)
 		resp := github.CreateReviewResponse{ID: 1, State: "APPROVED"}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -392,7 +392,7 @@ func TestClient_ListReviews_Success(t *testing.T) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(reviews)
+		_ = json.NewEncoder(w).Encode(reviews)
 	}))
 	defer server.Close()
 
@@ -426,20 +426,20 @@ func TestClient_ListReviews_Pagination(t *testing.T) {
 				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED"},
 				{ID: 2, User: github.User{Login: "bot"}, State: "COMMENTED"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		case 2:
 			// Second page - has another page
 			w.Header().Set("Link", `<`+serverURL+`/repos/owner/repo/pulls/123/reviews?per_page=100&page=3>; rel="next", <`+serverURL+`/repos/owner/repo/pulls/123/reviews?per_page=100&page=3>; rel="last"`)
 			reviews := []github.ReviewSummary{
 				{ID: 3, User: github.User{Login: "human"}, State: "CHANGES_REQUESTED"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		case 3:
 			// Last page - no next link
 			reviews := []github.ReviewSummary{
 				{ID: 4, User: github.User{Login: "bot"}, State: "DISMISSED"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		default:
 			t.Fatal("unexpected page request")
 		}
@@ -476,7 +476,7 @@ func TestClient_ListReviews_SSRFProtection_DifferentHost(t *testing.T) {
 			reviews := []github.ReviewSummary{
 				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		} else {
 			// This should never be reached
 			t.Fatal("client followed untrusted Link header - SSRF vulnerability!")
@@ -532,13 +532,13 @@ func TestClient_ListReviews_RelativeURLResolution(t *testing.T) {
 			reviews := []github.ReviewSummary{
 				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED", SubmittedAt: "2024-01-01T00:00:00Z"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		} else {
 			// Second page - no more pages
 			reviews := []github.ReviewSummary{
 				{ID: 2, User: github.User{Login: "bot"}, State: "COMMENTED", SubmittedAt: "2024-01-02T00:00:00Z"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		}
 	}))
 	defer server.Close()
@@ -567,7 +567,7 @@ func TestClient_ListReviews_SSRFProtection_WrongPathPrefix(t *testing.T) {
 			reviews := []github.ReviewSummary{
 				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		} else {
 			t.Fatal("client followed Link to unexpected path!")
 		}
@@ -606,7 +606,7 @@ func TestClient_ListReviews_SSRFProtection_BlocksDangerousPaths(t *testing.T) {
 					reviews := []github.ReviewSummary{
 						{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED"},
 					}
-					json.NewEncoder(w).Encode(reviews)
+					_ = json.NewEncoder(w).Encode(reviews)
 				} else {
 					t.Fatal("client followed dangerous Link!")
 				}
@@ -646,7 +646,7 @@ func TestClient_ListReviews_SSRFProtection_UnsupportedSchemes(t *testing.T) {
 					reviews := []github.ReviewSummary{
 						{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED"},
 					}
-					json.NewEncoder(w).Encode(reviews)
+					_ = json.NewEncoder(w).Encode(reviews)
 				} else {
 					t.Fatal("client followed malicious scheme Link!")
 				}
@@ -684,12 +684,12 @@ func TestClient_ListReviews_GitHubEnterprisePathPrefix(t *testing.T) {
 			reviews := []github.ReviewSummary{
 				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED", SubmittedAt: "2024-01-01T00:00:00Z"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		} else {
 			reviews := []github.ReviewSummary{
 				{ID: 2, User: github.User{Login: "bot"}, State: "COMMENTED", SubmittedAt: "2024-01-02T00:00:00Z"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		}
 	}))
 	defer server.Close()
@@ -720,12 +720,12 @@ func TestClient_ListReviews_RealisticPaginationURL(t *testing.T) {
 			reviews := []github.ReviewSummary{
 				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED", SubmittedAt: "2024-01-01T00:00:00Z"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		} else {
 			reviews := []github.ReviewSummary{
 				{ID: 2, User: github.User{Login: "bot"}, State: "COMMENTED", SubmittedAt: "2024-01-02T00:00:00Z"},
 			}
-			json.NewEncoder(w).Encode(reviews)
+			_ = json.NewEncoder(w).Encode(reviews)
 		}
 	}))
 	defer server.Close()
@@ -803,7 +803,7 @@ func TestClient_ListReviews_ChronologicalOrder(t *testing.T) {
 			{ID: 1, SubmittedAt: "2024-01-01T12:00:00Z", State: "COMMENTED"},
 			{ID: 2, SubmittedAt: "2024-01-02T12:00:00Z", State: "CHANGES_REQUESTED"},
 		}
-		json.NewEncoder(w).Encode(reviews)
+		_ = json.NewEncoder(w).Encode(reviews)
 	}))
 	defer server.Close()
 
@@ -830,7 +830,7 @@ func TestClient_ListReviews_SortFallbackToID(t *testing.T) {
 			{ID: 1, SubmittedAt: "", State: "COMMENTED"},
 			{ID: 2, SubmittedAt: "", State: "CHANGES_REQUESTED"},
 		}
-		json.NewEncoder(w).Encode(reviews)
+		_ = json.NewEncoder(w).Encode(reviews)
 	}))
 	defer server.Close()
 
@@ -850,7 +850,7 @@ func TestClient_ListReviews_SortFallbackToID(t *testing.T) {
 func TestClient_ListReviews_Empty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]github.ReviewSummary{})
+		_ = json.NewEncoder(w).Encode([]github.ReviewSummary{})
 	}))
 	defer server.Close()
 
@@ -866,7 +866,7 @@ func TestClient_ListReviews_Empty(t *testing.T) {
 func TestClient_ListReviews_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+		_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 			Message: "Not Found",
 		})
 	}))
@@ -898,7 +898,7 @@ func TestClient_DismissReview_Success(t *testing.T) {
 		assert.Equal(t, "2022-11-28", r.Header.Get("X-GitHub-Api-Version"))
 
 		// Parse request body
-		json.NewDecoder(r.Body).Decode(&receivedRequest)
+		_ = json.NewDecoder(r.Body).Decode(&receivedRequest)
 
 		// Send response
 		resp := github.DismissReviewResponse{
@@ -906,7 +906,7 @@ func TestClient_DismissReview_Success(t *testing.T) {
 			State: "DISMISSED",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -925,7 +925,7 @@ func TestClient_DismissReview_Success(t *testing.T) {
 func TestClient_DismissReview_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+		_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 			Message: "Not Found",
 		})
 	}))
@@ -943,7 +943,7 @@ func TestClient_DismissReview_NotFound(t *testing.T) {
 func TestClient_DismissReview_Forbidden(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(github.GitHubErrorResponse{
+		_ = json.NewEncoder(w).Encode(github.GitHubErrorResponse{
 			Message: "Resource not accessible by integration",
 		})
 	}))

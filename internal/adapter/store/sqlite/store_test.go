@@ -19,7 +19,7 @@ func setupTestStore(t *testing.T) *sqlite.Store {
 	require.NoError(t, err, "failed to create test store")
 
 	t.Cleanup(func() {
-		s.Close()
+		_ = s.Close()
 	})
 
 	return s

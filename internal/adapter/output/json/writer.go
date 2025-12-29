@@ -33,7 +33,7 @@ func (w *Writer) Write(ctx context.Context, artifact domain.JSONArtifact) (strin
 	if err != nil {
 		return "", fmt.Errorf("failed to create json file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")

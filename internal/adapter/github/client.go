@@ -161,7 +161,7 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 		// Check for error status codes
 		if resp.StatusCode >= 400 {
 			bodyBytes, readErr := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if readErr != nil {
 				// If we can't read the error body, return a generic error with the status code
 				return &llmhttp.Error{
@@ -181,7 +181,7 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Parse response
 	var reviewResp CreateReviewResponse
@@ -364,7 +364,7 @@ func (c *Client) fetchReviewsPage(ctx context.Context, pageURL string) ([]Review
 
 		if resp.StatusCode >= 400 {
 			bodyBytes, readErr := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if readErr != nil {
 				return &llmhttp.Error{
 					Type:       llmhttp.ErrTypeUnknown,
@@ -383,7 +383,7 @@ func (c *Client) fetchReviewsPage(ctx context.Context, pageURL string) ([]Review
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var reviews []ReviewSummary
 	if err := json.NewDecoder(resp.Body).Decode(&reviews); err != nil {
@@ -463,7 +463,7 @@ func (c *Client) DismissReview(ctx context.Context, owner, repo string, pullNumb
 
 		if resp.StatusCode >= 400 {
 			bodyBytes, readErr := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if readErr != nil {
 				return &llmhttp.Error{
 					Type:       llmhttp.ErrTypeUnknown,
@@ -482,7 +482,7 @@ func (c *Client) DismissReview(ctx context.Context, owner, repo string, pullNumb
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var dismissResp DismissReviewResponse
 	if err := json.NewDecoder(resp.Body).Decode(&dismissResp); err != nil {

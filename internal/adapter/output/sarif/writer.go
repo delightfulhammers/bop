@@ -37,7 +37,7 @@ func (w *Writer) Write(ctx context.Context, artifact review.SARIFArtifact) (stri
 	if err != nil {
 		return "", fmt.Errorf("failed to create sarif file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")

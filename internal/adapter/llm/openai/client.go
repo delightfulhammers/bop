@@ -215,7 +215,7 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 			}
 			return llmhttp.NewTimeoutError("openai", err.Error())
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// Read response body
 		body, err := io.ReadAll(resp.Body)

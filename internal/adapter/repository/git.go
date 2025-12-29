@@ -102,7 +102,7 @@ func (r *GitRepository) loadGitignore(root string) {
 	if err != nil {
 		return // No .gitignore file
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -243,7 +243,7 @@ func (r *GitRepository) grepFile(re *regexp.Regexp, path string) ([]verify.GrepM
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var matches []verify.GrepMatch
 	scanner := bufio.NewScanner(file)

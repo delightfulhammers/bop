@@ -202,7 +202,7 @@ func (s *Store) ListRuns(ctx context.Context, limit int) ([]store.Run, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list runs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var runs []store.Run
 	for rows.Next() {
@@ -300,7 +300,7 @@ func (s *Store) GetReviewsByRun(ctx context.Context, runID string) ([]store.Revi
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reviews by run: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var reviews []store.ReviewRecord
 	for rows.Next() {
@@ -335,7 +335,7 @@ func (s *Store) SaveFindings(ctx context.Context, findings []store.FindingRecord
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO findings (finding_id, review_id, finding_hash, file, line_start, line_end, category, severity, description, suggestion, evidence)
@@ -344,7 +344,7 @@ func (s *Store) SaveFindings(ctx context.Context, findings []store.FindingRecord
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, finding := range findings {
 		evidence := 0
@@ -425,7 +425,7 @@ func (s *Store) GetFindingsByReview(ctx context.Context, reviewID string) ([]sto
 	if err != nil {
 		return nil, fmt.Errorf("failed to get findings by review: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var findings []store.FindingRecord
 	for rows.Next() {
@@ -499,7 +499,7 @@ func (s *Store) GetFeedbackForFinding(ctx context.Context, findingID string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to get feedback for finding: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var feedbacks []store.Feedback
 	for rows.Next() {
@@ -537,7 +537,7 @@ func (s *Store) GetPrecisionPriors(ctx context.Context) (map[string]map[string]s
 	if err != nil {
 		return nil, fmt.Errorf("failed to get precision priors: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	priors := make(map[string]map[string]store.PrecisionPrior)
 

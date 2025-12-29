@@ -14,10 +14,10 @@ func boolPtr(b bool) *bool {
 
 func TestExpandEnvString(t *testing.T) {
 	// Set test environment variables
-	os.Setenv("TEST_API_KEY", "secret-key-123")
-	os.Setenv("TEST_PATH", "/path/to/data")
-	defer os.Unsetenv("TEST_API_KEY")
-	defer os.Unsetenv("TEST_PATH")
+	_ = os.Setenv("TEST_API_KEY", "secret-key-123")
+	_ = os.Setenv("TEST_PATH", "/path/to/data")
+	defer func() { _ = os.Unsetenv("TEST_API_KEY") }()
+	defer func() { _ = os.Unsetenv("TEST_PATH") }()
 
 	tests := []struct {
 		name     string
@@ -71,10 +71,10 @@ func TestExpandEnvString(t *testing.T) {
 
 func TestExpandEnvVars(t *testing.T) {
 	// Set test environment variables
-	os.Setenv("OPENAI_API_KEY", "sk-test-123")
-	os.Setenv("OUTPUT_DIR", "/custom/output")
-	defer os.Unsetenv("OPENAI_API_KEY")
-	defer os.Unsetenv("OUTPUT_DIR")
+	_ = os.Setenv("OPENAI_API_KEY", "sk-test-123")
+	_ = os.Setenv("OUTPUT_DIR", "/custom/output")
+	defer func() { _ = os.Unsetenv("OPENAI_API_KEY") }()
+	defer func() { _ = os.Unsetenv("OUTPUT_DIR") }()
 
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
@@ -97,12 +97,12 @@ func TestExpandEnvVars(t *testing.T) {
 
 func TestExpandEnvStringSlice(t *testing.T) {
 	// Set test environment variables
-	os.Setenv("POLICY_1", "reduce-providers")
-	os.Setenv("POLICY_2", "reduce-context")
-	os.Setenv("PATTERN", "*.secret")
-	defer os.Unsetenv("POLICY_1")
-	defer os.Unsetenv("POLICY_2")
-	defer os.Unsetenv("PATTERN")
+	_ = os.Setenv("POLICY_1", "reduce-providers")
+	_ = os.Setenv("POLICY_2", "reduce-context")
+	_ = os.Setenv("PATTERN", "*.secret")
+	defer func() { _ = os.Unsetenv("POLICY_1") }()
+	defer func() { _ = os.Unsetenv("POLICY_2") }()
+	defer func() { _ = os.Unsetenv("PATTERN") }()
 
 	tests := []struct {
 		name     string
@@ -145,12 +145,12 @@ func TestExpandEnvStringSlice(t *testing.T) {
 }
 
 func TestExpandEnvVars_MergeConfig(t *testing.T) {
-	os.Setenv("MERGE_PROVIDER", "openai")
-	os.Setenv("MERGE_MODEL", "gpt-4")
-	os.Setenv("MERGE_STRATEGY", "consensus")
-	defer os.Unsetenv("MERGE_PROVIDER")
-	defer os.Unsetenv("MERGE_MODEL")
-	defer os.Unsetenv("MERGE_STRATEGY")
+	_ = os.Setenv("MERGE_PROVIDER", "openai")
+	_ = os.Setenv("MERGE_MODEL", "gpt-4")
+	_ = os.Setenv("MERGE_STRATEGY", "consensus")
+	defer func() { _ = os.Unsetenv("MERGE_PROVIDER") }()
+	defer func() { _ = os.Unsetenv("MERGE_MODEL") }()
+	defer func() { _ = os.Unsetenv("MERGE_STRATEGY") }()
 
 	cfg := Config{
 		Merge: MergeConfig{
@@ -168,10 +168,10 @@ func TestExpandEnvVars_MergeConfig(t *testing.T) {
 }
 
 func TestExpandEnvVars_BudgetConfig(t *testing.T) {
-	os.Setenv("POLICY_1", "reduce-providers")
-	os.Setenv("POLICY_2", "reduce-context")
-	defer os.Unsetenv("POLICY_1")
-	defer os.Unsetenv("POLICY_2")
+	_ = os.Setenv("POLICY_1", "reduce-providers")
+	_ = os.Setenv("POLICY_2", "reduce-context")
+	defer func() { _ = os.Unsetenv("POLICY_1") }()
+	defer func() { _ = os.Unsetenv("POLICY_2") }()
 
 	cfg := Config{
 		Budget: BudgetConfig{
@@ -185,10 +185,10 @@ func TestExpandEnvVars_BudgetConfig(t *testing.T) {
 }
 
 func TestExpandEnvVars_RedactionConfig(t *testing.T) {
-	os.Setenv("DENY_PATTERN", "*.secret")
-	os.Setenv("ALLOW_PATTERN", "public/*")
-	defer os.Unsetenv("DENY_PATTERN")
-	defer os.Unsetenv("ALLOW_PATTERN")
+	_ = os.Setenv("DENY_PATTERN", "*.secret")
+	_ = os.Setenv("ALLOW_PATTERN", "public/*")
+	defer func() { _ = os.Unsetenv("DENY_PATTERN") }()
+	defer func() { _ = os.Unsetenv("ALLOW_PATTERN") }()
 
 	cfg := Config{
 		Redaction: RedactionConfig{
@@ -204,10 +204,10 @@ func TestExpandEnvVars_RedactionConfig(t *testing.T) {
 }
 
 func TestExpandEnvVars_ObservabilityConfig(t *testing.T) {
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("LOG_FORMAT", "json")
-	defer os.Unsetenv("LOG_LEVEL")
-	defer os.Unsetenv("LOG_FORMAT")
+	_ = os.Setenv("LOG_LEVEL", "debug")
+	_ = os.Setenv("LOG_FORMAT", "json")
+	defer func() { _ = os.Unsetenv("LOG_LEVEL") }()
+	defer func() { _ = os.Unsetenv("LOG_FORMAT") }()
 
 	cfg := Config{
 		Observability: ObservabilityConfig{
@@ -226,18 +226,18 @@ func TestExpandEnvVars_ObservabilityConfig(t *testing.T) {
 
 func TestExpandEnvVars_Comprehensive(t *testing.T) {
 	// Set all test environment variables
-	os.Setenv("OPENAI_KEY", "sk-123")
-	os.Setenv("MERGE_PROVIDER", "anthropic")
-	os.Setenv("POLICY", "reduce-providers")
-	os.Setenv("DENY_GLOB", "*.key")
-	os.Setenv("LOG_LEVEL", "error")
-	os.Setenv("STORE_PATH", "/data/reviews.db")
-	defer os.Unsetenv("OPENAI_KEY")
-	defer os.Unsetenv("MERGE_PROVIDER")
-	defer os.Unsetenv("POLICY")
-	defer os.Unsetenv("DENY_GLOB")
-	defer os.Unsetenv("LOG_LEVEL")
-	defer os.Unsetenv("STORE_PATH")
+	_ = os.Setenv("OPENAI_KEY", "sk-123")
+	_ = os.Setenv("MERGE_PROVIDER", "anthropic")
+	_ = os.Setenv("POLICY", "reduce-providers")
+	_ = os.Setenv("DENY_GLOB", "*.key")
+	_ = os.Setenv("LOG_LEVEL", "error")
+	_ = os.Setenv("STORE_PATH", "/data/reviews.db")
+	defer func() { _ = os.Unsetenv("OPENAI_KEY") }()
+	defer func() { _ = os.Unsetenv("MERGE_PROVIDER") }()
+	defer func() { _ = os.Unsetenv("POLICY") }()
+	defer func() { _ = os.Unsetenv("DENY_GLOB") }()
+	defer func() { _ = os.Unsetenv("LOG_LEVEL") }()
+	defer func() { _ = os.Unsetenv("STORE_PATH") }()
 
 	cfg := Config{
 		Providers: map[string]ProviderConfig{
@@ -289,10 +289,10 @@ func TestHTTPConfigDefaults(t *testing.T) {
 }
 
 func TestExpandEnvVars_HTTPConfig(t *testing.T) {
-	os.Setenv("HTTP_TIMEOUT", "120s")
-	os.Setenv("HTTP_BACKOFF", "5s")
-	defer os.Unsetenv("HTTP_TIMEOUT")
-	defer os.Unsetenv("HTTP_BACKOFF")
+	_ = os.Setenv("HTTP_TIMEOUT", "120s")
+	_ = os.Setenv("HTTP_BACKOFF", "5s")
+	defer func() { _ = os.Unsetenv("HTTP_TIMEOUT") }()
+	defer func() { _ = os.Unsetenv("HTTP_BACKOFF") }()
 
 	cfg := Config{
 		HTTP: HTTPConfig{
@@ -310,8 +310,8 @@ func TestExpandEnvVars_HTTPConfig(t *testing.T) {
 }
 
 func TestExpandEnvVars_ProviderHTTPOverrides(t *testing.T) {
-	os.Setenv("OLLAMA_TIMEOUT", "180s")
-	defer os.Unsetenv("OLLAMA_TIMEOUT")
+	_ = os.Setenv("OLLAMA_TIMEOUT", "180s")
+	defer func() { _ = os.Unsetenv("OLLAMA_TIMEOUT") }()
 
 	timeout := "${OLLAMA_TIMEOUT}"
 	maxRetries := 3

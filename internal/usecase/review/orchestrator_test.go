@@ -932,37 +932,3 @@ func TestFilterBinaryFiles(t *testing.T) {
 		})
 	}
 }
-
-// Mock implementations for GitHub integration testing
-
-type mockGitHubPoster struct {
-	mu       sync.Mutex
-	requests []review.GitHubPostRequest
-	result   *review.GitHubPostResult
-	err      error
-}
-
-func (m *mockGitHubPoster) PostReview(ctx context.Context, req review.GitHubPostRequest) (*review.GitHubPostResult, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.requests = append(m.requests, req)
-	return m.result, m.err
-}
-
-// mockMergerWithFindings returns a merger that outputs specific findings
-type mockMergerWithFindings struct {
-	mu       sync.Mutex
-	calls    [][]domain.Review
-	findings []domain.Finding
-}
-
-func (m *mockMergerWithFindings) Merge(ctx context.Context, reviews []domain.Review) domain.Review {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.calls = append(m.calls, reviews)
-	return domain.Review{
-		ProviderName: "merged",
-		ModelName:    "consensus",
-		Findings:     m.findings,
-	}
-}

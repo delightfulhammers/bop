@@ -60,7 +60,7 @@ func TestHTTPClient_Call_Success(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ollama.GenerateResponse{
+		_ = json.NewEncoder(w).Encode(ollama.GenerateResponse{
 			Model:           "codellama",
 			CreatedAt:       "2024-01-01T00:00:00Z",
 			Response:        "test response from codellama",
@@ -85,14 +85,14 @@ func TestHTTPClient_Call_Success(t *testing.T) {
 func TestHTTPClient_Call_WithTemperature(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req ollama.GenerateRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		// Verify temperature was set in options
 		require.NotNil(t, req.Options)
 		assert.Equal(t, 0.7, req.Options["temperature"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ollama.GenerateResponse{
+		_ = json.NewEncoder(w).Encode(ollama.GenerateResponse{
 			Model:    "codellama",
 			Response: "response with temperature",
 			Done:     true,
@@ -113,7 +113,7 @@ func TestHTTPClient_Call_WithTemperature(t *testing.T) {
 func TestHTTPClient_Call_WithSeed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req ollama.GenerateRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		// Verify seed was set in options
 		require.NotNil(t, req.Options)
@@ -121,7 +121,7 @@ func TestHTTPClient_Call_WithSeed(t *testing.T) {
 		assert.Equal(t, float64(12345), req.Options["seed"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ollama.GenerateResponse{
+		_ = json.NewEncoder(w).Encode(ollama.GenerateResponse{
 			Model:    "codellama",
 			Response: "deterministic response",
 			Done:     true,
@@ -155,7 +155,7 @@ func TestHTTPClient_Call_ModelNotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(ollama.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(ollama.ErrorResponse{
 			Error: "model 'nonexistent' not found",
 		})
 	}))
@@ -180,14 +180,14 @@ func TestHTTPClient_Call_ServerError(t *testing.T) {
 		if callCount < 2 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(ollama.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(ollama.ErrorResponse{
 				Error: "internal server error",
 			})
 			return
 		}
 		// Success on 2nd attempt
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ollama.GenerateResponse{
+		_ = json.NewEncoder(w).Encode(ollama.GenerateResponse{
 			Model:    "codellama",
 			Response: "success after retry",
 			Done:     true,
@@ -241,7 +241,7 @@ func TestHTTPClient_Call_ContextCanceled(t *testing.T) {
 func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"invalid json`))
+		_, _ = w.Write([]byte(`{"invalid json`))
 	}))
 	defer server.Close()
 
@@ -256,7 +256,7 @@ func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 func TestHTTPClient_Call_EmptyResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ollama.GenerateResponse{
+		_ = json.NewEncoder(w).Encode(ollama.GenerateResponse{
 			Model:    "codellama",
 			Response: "", // Empty response
 			Done:     true,
@@ -275,7 +275,7 @@ func TestHTTPClient_Call_EmptyResponse(t *testing.T) {
 func TestHTTPClient_Call_NotDone(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ollama.GenerateResponse{
+		_ = json.NewEncoder(w).Encode(ollama.GenerateResponse{
 			Model:    "codellama",
 			Response: "partial response",
 			Done:     false, // Not done yet

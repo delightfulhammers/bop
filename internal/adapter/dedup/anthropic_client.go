@@ -99,7 +99,7 @@ func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxToken
 	if err != nil {
 		return "", classifyHTTPError(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Limit response size to prevent memory exhaustion
 	limitedReader := io.LimitReader(resp.Body, maxResponseSize)
