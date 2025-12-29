@@ -69,7 +69,7 @@ func TestHTTPClient_Call_Success(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
+		_ = json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
 			Candidates: []gemini.Candidate{
 				{
 					Content: gemini.Content{
@@ -105,14 +105,14 @@ func TestHTTPClient_Call_Success(t *testing.T) {
 func TestHTTPClient_Call_WithTemperature(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req gemini.GenerateContentRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		// Verify temperature was set
 		require.NotNil(t, req.GenerationConfig)
 		assert.Equal(t, 0.7, req.GenerationConfig.Temperature)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
+		_ = json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
 			Candidates: []gemini.Candidate{
 				{
 					Content:      gemini.Content{Parts: []gemini.Part{{Text: "response"}}},
@@ -140,7 +140,7 @@ func TestHTTPClient_Call_AuthenticationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(gemini.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(gemini.ErrorResponse{
 			Error: gemini.ErrorDetail{
 				Code:    401,
 				Message: "API key not valid",
@@ -170,7 +170,7 @@ func TestHTTPClient_Call_RateLimitError(t *testing.T) {
 		if callCount < 3 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(gemini.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(gemini.ErrorResponse{
 				Error: gemini.ErrorDetail{
 					Code:    429,
 					Message: "Resource exhausted",
@@ -181,7 +181,7 @@ func TestHTTPClient_Call_RateLimitError(t *testing.T) {
 		}
 		// Success on 3rd attempt
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
+		_ = json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
 			Candidates: []gemini.Candidate{
 				{
 					Content:      gemini.Content{Parts: []gemini.Part{{Text: "success after retry"}}},
@@ -207,7 +207,7 @@ func TestHTTPClient_Call_InvalidRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(gemini.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(gemini.ErrorResponse{
 			Error: gemini.ErrorDetail{
 				Code:    400,
 				Message: "Invalid request",
@@ -232,7 +232,7 @@ func TestHTTPClient_Call_InvalidRequest(t *testing.T) {
 func TestHTTPClient_Call_ContentFiltered(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
+		_ = json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
 			Candidates: []gemini.Candidate{
 				{
 					Content:      gemini.Content{Parts: []gemini.Part{}},
@@ -295,7 +295,7 @@ func TestHTTPClient_Call_ContextCanceled(t *testing.T) {
 func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"invalid json`))
+		_, _ = w.Write([]byte(`{"invalid json`))
 	}))
 	defer server.Close()
 
@@ -311,7 +311,7 @@ func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 func TestHTTPClient_Call_EmptyCandidates(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
+		_ = json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
 			Candidates:    []gemini.Candidate{}, // Empty candidates
 			UsageMetadata: gemini.UsageMetadata{PromptTokenCount: 10, CandidatesTokenCount: 0},
 		})
@@ -330,7 +330,7 @@ func TestHTTPClient_Call_EmptyCandidates(t *testing.T) {
 func TestHTTPClient_Call_MultiplePartsConcatenation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
+		_ = json.NewEncoder(w).Encode(gemini.GenerateContentResponse{
 			Candidates: []gemini.Candidate{
 				{
 					Content: gemini.Content{
