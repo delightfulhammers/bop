@@ -15,11 +15,16 @@ import (
 )
 
 // maxFileSize is the maximum file size that can be read (10 MB).
+// Files exceeding this limit return ErrFileTruncated.
 const maxFileSize = 10 * 1024 * 1024
 
 // ReadFile retrieves the content of a file at a specific ref.
 // The ref can be a commit SHA, branch name, or tag.
 // Returns ErrFileNotFound if the file doesn't exist at that ref.
+// Returns ErrFileTruncated if the file exceeds maxFileSize (10 MB).
+//
+// Performance note: Each call reads from disk. For high-concurrency scenarios,
+// consider implementing request coalescing or caching at a higher layer.
 func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error) {
 	// Check context cancellation
 	if ctx.Err() != nil {
@@ -73,6 +78,9 @@ func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error)
 // startLine and endLine are 1-based and inclusive.
 // contextLines specifies how many lines to include before and after.
 // Returns a CodeContext with the content and metadata.
+//
+// Performance note: This reads the entire file into memory to extract lines.
+// For files approaching maxFileSize, consider whether the full content is needed.
 func (e *Engine) ReadFileLines(ctx context.Context, path, ref string, startLine, endLine, contextLines int) (*domain.CodeContext, error) {
 	// Validate line range
 	if startLine > endLine {
@@ -140,6 +148,10 @@ func (e *Engine) ReadFileLines(ctx context.Context, path, ref string, startLine,
 // baseBranch is the base ref (e.g., "main").
 // targetRef is the target ref (e.g., PR head SHA).
 // Returns the unified diff hunk(s) covering the specified lines.
+//
+// Performance note: This computes the full diff for the entire PR, then extracts
+// the relevant hunks. For PRs with many files, consider caching the diff result
+// or using a more targeted approach if only specific files are needed repeatedly.
 func (e *Engine) GetDiffHunk(ctx context.Context, baseBranch, targetRef, file string, startLine, endLine int) (*domain.DiffContext, error) {
 	// Get the full diff between base and target
 	diff, err := e.GetCumulativeDiff(ctx, baseBranch, targetRef, false)

@@ -21,6 +21,36 @@ func notImplementedResult(scope string) *mcp.CallToolResult {
 	}
 }
 
+// validateLineRange validates PR number and line range inputs.
+// Returns an error result if validation fails, nil otherwise.
+func validateLineRange(prNumber, startLine, endLine int) *mcp.CallToolResult {
+	if prNumber <= 0 {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("Invalid PR number: %d (must be positive)", prNumber)},
+			},
+		}
+	}
+	if startLine <= 0 {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("Invalid start line: %d (must be positive)", startLine)},
+			},
+		}
+	}
+	if endLine < startLine {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("Invalid line range: end (%d) < start (%d)", endLine, startLine)},
+			},
+		}
+	}
+	return nil
+}
+
 // M2 Read-only Tool Handlers (PR-based, stateless)
 
 // registerListAnnotationsTool registers the list_annotations tool.
@@ -265,6 +295,11 @@ func (s *Server) handleGetCodeContext(ctx context.Context, req *mcp.CallToolRequ
 		return notImplementedResult("M2"), GetCodeContextOutput{}, nil
 	}
 
+	// Validate inputs before calling service
+	if errResult := validateLineRange(input.PRNumber, input.StartLine, input.EndLine); errResult != nil {
+		return errResult, GetCodeContextOutput{}, nil
+	}
+
 	// Default context lines to 3 if not specified, clamp negative values to 0
 	contextLines := input.ContextLines
 	if contextLines < 0 {
@@ -332,6 +367,11 @@ func (s *Server) registerGetDiffContextTool() {
 func (s *Server) handleGetDiffContext(ctx context.Context, req *mcp.CallToolRequest, input GetDiffContextInput) (*mcp.CallToolResult, GetDiffContextOutput, error) {
 	if s.deps.PRService == nil {
 		return notImplementedResult("M2"), GetDiffContextOutput{}, nil
+	}
+
+	// Validate inputs before calling service
+	if errResult := validateLineRange(input.PRNumber, input.StartLine, input.EndLine); errResult != nil {
+		return errResult, GetDiffContextOutput{}, nil
 	}
 
 	diffCtx, err := s.deps.PRService.GetDiffContext(ctx, input.Owner, input.Repo, input.PRNumber, input.File, input.StartLine, input.EndLine)
