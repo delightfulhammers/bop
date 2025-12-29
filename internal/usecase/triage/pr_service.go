@@ -89,6 +89,11 @@ func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumb
 		return nil, ErrNotImplemented
 	}
 
+	// Validate severity filter if provided
+	if severity != nil && !isValidSeverity(*severity) {
+		return nil, fmt.Errorf("invalid severity filter: %s (valid: critical, high, medium, low)", *severity)
+	}
+
 	// Get all comments with fingerprints (code reviewer findings)
 	findings, err := s.deps.CommentReader.ListPRComments(ctx, owner, repo, prNumber, true)
 	if err != nil {
@@ -161,4 +166,14 @@ func (s *PRService) GetDiffContext(ctx context.Context, owner, repo string, prNu
 	}
 
 	return s.deps.DiffReader.GetDiffHunk(ctx, prMeta.BaseRef, prMeta.HeadSHA, file, startLine, endLine)
+}
+
+// isValidSeverity checks if a severity string is a valid value.
+func isValidSeverity(s string) bool {
+	switch s {
+	case "critical", "high", "medium", "low":
+		return true
+	default:
+		return false
+	}
 }
