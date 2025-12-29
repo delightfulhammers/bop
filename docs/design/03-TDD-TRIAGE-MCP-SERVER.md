@@ -1,6 +1,6 @@
 # Technical Design: Phase 3.1 — Triage MCP Server
 
-**Version:** 0.3 (Draft)  
+**Version:** 0.4 (Draft)  
 **Date:** 2025-12-28  
 **Author:** Brandon Young  
 **Status:** In Development
@@ -51,13 +51,37 @@ This approach:
 | **Check Run Annotations (SARIF)** | Static analysis findings | Reset each push; authoritative for current commit | `/check-runs/{id}/annotations` |
 | **PR Comments** | Reviewer feedback | Accumulated across PR lifetime; supports threading | `/pulls/{pr}/comments` |
 
-**Read Tools:**
-- `list_annotations` / `get_annotation` — Query SARIF findings
-- `list_findings` / `get_finding` — Query PR comment findings
+### Simplified Tool Design (Revised 2025-12-28)
 
-**Write Tools:**
-- `reply_to_finding` — Reply to existing PR comment thread
-- `post_comment` — Create new comment at file/line (for responding to SARIF annotations, which cannot be replied to directly)
+**Design Principles:**
+1. **No session state** — PR number is sufficient context; avoids state management overhead
+2. **Non-linear workflow** — Triagers categorize first, then batch-process; no "current finding" iteration
+3. **Both sources** — Must query SARIF annotations AND PR comments
+4. **Leverage Claude Code** — File edits via native `str_replace`; MCP handles GitHub orchestration
+
+**Read Tools (7):**
+| Tool | Purpose |
+|------|---------|
+| `get_current_findings(pr_number)` | **Authoritative**: SARIF annotations for HEAD commit |
+| `list_findings(pr_number, status?)` | PR comment findings (accumulated, filterable) |
+| `get_finding(comment_id)` | Single finding with full thread history |
+| `get_suggestion(comment_id)` | Structured old/new code for `str_replace` |
+| `get_code_context(file, start, end)` | Current code at location |
+| `get_diff_context(pr_number, file, start, end)` | Diff hunk at location |
+
+**Write Tools (4):**
+| Tool | Purpose |
+|------|---------|
+| `reply_to_finding(comment_id, body, status?)` | Reply to PR comment thread with optional status |
+| `post_comment(pr_number, file, line, body)` | New comment at file/line (for SARIF responses) |
+| `resolve_thread(comment_id)` | Mark thread as resolved |
+| `request_rereview(pr_number)` | Dismiss stale reviews, trigger fresh review |
+
+**Removed from M1 skeleton:**
+- `start_triage_session` — Session model adds overhead without benefit
+- `get_current_finding` (singular) — Implied sequential iteration; replaced by `get_current_findings`
+- `get_progress` — Only useful with session model
+- `triage_finding` — Subsumed by `reply_to_finding` with status parameter
 
 ### Deliverables
 
@@ -1391,3 +1415,4 @@ See [04-ROADMAP-PHASE-3.1.md](./04-ROADMAP-PHASE-3.1.md) for detailed week-by-we
 | 0.1 | 2025-12-28 | Brandon | Initial draft |
 | 0.2 | 2025-12-28 | Brandon | **Workflow Architecture Revision:** Removed apply_suggestion/batch_apply tools. MCP server now provides information only; Claude Code handles file edits natively via str_replace + git. Added get_suggestion tool for structured suggestion data. Reduced implementation effort from 56h → 40h. Updated Overview with architecture philosophy diagram. |
 | 0.3 | 2025-12-28 | Brandon | **Two Sources of Findings:** Added support for check run annotations (SARIF) alongside PR comments. New tools: `list_annotations`, `get_annotation`, `post_comment`. Updated tool summary table with source column. Added "Two Sources of Findings" section to Overview. |
+| 0.4 | 2025-12-28 | Brandon | **Simplified Tool Design:** Removed session-based model after real-world triage experience showed non-linear workflow. Replaced `get_current_finding` (singular/sequential) with `get_current_findings` (plural/HEAD annotations). Removed `start_triage_session`, `get_progress`, `triage_finding`. Added `get_suggestion`, `get_code_context`, `get_diff_context`, `request_rereview`. Final tool count: 7 read + 4 write = 11 tools. |
