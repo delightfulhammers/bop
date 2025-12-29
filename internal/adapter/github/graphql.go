@@ -37,6 +37,8 @@ mutation UnresolveReviewThread($threadId: ID!) {
 
 // GraphQL query to find thread ID for a comment by searching PR threads.
 // This is needed because the comment's parent review ID is not the same as thread ID.
+// Limitations: Fetches up to 100 threads with up to 100 comments each.
+// PRs with more threads/comments may not find all comments.
 const findThreadForCommentQuery = `
 query FindThreadForComment($owner: String!, $repo: String!, $prNumber: Int!) {
 	repository(owner: $owner, name: $repo) {
@@ -45,7 +47,7 @@ query FindThreadForComment($owner: String!, $repo: String!, $prNumber: Int!) {
 				nodes {
 					id
 					isResolved
-					comments(first: 1) {
+					comments(first: 100) {
 						nodes {
 							databaseId
 						}

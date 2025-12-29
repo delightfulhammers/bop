@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bkyoung/code-reviewer/internal/domain"
@@ -450,8 +451,10 @@ func (s *Server) handleGetThread(ctx context.Context, req *mcp.CallToolRequest, 
 		if threadErr == nil && threadInfo != nil {
 			output.ThreadID = threadInfo.ID
 			output.IsResolved = threadInfo.IsResolved
+		} else if threadErr != nil && !errors.Is(threadErr, triage.ErrNotImplemented) {
+			// Add warning to message - thread lookup failed but thread content is still available
+			output.Message += fmt.Sprintf(" (note: thread_id lookup failed: %v)", threadErr)
 		}
-		// Silently ignore errors - thread ID is optional enhancement
 	}
 
 	for i, c := range comments {
@@ -578,6 +581,33 @@ func (s *Server) registerMarkResolvedTool() {
 func (s *Server) handleMarkResolved(ctx context.Context, req *mcp.CallToolRequest, input MarkResolvedInput) (*mcp.CallToolResult, MarkResolvedOutput, error) {
 	if s.deps.PRService == nil {
 		return notImplementedResult("M3"), MarkResolvedOutput{Success: false}, nil
+	}
+
+	// Validate required inputs
+	if input.Owner == "" {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: "owner is required"}},
+		}, MarkResolvedOutput{Success: false, Message: "owner is required"}, nil
+	}
+	if input.Repo == "" {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: "repo is required"}},
+		}, MarkResolvedOutput{Success: false, Message: "repo is required"}, nil
+	}
+	if input.ThreadID == "" {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: "thread_id is required"}},
+		}, MarkResolvedOutput{Success: false, Message: "thread_id is required"}, nil
+	}
+	// Validate thread ID format (should be a GraphQL node ID starting with PRRT_)
+	if !strings.HasPrefix(input.ThreadID, "PRRT_") {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("invalid thread_id format: expected PRRT_... prefix, got %q", input.ThreadID)}},
+		}, MarkResolvedOutput{Success: false, Message: "invalid thread_id format"}, nil
 	}
 
 	var err error

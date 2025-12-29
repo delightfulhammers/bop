@@ -187,17 +187,18 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	}
 	// Normalize path to handle edge cases like "foo/./bar" or redundant slashes.
 	// Use filepath.ToSlash to ensure consistent forward-slash separators.
+	// All subsequent validation and the API request use cleanPath.
 	cleanPath := filepath.ToSlash(filepath.Clean(path))
 	// Check if path tries to escape (starts with .. after cleaning)
 	if strings.HasPrefix(cleanPath, "..") {
 		return 0, fmt.Errorf("invalid path: escapes repository root")
 	}
-	// Check for absolute paths (Unix or Windows style)
-	if filepath.IsAbs(path) || strings.HasPrefix(cleanPath, "/") {
+	// Check for absolute paths (Unix or Windows style) - check cleanPath for consistency
+	if filepath.IsAbs(cleanPath) || strings.HasPrefix(cleanPath, "/") {
 		return 0, fmt.Errorf("invalid path: must be relative (no leading '/')")
 	}
 	// Check for Windows-style absolute paths (defensive - git repos don't use these)
-	if len(path) >= 2 && path[1] == ':' {
+	if len(cleanPath) >= 2 && cleanPath[1] == ':' {
 		return 0, fmt.Errorf("invalid path: must be relative (no drive letter)")
 	}
 	// Double-check for any remaining ".." after normalization
@@ -213,7 +214,7 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	reqBody := CreateCommentRequest{
 		Body:     body,
 		CommitID: commitSHA,
-		Path:     path,
+		Path:     cleanPath, // Use normalized path
 		Line:     line,
 		Side:     "RIGHT", // Always comment on the new side of the diff
 	}
@@ -300,6 +301,13 @@ func (c *Client) RequestReviewers(ctx context.Context, owner, repo string, prNum
 	}
 	if len(reviewers) == 0 && len(teamReviewers) == 0 {
 		return fmt.Errorf("at least one reviewer (user or team) must be specified")
+	}
+	// GitHub API limits: max 15 user reviewers and 6 team reviewers per request
+	if len(reviewers) > 15 {
+		return fmt.Errorf("maximum 15 user reviewers allowed, got %d", len(reviewers))
+	}
+	if len(teamReviewers) > 6 {
+		return fmt.Errorf("maximum 6 team reviewers allowed, got %d", len(teamReviewers))
 	}
 	// Validate reviewer names match GitHub's username/team slug patterns
 	for _, r := range reviewers {
