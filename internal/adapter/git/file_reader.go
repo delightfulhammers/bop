@@ -10,6 +10,7 @@ import (
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
+	"github.com/bkyoung/code-reviewer/internal/diff"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
@@ -192,31 +193,39 @@ func (e *Engine) GetDiffHunk(ctx context.Context, baseBranch, targetRef, file st
 }
 
 // extractRelevantHunks extracts diff hunks that overlap with the given line range.
-// It parses unified diff format and returns hunks that include the specified lines.
+// It uses the robust diff parser from internal/diff to handle unified diff format correctly.
 func extractRelevantHunks(patch string, startLine, endLine int) string {
 	if patch == "" {
 		return ""
 	}
 
+	// Parse the patch using the robust diff parser
+	parsed, err := diff.Parse(patch)
+	if err != nil || len(parsed.Hunks) == 0 {
+		return ""
+	}
+
+	// Build a map of hunk start positions to determine which raw lines belong to which hunk
 	lines := strings.Split(patch, "\n")
 	var result strings.Builder
 	inRelevantHunk := false
-	currentHunkStart := 0
-	currentHunkEnd := 0
 
 	for _, line := range lines {
-		// Parse hunk header: @@ -old_start,old_count +new_start,new_count @@
+		// Check for hunk header
 		if strings.HasPrefix(line, "@@") {
-			// Extract new file line range from hunk header
-			newStart, newCount := parseHunkHeader(line)
-			currentHunkStart = newStart
-			currentHunkEnd = newStart + newCount - 1
-			if newCount == 0 {
-				currentHunkEnd = newStart
+			// Find the matching parsed hunk for this header
+			inRelevantHunk = false
+			for _, hunk := range parsed.Hunks {
+				// Check if this header matches the hunk's new-side range
+				if hunkOverlapsRange(hunk, startLine, endLine) {
+					// Verify this is the right hunk by checking if line contains the expected range
+					expectedStart := fmt.Sprintf("+%d", hunk.NewStart)
+					if strings.Contains(line, expectedStart) {
+						inRelevantHunk = true
+						break
+					}
+				}
 			}
-
-			// Check if this hunk overlaps with our target range
-			inRelevantHunk = hunksOverlap(currentHunkStart, currentHunkEnd, startLine, endLine)
 		}
 
 		if inRelevantHunk {
@@ -228,41 +237,17 @@ func extractRelevantHunks(patch string, startLine, endLine int) string {
 	return strings.TrimSuffix(result.String(), "\n")
 }
 
-// parseHunkHeader extracts new file start line and count from a unified diff hunk header.
-// Format: @@ -old_start,old_count +new_start,new_count @@ optional context
-func parseHunkHeader(header string) (start, count int) {
-	// Default values
-	start, count = 1, 1
-
-	// Find the +new_start,new_count part
-	plusIdx := strings.Index(header, "+")
-	if plusIdx == -1 {
-		return
+// hunkOverlapsRange checks if a parsed hunk overlaps with the target line range.
+// Handles the newCount==0 case correctly (empty range that doesn't overlap anything).
+func hunkOverlapsRange(hunk diff.Hunk, targetStart, targetEnd int) bool {
+	// If NewLines is 0, the hunk has no new-side lines (pure deletion) - no overlap possible
+	if hunk.NewLines == 0 {
+		return false
 	}
 
-	// Find the end of the range (space or @)
-	endIdx := strings.Index(header[plusIdx:], " ")
-	if endIdx == -1 {
-		endIdx = strings.Index(header[plusIdx:], "@")
-	}
-	if endIdx == -1 {
-		return
-	}
+	hunkStart := hunk.NewStart
+	hunkEnd := hunk.NewStart + hunk.NewLines - 1
 
-	rangeStr := header[plusIdx+1 : plusIdx+endIdx]
-
-	// Parse "start,count" or just "start"
-	if commaIdx := strings.Index(rangeStr, ","); commaIdx != -1 {
-		_, _ = fmt.Sscanf(rangeStr, "%d,%d", &start, &count)
-	} else {
-		_, _ = fmt.Sscanf(rangeStr, "%d", &start)
-		count = 1
-	}
-
-	return
-}
-
-// hunksOverlap returns true if two line ranges overlap.
-func hunksOverlap(hunkStart, hunkEnd, targetStart, targetEnd int) bool {
+	// Check for overlap: ranges overlap if one starts before the other ends
 	return hunkStart <= targetEnd && hunkEnd >= targetStart
 }
