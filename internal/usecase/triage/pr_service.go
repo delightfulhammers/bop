@@ -9,11 +9,12 @@ import (
 
 // PRServiceDeps contains the dependencies for the PR-based triage service.
 type PRServiceDeps struct {
-	AnnotationReader AnnotationReader
-	CommentReader    CommentReader
-	PRReader         PRReader
-	FileReader       FileReader
-	DiffReader       DiffReader
+	AnnotationReader    AnnotationReader
+	CommentReader       CommentReader
+	PRReader            PRReader
+	FileReader          FileReader
+	DiffReader          DiffReader
+	SuggestionExtractor SuggestionExtractor
 }
 
 // PRService implements read-only triage operations for a PR.
@@ -132,17 +133,44 @@ func (s *PRService) GetFinding(ctx context.Context, owner, repo string, prNumber
 }
 
 // GetSuggestion extracts a structured code suggestion from a finding.
-//
-// TODO: Not yet implemented. Will support extracting code suggestions from
-// both annotations (raw_details field) and PR comments (markdown suggestion blocks).
-// Returns ErrNotImplemented until parsing logic is added.
+// Supports extracting from both PR comments (markdown suggestion blocks)
+// and annotations (raw_details field).
 func (s *PRService) GetSuggestion(ctx context.Context, owner, repo string, prNumber int, findingID string) (*domain.Suggestion, error) {
-	// Check dependencies - requires CommentReader to fetch finding content
-	if s.deps.CommentReader == nil {
+	// Check dependencies
+	if s.deps.SuggestionExtractor == nil {
 		return nil, ErrNotImplemented
 	}
-	// Not yet implemented - requires parsing suggestion blocks from finding messages
-	return nil, ErrNotImplemented
+
+	// Try to fetch as a PR comment first
+	if s.deps.CommentReader != nil {
+		finding, err := s.GetFinding(ctx, owner, repo, prNumber, findingID)
+		if err == nil && finding != nil {
+			suggestion, err := s.deps.SuggestionExtractor.ExtractFromComment(finding)
+			if err == nil {
+				return suggestion, nil
+			}
+			// If extraction failed (no suggestion block), fall through to try annotation
+			if err != ErrNoSuggestion {
+				return nil, err
+			}
+		}
+	}
+
+	// Try to fetch as an annotation
+	// The findingID might be a check run ID + index format like "checkRunID:index"
+	if s.deps.AnnotationReader != nil {
+		// For annotations, the ID format could be "checkRunID:index"
+		// Parse and fetch the annotation
+		checkRunID, index, ok := parseAnnotationID(findingID)
+		if ok {
+			annotation, err := s.deps.AnnotationReader.GetAnnotation(ctx, owner, repo, checkRunID, index)
+			if err == nil && annotation != nil {
+				return s.deps.SuggestionExtractor.ExtractFromAnnotation(annotation)
+			}
+		}
+	}
+
+	return nil, ErrNoSuggestion
 }
 
 // GetCodeContext retrieves file content at the PR's head ref.
@@ -184,4 +212,16 @@ func isValidSeverity(s string) bool {
 		}
 	}
 	return false
+}
+
+// parseAnnotationID parses an annotation ID in the format "checkRunID:index".
+// Returns the parsed values and whether parsing succeeded.
+func parseAnnotationID(id string) (checkRunID int64, index int, ok bool) {
+	var cid int64
+	var idx int
+	n, err := fmt.Sscanf(id, "%d:%d", &cid, &idx)
+	if err != nil || n != 2 {
+		return 0, 0, false
+	}
+	return cid, idx, true
 }

@@ -47,13 +47,17 @@ func run() error {
 	// Initialize git engine (implements FileReader, DiffReader).
 	gitEngine := git.NewEngine(repoDir)
 
+	// Initialize suggestion extractor for parsing code suggestions from findings.
+	suggestionExtractor := triage.NewSuggestionExtractor()
+
 	// Create PR-based triage service with all dependencies.
 	prService := triage.NewPRService(triage.PRServiceDeps{
-		AnnotationReader: githubClient,
-		CommentReader:    githubClient,
-		PRReader:         githubClient,
-		FileReader:       gitEngine,
-		DiffReader:       gitEngine,
+		AnnotationReader:    githubClient,
+		CommentReader:       githubClient,
+		PRReader:            githubClient,
+		FileReader:          gitEngine,
+		DiffReader:          gitEngine,
+		SuggestionExtractor: suggestionExtractor,
 	})
 
 	// Create legacy session-based service (for M3 write tools, currently unused).
