@@ -165,14 +165,25 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	if commitSHA == "" {
 		return 0, fmt.Errorf("commit SHA cannot be empty")
 	}
+	// Validate SHA format: must be 40-character lowercase hex
+	if len(commitSHA) != 40 {
+		return 0, fmt.Errorf("invalid commit SHA: must be 40 characters, got %d", len(commitSHA))
+	}
+	for _, c := range commitSHA {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return 0, fmt.Errorf("invalid commit SHA: must be lowercase hex")
+		}
+	}
 	if path == "" {
 		return 0, fmt.Errorf("path cannot be empty")
 	}
 	// Validate path doesn't contain path traversal sequences
-	// Note: URL-encoded variants (%2e%2e) don't apply here since this is JSON body content,
-	// not a URL path - the string is used literally. GitHub API validates server-side.
-	if strings.Contains(path, "..") {
-		return 0, fmt.Errorf("invalid path: must not contain '..'")
+	// Check for ".." as a path segment (allows valid filenames like "foo..bar")
+	// Note: URL-encoded variants (%2e%2e) don't apply here since this is JSON body content.
+	for _, segment := range strings.Split(path, "/") {
+		if segment == ".." {
+			return 0, fmt.Errorf("invalid path: contains '..' traversal segment")
+		}
 	}
 	if strings.HasPrefix(path, "/") {
 		return 0, fmt.Errorf("invalid path: must be relative (no leading '/')")

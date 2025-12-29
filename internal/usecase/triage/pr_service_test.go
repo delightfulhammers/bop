@@ -603,12 +603,16 @@ type MockCommentWriter struct {
 
 func (m *MockCommentWriter) ReplyToComment(ctx context.Context, owner, repo string, prNumber int, replyTo int64, body string) (int64, error) {
 	args := m.Called(ctx, owner, repo, prNumber, replyTo, body)
-	return args.Get(0).(int64), args.Error(1)
+	// Safe type assertion to avoid panic if Return not set
+	id, _ := args.Get(0).(int64)
+	return id, args.Error(1)
 }
 
 func (m *MockCommentWriter) CreateComment(ctx context.Context, owner, repo string, prNumber int, commitSHA, path string, line int, body string) (int64, error) {
 	args := m.Called(ctx, owner, repo, prNumber, commitSHA, path, line, body)
-	return args.Get(0).(int64), args.Error(1)
+	// Safe type assertion to avoid panic if Return not set
+	id, _ := args.Get(0).(int64)
+	return id, args.Error(1)
 }
 
 // MockReviewManager implements triage.ReviewManager for testing.

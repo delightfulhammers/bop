@@ -700,12 +700,19 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 		}
 	}
 
+	// Determine success: fail if dismiss was requested but all attempts failed
+	success := true
+	if input.DismissStale && len(dismissErrors) > 0 && reviewsDismissed == 0 {
+		success = false
+		message = fmt.Sprintf("All dismiss attempts failed: %s", dismissErrors[0])
+	}
+
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: message},
 			},
 		}, RequestRereviewOutput{
-			Success:          true,
+			Success:          success,
 			ReviewsDismissed: reviewsDismissed,
 			ReviewsRequested: reviewsRequested,
 			Message:          message,

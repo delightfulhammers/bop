@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
@@ -31,6 +32,9 @@ func (a *ReviewManagerAdapter) UnresolveThread(ctx context.Context, owner, repo,
 // DismissReview dismisses a review and discards the response details.
 // The caller only needs to know if the operation succeeded.
 func (a *ReviewManagerAdapter) DismissReview(ctx context.Context, owner, repo string, prNumber int, reviewID int64, message string) error {
+	if reviewID <= 0 {
+		return fmt.Errorf("reviewID must be positive")
+	}
 	_, err := a.client.DismissReview(ctx, owner, repo, prNumber, reviewID, message)
 	return err
 }
@@ -50,6 +54,7 @@ func (a *ReviewManagerAdapter) ListReviews(ctx context.Context, owner, repo stri
 
 	reviews := make([]triage.Review, len(summaries))
 	for i, s := range summaries {
+		// User field is always present but may have empty Login for some states
 		reviews[i] = triage.Review{
 			ID:          s.ID,
 			User:        s.User.Login,
