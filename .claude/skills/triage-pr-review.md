@@ -37,6 +37,78 @@ gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
 
 **Why this matters:** If you query PR comments, you'll see 20+ findings from old commits when the actual latest review might only have 3. This leads to triaging already-fixed issues.
 
+---
+
+## Understanding Comment Accumulation (Issue #125 Learnings)
+
+### PR Comments NEVER Disappear
+
+**CRITICAL:** PR comments persist forever, even when:
+- The review is dismissed
+- The code is fixed
+- A new review is posted
+- The finding no longer exists in current code
+
+Each review cycle creates NEW comments. Dismissing old reviews only changes their state; inline comments remain visible.
+
+### Why You See "Stale" Findings
+
+The LLM generates slightly different wording each run:
+- Run 1: "The MCP **binary constructs** the triage service with all dependencies **set to nil**..."
+- Run 2: "The MCP **server is started with** a triage service **constructed with nil** dependencies..."
+
+Different wording → different fingerprints → not deduplicated → duplicate comments posted.
+
+**Semantic deduplication** (Issue #125) catches these, but only when enabled.
+
+### To See Only NEW Comments (After Your Last Push)
+
+```bash
+# Get timestamp of your last push
+LAST_PUSH=$(git log -1 --format='%aI' HEAD)
+
+# Filter comments created after that time
+gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100" \
+  --jq "[.[] | select(.created_at > \"$LAST_PUSH\") | {id, path, created_at, body: .body[0:80]}]"
+```
+
+### To Identify Which Review Cycle a Comment Belongs To
+
+```bash
+# Group comments by review ID with timestamps
+gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100" \
+  --jq 'group_by(.pull_request_review_id) | map({
+    review_id: .[0].pull_request_review_id,
+    created: .[0].created_at,
+    count: length
+  })'
+```
+
+### Check Workflow Logs for Deduplication Stats
+
+```bash
+# Find the latest review workflow run
+RUN_ID=$(gh run list --workflow="AI Code Review" --limit 1 --json databaseId -q '.[0].databaseId')
+
+# Check deduplication stats in logs
+gh run view $RUN_ID --log 2>&1 | grep -E "duplicate|dedup|skipped|posted"
+```
+
+Look for: `commentsPosted=X duplicatesSkipped=Y semanticDuplicatesSkipped=Z`
+
+---
+
+## Pre-Flight Checklist
+
+Before presenting triage results, verify you have checked ALL sources:
+
+- [ ] **Check Run Annotations** - `gh api repos/{owner}/{repo}/check-runs/{id}/annotations`
+- [ ] **PR Comments** - `gh api repos/{owner}/{repo}/pulls/{pr}/comments`
+
+**Both must be queried.** If one source has no findings, explicitly state "0 findings from [source]" in your output.
+
+---
+
 ## Workflow
 
 ### Step 1: Gather Feedback from LATEST Review
@@ -210,25 +282,36 @@ gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
 
 ## Output Format
 
+**IMPORTANT:** You MUST show findings from BOTH sources explicitly. Never skip one.
+
 After triaging, summarize actions taken:
 
 ```markdown
 ## PR Review Triage Summary
 
-### Fixed (X issues)
-| Finding | Fix |
-|---------|-----|
-| [description] | [commit/change] |
+### Sources Checked
+- [ ] Check Run Annotations (SARIF): X findings from check run ID [id]
+- [ ] PR Comments: Y comments from human/bot reviewers
 
-### Disputed (Y issues)
-| Finding | Response |
-|---------|----------|
-| [description] | [reasoning] |
+### Findings by Source
 
-### Deferred (Z issues)
-| Finding | Reason |
-|---------|--------|
-| [description] | [why deferred] |
+#### Check Run Annotations (Static Analysis)
+| # | File:Line | Severity | Finding | Decision | Reason |
+|---|-----------|----------|---------|----------|--------|
+| 1 | path:line | error/warning/note | [description] | accept/dispute/defer | [reason] |
+
+#### PR Comments (Reviewer Feedback)
+| # | File:Line | Author | Finding | Decision | Reason |
+|---|-----------|--------|---------|----------|--------|
+| 1 | path:line | user | [description] | accept/dispute/defer | [reason] |
+
+### Action Summary
+| Decision | Count | Details |
+|----------|-------|---------|
+| Accept (will fix) | X | [brief list] |
+| Dispute (won't fix) | Y | [brief list] |
+| Defer | Z | [brief list] |
+| Duplicate | N | [findings that appear in both sources] |
 
 ### Status
 - Blocking errors: X fixed, Y remaining
@@ -236,11 +319,16 @@ After triaging, summarize actions taken:
 - Ready for next review: [yes/no]
 ```
 
+**If either source has 0 findings, explicitly state it** (e.g., "No check run annotations found" or "No PR comments").
+
 ## After Loading Context
 
-1. Identify the current PR
-2. Gather all feedback sources
-3. Categorize and triage findings
-4. Fix blocking issues first
-5. Reply to disputed findings
-6. Report summary of actions taken
+1. Identify the current PR and HEAD commit SHA
+2. **Query BOTH sources** (check this off mentally):
+   - Check run annotations (SARIF/static analysis)
+   - PR comments (reviewer feedback)
+3. Present findings **by source** in separate tables
+4. Categorize each finding: accept, dispute, or defer
+5. Fix accepted issues
+6. Reply to disputed findings on GitHub
+7. Report summary with counts from each source

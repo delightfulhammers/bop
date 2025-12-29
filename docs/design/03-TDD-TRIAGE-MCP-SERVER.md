@@ -1,6 +1,6 @@
 # Technical Design: Phase 3.1 — Triage MCP Server
 
-**Version:** 0.1 (Draft)  
+**Version:** 0.3 (Draft)  
 **Date:** 2025-12-28  
 **Author:** Brandon Young  
 **Status:** In Development
@@ -42,6 +42,23 @@ This approach:
 - Keeps the MCP server simple and focused
 - Works seamlessly with Claude Code's existing workflow
 
+### Two Sources of Findings
+
+**Critical:** There are TWO sources of findings that the MCP server must support:
+
+| Source | What | Behavior | API |
+|--------|------|----------|-----|
+| **Check Run Annotations (SARIF)** | Static analysis findings | Reset each push; authoritative for current commit | `/check-runs/{id}/annotations` |
+| **PR Comments** | Reviewer feedback | Accumulated across PR lifetime; supports threading | `/pulls/{pr}/comments` |
+
+**Read Tools:**
+- `list_annotations` / `get_annotation` — Query SARIF findings
+- `list_findings` / `get_finding` — Query PR comment findings
+
+**Write Tools:**
+- `reply_to_finding` — Reply to existing PR comment thread
+- `post_comment` — Create new comment at file/line (for responding to SARIF annotations, which cannot be replied to directly)
+
 ### Deliverables
 
 | Deliverable | Priority | Description |
@@ -55,7 +72,8 @@ This approach:
 
 ### Dependencies
 
-- [mcp-go](https://github.com/mark3labs/mcp-go) — Go MCP SDK
+- [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk) — Official Go MCP SDK
+  - **Note:** This doc originally specified `mark3labs/mcp-go`, but we deliberately chose the official SDK during M1 implementation for better long-term support and API stability. Code examples in this doc may reference the old SDK and should be updated.
 - Existing `internal/adapter/github/` — Extended for triage operations
 - Existing `internal/adapter/git/` — File content retrieval
 
@@ -952,17 +970,20 @@ func requestRereviewTool(svc *triage.Service, owner, repo string) mcp.Tool {
 
 **Tool Summary:**
 
-| Tool | Type | Purpose |
-|------|------|---------|
-| `list_findings` | Read | List findings with filters |
-| `get_finding` | Read | Get full finding details |
-| `get_suggestion` | Read | Get structured data for str_replace |
-| `get_code_context` | Read | Current code at location |
-| `get_diff_context` | Read | Diff hunk at location |
-| `get_thread` | Read | Full comment thread |
-| `reply_to_finding` | Write | Reply with optional status |
-| `mark_resolved` | Write | Mark thread resolved |
-| `request_rereview` | Write | Dismiss stale reviews, trigger fresh |
+| Tool | Type | Source | Purpose |
+|------|------|--------|---------|
+| `list_annotations` | Read | SARIF | List check run annotations for HEAD commit |
+| `get_annotation` | Read | SARIF | Get details about a specific annotation |
+| `list_findings` | Read | PR Comments | List PR comment findings with filters |
+| `get_finding` | Read | PR Comments | Get full finding details |
+| `get_suggestion` | Read | Both | Get structured data for str_replace |
+| `get_code_context` | Read | Git | Current code at location |
+| `get_diff_context` | Read | Git | Diff hunk at location |
+| `get_thread` | Read | PR Comments | Full comment thread |
+| `post_comment` | Write | PR Comments | Create new comment at file/line (for SARIF responses) |
+| `reply_to_finding` | Write | PR Comments | Reply to existing comment with optional status |
+| `mark_resolved` | Write | PR Comments | Mark thread resolved |
+| `request_rereview` | Write | GitHub | Dismiss stale reviews, trigger fresh |
 
 **Key Design Decision:** No `apply_suggestion` or `batch_apply` tools. Claude Code applies fixes using its native `str_replace` with data from `get_suggestion`. This:
 - Avoids reimplementing file editing in the MCP server
@@ -1129,16 +1150,23 @@ After a PR receives automated code review, you'll help the developer:
 
 ### From `code-reviewer-mcp` (MCP tools)
 
-**Reading:**
-- `list_findings` - Get all findings for a PR (with filters)
+**SARIF/Annotations (Static Analysis):**
+- `list_annotations` - Get check run annotations for HEAD commit
+- `get_annotation` - Get details about a specific annotation
+
+**PR Comments (Reviewer Feedback):**
+- `list_findings` - Get all PR comment findings (with filters)
 - `get_finding` - Get details about a specific finding
+- `get_thread` - See full conversation history
+
+**Code Context:**
 - `get_suggestion` - Get structured suggestion data for applying fixes
 - `get_code_context` - See current code at a location
 - `get_diff_context` - See what changed in the PR
-- `get_thread` - See full conversation history
 
 **GitHub Actions:**
-- `reply_to_finding` - Respond with a status update
+- `post_comment` - Create new comment at file/line (for SARIF responses)
+- `reply_to_finding` - Reply to existing PR comment thread
 - `mark_resolved` - Mark a thread as resolved
 - `request_rereview` - Request fresh review after changes
 
@@ -1150,13 +1178,19 @@ After a PR receives automated code review, you'll help the developer:
 
 ## Workflow
 
-### 1. Start by listing findings
+### 1. Check BOTH sources
 
+**SARIF Annotations (authoritative for current commit):**
+```
+list_annotations(pr_number=42)
+```
+
+**PR Comments (accumulated across commits):**
 ```
 list_findings(pr_number=42)
 ```
 
-This shows all findings with their severity, status, and whether they have suggestions.
+Always check both. If one source has no findings, note it explicitly.
 
 ### 2. For each finding, decide the action:
 
@@ -1198,8 +1232,7 @@ git add -A && git commit -m "fix: apply code review suggestions" && git push
 
 ### 4. Respond to findings
 
-Always reply with a status to close the loop:
-
+**For PR comment findings** (reply to existing thread):
 ```
 reply_to_finding(
   pr_number=42,
@@ -1208,6 +1241,18 @@ reply_to_finding(
   status="accepted"
 )
 ```
+
+**For SARIF annotations** (create new comment at same location):
+```
+post_comment(
+  pr_number=42,
+  file="internal/service.go",
+  line=45,
+  body="**Status: disputed**\n\nThis is intentional because..."
+)
+```
+
+Note: SARIF annotations cannot be replied to directly, so we create a new PR comment at the same file/line.
 
 ### 5. Request re-review
 
@@ -1345,3 +1390,4 @@ See [04-ROADMAP-PHASE-3.1.md](./04-ROADMAP-PHASE-3.1.md) for detailed week-by-we
 |---------|------|--------|---------|
 | 0.1 | 2025-12-28 | Brandon | Initial draft |
 | 0.2 | 2025-12-28 | Brandon | **Workflow Architecture Revision:** Removed apply_suggestion/batch_apply tools. MCP server now provides information only; Claude Code handles file edits natively via str_replace + git. Added get_suggestion tool for structured suggestion data. Reduced implementation effort from 56h → 40h. Updated Overview with architecture philosophy diagram. |
+| 0.3 | 2025-12-28 | Brandon | **Two Sources of Findings:** Added support for check run annotations (SARIF) alongside PR comments. New tools: `list_annotations`, `get_annotation`, `post_comment`. Updated tool summary table with source column. Added "Two Sources of Findings" section to Overview. |

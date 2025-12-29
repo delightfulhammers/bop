@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bkyoung/code-reviewer/internal/adapter/cli"
+	dedupadapter "github.com/bkyoung/code-reviewer/internal/adapter/dedup"
 	"github.com/bkyoung/code-reviewer/internal/adapter/git"
 	githubadapter "github.com/bkyoung/code-reviewer/internal/adapter/github"
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/anthropic"
@@ -32,6 +33,7 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/determinism"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/redaction"
+	usecasedeup "github.com/bkyoung/code-reviewer/internal/usecase/dedup"
 	usecasegithub "github.com/bkyoung/code-reviewer/internal/usecase/github"
 	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
@@ -105,7 +107,11 @@ func run() error {
 				// Wrap in adapter bridge
 				reviewStore = storeAdapter.NewBridge(sqliteStore)
 				// Ensure store is closed on exit
-				defer reviewStore.Close()
+				defer func() {
+					if err := reviewStore.Close(); err != nil {
+						log.Printf("warning: failed to close review store: %v", err)
+					}
+				}()
 			}
 		}
 	}
@@ -178,7 +184,27 @@ func run() error {
 	var githubPoster review.GitHubPoster
 	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
 		githubClient := githubadapter.NewClient(githubToken)
-		reviewPoster := usecasegithub.NewReviewPoster(githubClient)
+
+		// Configure semantic deduplication (Issue #125)
+		// Use DefaultConfig as base, then override with user config if provided
+		var posterOpts []usecasegithub.ReviewPosterOption
+		if semanticComparer := createSemanticComparer(cfg); semanticComparer != nil {
+			defaults := usecasedeup.DefaultConfig()
+			semanticConfig := usecasegithub.SemanticDedupConfig{
+				LineThreshold: defaults.LineThreshold,
+				MaxCandidates: defaults.MaxCandidates,
+			}
+			// Override with user config if explicitly set
+			if cfg.Deduplication.Semantic.LineThreshold > 0 {
+				semanticConfig.LineThreshold = cfg.Deduplication.Semantic.LineThreshold
+			}
+			if cfg.Deduplication.Semantic.MaxCandidates > 0 {
+				semanticConfig.MaxCandidates = cfg.Deduplication.Semantic.MaxCandidates
+			}
+			posterOpts = append(posterOpts, usecasegithub.WithSemanticComparer(semanticComparer, semanticConfig))
+		}
+
+		reviewPoster := usecasegithub.NewReviewPoster(githubClient, posterOpts...)
 		githubPoster = &githubPosterAdapter{poster: reviewPoster}
 	}
 
@@ -686,32 +712,20 @@ func (a *githubPosterAdapter) PostReview(ctx context.Context, req review.GitHubP
 		AlwaysBlockCategories: req.AlwaysBlockCategories,
 	}
 
-	// Build programmatic summary (replaces LLM-generated summary)
-	programmaticSummary := githubadapter.BuildProgrammaticSummary(positionedFindings, req.Diff, reviewActions)
-
-	// Build summary appendix for edge cases (out-of-diff findings, binary files, renames)
-	appendix := githubadapter.BuildSummaryAppendix(positionedFindings, req.Diff)
-
-	// Combine programmatic summary with appendix
-	finalSummary := githubadapter.AppendSections(programmaticSummary, appendix)
-
-	// Create review with programmatic summary
-	enhancedReview := domain.Review{
-		ProviderName: req.Review.ProviderName,
-		ModelName:    req.Review.ModelName,
-		Summary:      finalSummary,
-		Findings:     req.Review.Findings,
-		Cost:         req.Review.Cost,
-	}
+	// Note: Summary is now built AFTER deduplication in the poster (Issue #125).
+	// We pass the Diff so the poster can rebuild the summary with accurate counts.
+	// The Review.Summary field is used as fallback if Diff is nil.
 
 	// Build the post request with review action configuration
+	// Pass Diff to enable post-deduplication summary generation
 	postReq := usecasegithub.PostReviewRequest{
 		Owner:         req.Owner,
 		Repo:          req.Repo,
 		PullNumber:    req.PRNumber,
 		CommitSHA:     req.CommitSHA,
-		Review:        enhancedReview,
+		Review:        req.Review, // Use original review; poster will build summary from Diff
 		Findings:      positionedFindings,
+		Diff:          &req.Diff, // Pass diff for post-dedup summary generation
 		ReviewActions: reviewActions,
 		BotUsername:   req.BotUsername,
 	}
@@ -846,6 +860,62 @@ func defaultVerificationModel(provider string) string {
 	default:
 		return ""
 	}
+}
+
+// createSemanticComparer creates a semantic comparer for deduplication.
+// Returns nil if semantic deduplication is disabled or no suitable provider is available.
+// Currently only supports Anthropic as the provider.
+func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
+	semanticCfg := cfg.Deduplication.Semantic
+
+	// Check if semantic dedup is enabled (defaults to true if not specified)
+	if semanticCfg.Enabled != nil && !*semanticCfg.Enabled {
+		return nil
+	}
+
+	// Start with defaults, override with user config if provided
+	defaults := usecasedeup.DefaultConfig()
+
+	provider := defaults.Provider
+	if semanticCfg.Provider != "" {
+		provider = semanticCfg.Provider
+	}
+
+	model := defaults.Model
+	if semanticCfg.Model != "" {
+		model = semanticCfg.Model
+	}
+
+	maxTokens := defaults.MaxTokens
+	if semanticCfg.MaxTokens > 0 {
+		maxTokens = semanticCfg.MaxTokens
+	}
+
+	// Currently only Anthropic is supported for semantic dedup
+	if provider != "anthropic" {
+		log.Printf("[WARN] Semantic deduplication only supports anthropic provider, got: %s", provider)
+		return nil
+	}
+
+	// Get the Anthropic API key
+	providerCfg, ok := cfg.Providers["anthropic"]
+	if !ok || providerCfg.APIKey == "" {
+		// Try environment variable as fallback
+		apiKey := os.Getenv("ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			log.Println("[WARN] Semantic deduplication disabled: no Anthropic API key available")
+			return nil
+		}
+		providerCfg.APIKey = apiKey
+	}
+
+	// Create the Anthropic client for semantic comparison
+	anthropicClient := dedupadapter.NewAnthropicClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
+
+	log.Printf("[INFO] Semantic deduplication enabled (provider=%s, model=%s)", provider, model)
+
+	// Create and return the semantic comparer
+	return dedupadapter.NewComparer(anthropicClient, maxTokens)
 }
 
 // buildProviderMaxTokens extracts per-provider MaxOutputTokens overrides from config.

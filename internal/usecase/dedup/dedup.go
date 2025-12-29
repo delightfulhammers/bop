@@ -99,7 +99,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Provider:      "anthropic",
-		Model:         "claude-haiku-4-5-latest",
+		Model:         "claude-haiku-4-5",
 		MaxTokens:     64000,
 		LineThreshold: 10,
 		MaxCandidates: 50,
