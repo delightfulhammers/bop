@@ -241,6 +241,21 @@ func TestExtractSuggestionCode(t *testing.T) {
 			want: "line1\nline2\nline3",
 		},
 		{
+			name: "suggestion without trailing newline",
+			text: "```suggestion\nreturn nil```",
+			want: "return nil",
+		},
+		{
+			name: "generic block without trailing newline",
+			text: "```go\nfunc main() {}```",
+			want: "func main() {}",
+		},
+		{
+			name: "multiline without trailing newline",
+			text: "```suggestion\nline1\nline2```",
+			want: "line1\nline2",
+		},
+		{
 			name: "no code block",
 			text: "Just plain text",
 			want: "",

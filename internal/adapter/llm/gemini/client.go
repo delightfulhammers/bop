@@ -212,8 +212,8 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		var callErr error
 		resp, callErr = c.client.Do(retryReq)
 		if callErr != nil {
-			// Use helper that correctly marks timeouts as retryable
-			return llmhttp.NewTimeoutError("gemini", callErr.Error())
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError("gemini", callErr, ctx)
 		}
 
 		// Check for error status codes

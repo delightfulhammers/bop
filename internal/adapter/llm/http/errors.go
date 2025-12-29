@@ -1,6 +1,11 @@
 package http
 
-import "fmt"
+import (
+	"context"
+	stderrors "errors"
+	"fmt"
+	"net"
+)
 
 // ErrorType represents the category of error that occurred.
 type ErrorType int
@@ -11,6 +16,7 @@ const (
 	ErrTypeServiceUnavailable
 	ErrTypeInvalidRequest
 	ErrTypeTimeout
+	ErrTypeNetwork // General network errors (DNS, connection refused, TLS, etc.)
 	ErrTypeModelNotFound
 	ErrTypeContentFiltered
 	ErrTypeUnknown
@@ -29,6 +35,8 @@ func (e ErrorType) String() string {
 		return "invalid request"
 	case ErrTypeTimeout:
 		return "timeout"
+	case ErrTypeNetwork:
+		return "network error"
 	case ErrTypeModelNotFound:
 		return "model not found"
 	case ErrTypeContentFiltered:
@@ -143,4 +151,50 @@ func NewContentFilteredError(provider, message string) *Error {
 		Retryable:  false,
 		Provider:   provider,
 	}
+}
+
+// NewNetworkError creates a new network error for general connectivity issues.
+// Network errors are marked as retryable since they're typically transient.
+func NewNetworkError(provider, message string) *Error {
+	return &Error{
+		Type:       ErrTypeNetwork,
+		Message:    message,
+		StatusCode: 0,
+		Retryable:  true,
+		Provider:   provider,
+	}
+}
+
+// ClassifyNetworkError examines an error from http.Client.Do() and returns
+// the appropriate typed error. It distinguishes between:
+//   - Timeouts (context deadline exceeded, net.Error timeout)
+//   - General network errors (DNS, connection refused, TLS, etc.)
+//
+// Both types are marked as retryable, but proper classification aids debugging.
+func ClassifyNetworkError(provider string, err error, ctx context.Context) *Error {
+	// Check for context deadline exceeded (timeout)
+	if ctx.Err() == context.DeadlineExceeded {
+		return NewTimeoutError(provider, "request timed out")
+	}
+
+	// Check for context cancellation (not a timeout, not retryable)
+	if ctx.Err() == context.Canceled {
+		return &Error{
+			Type:       ErrTypeUnknown,
+			Message:    "request canceled",
+			StatusCode: 0,
+			Retryable:  false,
+			Provider:   provider,
+		}
+	}
+
+	// Check if the underlying error is a timeout via net.Error interface
+	var netErr net.Error
+	if stderrors.As(err, &netErr) && netErr.Timeout() {
+		return NewTimeoutError(provider, err.Error())
+	}
+
+	// Default to network error for other connectivity issues
+	// (DNS failures, connection refused, TLS errors, etc.)
+	return NewNetworkError(provider, err.Error())
 }

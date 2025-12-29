@@ -10,12 +10,14 @@ import (
 // Regex patterns for extracting suggestions from comments/annotations.
 var (
 	// githubSuggestionPattern matches GitHub suggestion blocks.
-	// Format: ```suggestion\ncode here\n```
-	githubSuggestionPattern = regexp.MustCompile("(?s)```suggestion\\s*\\n(.+?)\\n```")
+	// Format: ```suggestion\ncode here\n``` or ```suggestion\ncode here```
+	// The trailing newline before closing backticks is optional.
+	githubSuggestionPattern = regexp.MustCompile("(?s)```suggestion\\s*\\n(.+?)\\n?```")
 
 	// genericCodeBlockPattern matches generic fenced code blocks.
 	// Format: ```lang\ncode here\n``` or ```\ncode here\n```
-	genericCodeBlockPattern = regexp.MustCompile("(?s)```\\w*\\s*\\n(.+?)\\n```")
+	// The trailing newline before closing backticks is optional.
+	genericCodeBlockPattern = regexp.MustCompile("(?s)```\\w*\\s*\\n(.+?)\\n?```")
 )
 
 // DefaultSuggestionExtractor implements SuggestionExtractor using regex parsing.

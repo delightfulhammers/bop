@@ -112,6 +112,7 @@ func TestClient_GetPRComment(t *testing.T) {
 		statusCode     int
 		wantErr        bool
 		wantErrType    error
+		wantErrMsg     string
 	}{
 		{
 			name:           "returns comment that belongs to PR",
@@ -146,6 +147,16 @@ func TestClient_GetPRComment(t *testing.T) {
 			serverResponse: nil,
 			statusCode:     0,
 			wantErr:        true,
+			wantErrMsg:     "invalid comment ID: 0 (must be positive)",
+		},
+		{
+			name:           "returns error for negative comment ID",
+			prNumber:       123,
+			commentID:      -1,
+			serverResponse: nil,
+			statusCode:     0,
+			wantErr:        true,
+			wantErrMsg:     "invalid comment ID: -1 (must be positive)",
 		},
 	}
 
@@ -172,6 +183,9 @@ func TestClient_GetPRComment(t *testing.T) {
 				require.Error(t, err)
 				if tt.wantErrType != nil {
 					assert.ErrorIs(t, err, tt.wantErrType)
+				}
+				if tt.wantErrMsg != "" {
+					assert.Contains(t, err.Error(), tt.wantErrMsg)
 				}
 				return
 			}

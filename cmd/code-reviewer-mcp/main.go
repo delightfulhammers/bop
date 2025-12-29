@@ -26,9 +26,17 @@ func run() error {
 	defer cancel()
 
 	// Get configuration from environment.
+	// GITHUB_TOKEN is required for API access to read PR data, comments, and annotations.
 	githubToken := os.Getenv("GITHUB_TOKEN")
 	if githubToken == "" {
-		return fmt.Errorf("GITHUB_TOKEN environment variable is required")
+		return fmt.Errorf("GITHUB_TOKEN environment variable is required. " +
+			"Set it to a GitHub personal access token with 'repo' scope. " +
+			"See: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens")
+	}
+	// Basic format validation: GitHub tokens are typically 40+ characters
+	if len(githubToken) < 40 {
+		return fmt.Errorf("GITHUB_TOKEN appears invalid (too short): " +
+			"GitHub tokens are typically 40+ characters, check that you've set the full token value")
 	}
 
 	// Get repository directory (default to current directory).

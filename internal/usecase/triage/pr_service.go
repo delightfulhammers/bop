@@ -2,6 +2,7 @@ package triage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/bkyoung/code-reviewer/internal/domain"
@@ -144,14 +145,21 @@ func (s *PRService) GetSuggestion(ctx context.Context, owner, repo string, prNum
 	// Try to fetch as a PR comment first
 	if s.deps.CommentReader != nil {
 		finding, err := s.GetFinding(ctx, owner, repo, prNumber, findingID)
-		if err == nil && finding != nil {
-			suggestion, err := s.deps.SuggestionExtractor.ExtractFromComment(finding)
-			if err == nil {
+		if err != nil {
+			// Only fall through to annotation lookup for "not found" errors.
+			// Real errors (network, auth, etc.) should be propagated.
+			if !errors.Is(err, ErrCommentNotFound) {
+				return nil, fmt.Errorf("get finding: %w", err)
+			}
+			// Comment not found - fall through to try annotation lookup
+		} else if finding != nil {
+			suggestion, extractErr := s.deps.SuggestionExtractor.ExtractFromComment(finding)
+			if extractErr == nil {
 				return suggestion, nil
 			}
 			// If extraction failed (no suggestion block), fall through to try annotation
-			if err != ErrNoSuggestion {
-				return nil, err
+			if extractErr != ErrNoSuggestion {
+				return nil, extractErr
 			}
 		}
 	}
@@ -216,11 +224,17 @@ func isValidSeverity(s string) bool {
 
 // parseAnnotationID parses an annotation ID in the format "checkRunID:index".
 // Returns the parsed values and whether parsing succeeded.
+// The entire string must match the format exactly - no trailing content is allowed.
 func parseAnnotationID(id string) (checkRunID int64, index int, ok bool) {
 	var cid int64
 	var idx int
 	n, err := fmt.Sscanf(id, "%d:%d", &cid, &idx)
 	if err != nil || n != 2 {
+		return 0, 0, false
+	}
+	// Verify no trailing content by roundtripping: format back and compare
+	// This rejects inputs like "1001:0xyz" or "1001:0 extra"
+	if fmt.Sprintf("%d:%d", cid, idx) != id {
 		return 0, 0, false
 	}
 	return cid, idx, true

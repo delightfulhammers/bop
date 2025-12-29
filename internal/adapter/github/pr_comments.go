@@ -67,6 +67,11 @@ func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumbe
 // GetPRComment retrieves a single comment by ID.
 // Returns ErrCommentNotFound if the comment doesn't exist or doesn't belong to the PR.
 // The prNumber is required to validate the comment belongs to the expected PR.
+//
+// Performance note: This method fetches the comment efficiently via direct API call,
+// but then calls countReplies() which fetches all PR comments to count replies.
+// For PRs with many comments, this can be slow. The reply count is non-critical
+// metadata, so failures are handled gracefully (defaulting to 0).
 func (c *Client) GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error) {
 	// Validate inputs
 	if err := validatePathSegment(owner, "owner"); err != nil {
@@ -106,12 +111,8 @@ func (c *Client) GetPRComment(ctx context.Context, owner, repo string, prNumber 
 		var callErr error
 		resp, callErr = c.httpClient.Do(req)
 		if callErr != nil {
-			return &llmhttp.Error{
-				Type:      llmhttp.ErrTypeTimeout,
-				Message:   callErr.Error(),
-				Retryable: true,
-				Provider:  providerName,
-			}
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError(providerName, callErr, ctx)
 		}
 
 		if resp.StatusCode == 404 {
@@ -168,6 +169,10 @@ func (c *Client) GetPRComment(ctx context.Context, owner, repo string, prNumber 
 
 // GetPRCommentByFingerprint retrieves a comment by its CR_FP fingerprint.
 // Returns ErrCommentNotFound if no matching comment exists.
+//
+// Performance note: Since GitHub doesn't index comments by our fingerprints,
+// this fetches all PR comments with fingerprints and searches client-side.
+// This is O(n) where n is the number of comments with fingerprints.
 func (c *Client) GetPRCommentByFingerprint(ctx context.Context, owner, repo string, prNumber int, fingerprint string) (*domain.PRFinding, error) {
 	// Normalize fingerprint (remove prefix if present)
 	fingerprint = strings.TrimPrefix(fingerprint, domain.FindingIDPrefix)
@@ -228,12 +233,8 @@ func (c *Client) GetThreadHistory(ctx context.Context, owner, repo string, comme
 		var callErr error
 		resp, callErr = c.httpClient.Do(req)
 		if callErr != nil {
-			return &llmhttp.Error{
-				Type:      llmhttp.ErrTypeTimeout,
-				Message:   callErr.Error(),
-				Retryable: true,
-				Provider:  providerName,
-			}
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError(providerName, callErr, ctx)
 		}
 
 		if resp.StatusCode == 404 {
@@ -440,6 +441,11 @@ func extractPRNumber(prURL string) int {
 }
 
 // countReplies counts the number of replies to a specific comment.
+//
+// Performance limitation: This fetches all PR comments and filters client-side.
+// GitHub's API doesn't provide a direct way to count replies for a single comment.
+// For PRs with hundreds of comments, consider caching the comment list or
+// making reply count opt-in for callers who don't need it.
 func (c *Client) countReplies(ctx context.Context, owner, repo string, prNumber int, parentID int64) (int, error) {
 	comments, err := c.ListPullRequestComments(ctx, owner, repo, prNumber)
 	if err != nil {

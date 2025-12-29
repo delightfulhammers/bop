@@ -52,12 +52,8 @@ func (c *Client) GetPRMetadata(ctx context.Context, owner, repo string, prNumber
 		var callErr error
 		resp, callErr = c.httpClient.Do(req)
 		if callErr != nil {
-			return &llmhttp.Error{
-				Type:      llmhttp.ErrTypeTimeout,
-				Message:   callErr.Error(),
-				Retryable: true,
-				Provider:  providerName,
-			}
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError(providerName, callErr, ctx)
 		}
 
 		if resp.StatusCode == 404 {

@@ -160,8 +160,9 @@ func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool
 		return "", false
 	}
 
-	// Extract and trim the fingerprint
-	fp := strings.TrimSpace(remaining[:endIdx])
+	// Extract, trim, and normalize case (fingerprints are stored lowercase internally,
+	// but might be edited to uppercase accidentally in GitHub comments)
+	fp := strings.ToLower(strings.TrimSpace(remaining[:endIdx]))
 	if fp == "" {
 		return "", false
 	}

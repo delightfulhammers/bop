@@ -557,4 +557,37 @@ func TestPRService_GetSuggestion(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, triage.ErrNoSuggestion)
 	})
+
+	t.Run("rejects annotation IDs with trailing content", func(t *testing.T) {
+		// This test verifies that "1001:0xyz" is not parsed as a valid annotation ID
+		// The parseAnnotationID function should reject IDs with trailing content
+		mockAnnotation := new(MockAnnotationReader)
+		mockExtractor := new(MockSuggestionExtractor)
+
+		// If parsing worked incorrectly, this would be called with 1001, 0
+		// Since parsing should fail, this should NOT be called
+		// (we set up no expectations, so if it's called the test will fail)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			AnnotationReader:    mockAnnotation,
+			SuggestionExtractor: mockExtractor,
+		})
+
+		// IDs with trailing content should be rejected
+		malformedIDs := []string{
+			"1001:0xyz",    // trailing letters
+			"1001:0 extra", // trailing with space
+			"1001:0:extra", // extra colon
+			"1001:0\t",     // trailing tab
+		}
+
+		for _, id := range malformedIDs {
+			_, err := svc.GetSuggestion(ctx, "owner", "repo", 42, id)
+			require.Error(t, err, "expected error for malformed ID: %s", id)
+			assert.ErrorIs(t, err, triage.ErrNoSuggestion, "malformed ID %s should not be parsed as annotation", id)
+		}
+
+		// Verify GetAnnotation was never called (no expectations were set)
+		mockAnnotation.AssertExpectations(t)
+	})
 }
