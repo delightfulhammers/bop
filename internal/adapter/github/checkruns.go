@@ -192,13 +192,18 @@ func (c *Client) GetAnnotations(ctx context.Context, owner, repo string, checkRu
 
 // GetAnnotation retrieves a single annotation by check run ID and index.
 // Returns ErrAnnotationNotFound if the index is out of range.
+//
+// Note: This fetches all annotations and returns the one at the specified index.
+// The GitHub API doesn't support fetching a single annotation directly.
+// For check runs with many annotations, consider using GetAnnotations with
+// client-side caching if repeated single-annotation lookups are needed.
 func (c *Client) GetAnnotation(ctx context.Context, owner, repo string, checkRunID int64, index int) (*domain.Annotation, error) {
 	// Validate index early
 	if index < 0 {
 		return nil, triage.ErrAnnotationNotFound
 	}
 
-	// Get all annotations for the check run
+	// Fetch all annotations - GitHub API doesn't support single annotation retrieval
 	annotations, err := c.GetAnnotations(ctx, owner, repo, checkRunID)
 	if err != nil {
 		return nil, err
