@@ -366,7 +366,7 @@ func TestClient_RequestReviewers(t *testing.T) {
 			statusCode:    http.StatusUnprocessableEntity,
 			responseBody:  `{"message": "Reviews may only be requested from collaborators"}`,
 			wantErr:       true,
-			errContains:   "collaborators",
+			errContains:   "user not found", // Now returns triage.ErrUserNotFound sentinel
 		},
 	}
 

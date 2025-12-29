@@ -444,6 +444,16 @@ func (s *Server) handleGetThread(ctx context.Context, req *mcp.CallToolRequest, 
 		Message:   fmt.Sprintf("Found %d comments in thread", len(comments)),
 	}
 
+	// If PR number provided, look up the thread ID for use with mark_resolved
+	if input.PRNumber > 0 {
+		threadInfo, threadErr := s.deps.PRService.FindThreadForComment(ctx, input.Owner, input.Repo, input.PRNumber, input.CommentID)
+		if threadErr == nil && threadInfo != nil {
+			output.ThreadID = threadInfo.ID
+			output.IsResolved = threadInfo.IsResolved
+		}
+		// Silently ignore errors - thread ID is optional enhancement
+	}
+
 	for i, c := range comments {
 		output.Comments[i] = ThreadCommentOutput{
 			Author:    c.Author,

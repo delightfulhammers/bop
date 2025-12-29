@@ -648,6 +648,14 @@ func (m *MockReviewManager) ListReviews(ctx context.Context, owner, repo string,
 	return args.Get(0).([]triage.Review), args.Error(1)
 }
 
+func (m *MockReviewManager) FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*triage.ThreadInfo, error) {
+	args := m.Called(ctx, owner, repo, prNumber, commentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*triage.ThreadInfo), args.Error(1)
+}
+
 // =============================================================================
 // Write Operation Tests
 // =============================================================================

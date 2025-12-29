@@ -299,15 +299,18 @@ type RequestRereviewOutput struct {
 type GetThreadInput struct {
 	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
 	Repo      string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int    `json:"pr_number,omitempty" jsonschema:"description=PR number (required for thread_id lookup)"`
 	CommentID int64  `json:"comment_id" jsonschema:"description=Comment ID to get thread for"`
 }
 
 // GetThreadOutput is the output for the get_thread tool.
 type GetThreadOutput struct {
-	CommentID int64                 `json:"comment_id"`
-	Comments  []ThreadCommentOutput `json:"comments"`
-	Total     int                   `json:"total"`
-	Message   string                `json:"message"`
+	CommentID  int64                 `json:"comment_id"`
+	ThreadID   string                `json:"thread_id,omitempty"` // GraphQL node ID (PRRT_...) for use with mark_resolved
+	IsResolved bool                  `json:"is_resolved"`
+	Comments   []ThreadCommentOutput `json:"comments"`
+	Total      int                   `json:"total"`
+	Message    string                `json:"message"`
 }
 
 // ThreadCommentOutput represents a comment in a thread.

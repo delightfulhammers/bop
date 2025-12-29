@@ -266,6 +266,13 @@ func (s *PRService) ReplyToFinding(ctx context.Context, owner, repo string, prNu
 		return 0, fmt.Errorf("get finding: %w", err)
 	}
 
+	// SARIF annotations have CommentID=0 since they're not PR comments.
+	// For these, we need to create a new comment at the same location.
+	if finding.CommentID == 0 {
+		// For annotations, use PostComment to create a new comment at the location
+		return s.PostComment(ctx, owner, repo, prNumber, finding.Path, finding.Line, body)
+	}
+
 	// Reply to the finding's comment
 	return s.deps.CommentWriter.ReplyToComment(ctx, owner, repo, prNumber, finding.CommentID, body)
 }
@@ -347,4 +354,14 @@ func (s *PRService) ListReviews(ctx context.Context, owner, repo string, prNumbe
 	}
 
 	return s.deps.ReviewManager.ListReviews(ctx, owner, repo, prNumber)
+}
+
+// FindThreadForComment finds the review thread ID for a given comment ID.
+// Returns the thread's GraphQL node ID which can be used with ResolveThread/UnresolveThread.
+func (s *PRService) FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*ThreadInfo, error) {
+	if s.deps.ReviewManager == nil {
+		return nil, ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.FindThreadForComment(ctx, owner, repo, prNumber, commentID)
 }

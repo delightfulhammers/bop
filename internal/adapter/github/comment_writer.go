@@ -8,10 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 
 	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
+	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
 
 // githubNamePattern validates GitHub usernames and team slugs.
@@ -114,6 +116,12 @@ func (c *Client) ReplyToComment(ctx context.Context, owner, repo string, prNumbe
 			}
 		}
 
+		// 404 indicates the comment being replied to doesn't exist
+		if resp.StatusCode == http.StatusNotFound {
+			_ = resp.Body.Close()
+			return triage.ErrCommentNotFound
+		}
+
 		if resp.StatusCode >= 400 {
 			bodyBytes, readErr := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
@@ -177,20 +185,26 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	if path == "" {
 		return 0, fmt.Errorf("path cannot be empty")
 	}
-	// Validate path doesn't contain path traversal sequences
-	// Check for ".." as a path segment (allows valid filenames like "foo..bar")
-	// Note: URL-encoded variants (%2e%2e) don't apply here since this is JSON body content.
-	for _, segment := range strings.Split(path, "/") {
-		if segment == ".." {
-			return 0, fmt.Errorf("invalid path: contains '..' traversal segment")
-		}
+	// Normalize path to handle edge cases like "foo/./bar" or redundant slashes.
+	// Use filepath.ToSlash to ensure consistent forward-slash separators.
+	cleanPath := filepath.ToSlash(filepath.Clean(path))
+	// Check if path tries to escape (starts with .. after cleaning)
+	if strings.HasPrefix(cleanPath, "..") {
+		return 0, fmt.Errorf("invalid path: escapes repository root")
 	}
-	if strings.HasPrefix(path, "/") {
+	// Check for absolute paths (Unix or Windows style)
+	if filepath.IsAbs(path) || strings.HasPrefix(cleanPath, "/") {
 		return 0, fmt.Errorf("invalid path: must be relative (no leading '/')")
 	}
 	// Check for Windows-style absolute paths (defensive - git repos don't use these)
 	if len(path) >= 2 && path[1] == ':' {
 		return 0, fmt.Errorf("invalid path: must be relative (no drive letter)")
+	}
+	// Double-check for any remaining ".." after normalization
+	for _, segment := range strings.Split(cleanPath, "/") {
+		if segment == ".." {
+			return 0, fmt.Errorf("invalid path: contains parent directory reference")
+		}
 	}
 	if line <= 0 {
 		return 0, fmt.Errorf("line must be positive")
@@ -350,6 +364,13 @@ func (c *Client) RequestReviewers(ctx context.Context, owner, repo string, prNum
 					StatusCode: resp.StatusCode,
 					Retryable:  resp.StatusCode >= 500,
 					Provider:   providerName,
+				}
+			}
+			// 422 with "collaborator" message indicates user doesn't exist or isn't a collaborator
+			if resp.StatusCode == http.StatusUnprocessableEntity {
+				bodyStr := strings.ToLower(string(bodyBytes))
+				if strings.Contains(bodyStr, "collaborator") || strings.Contains(bodyStr, "not a user") {
+					return fmt.Errorf("user not found or not a collaborator: %w", triage.ErrUserNotFound)
 				}
 			}
 			return MapHTTPError(resp.StatusCode, bodyBytes)

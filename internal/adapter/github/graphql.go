@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
+	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
 
 // GraphQL mutation for resolving a review thread.
@@ -30,6 +31,27 @@ mutation UnresolveReviewThread($threadId: ID!) {
 		thread {
 			id
 			isResolved
+		}
+	}
+}`
+
+// GraphQL query to find thread ID for a comment by searching PR threads.
+// This is needed because the comment's parent review ID is not the same as thread ID.
+const findThreadForCommentQuery = `
+query FindThreadForComment($owner: String!, $repo: String!, $prNumber: Int!) {
+	repository(owner: $owner, name: $repo) {
+		pullRequest(number: $prNumber) {
+			reviewThreads(first: 100) {
+				nodes {
+					id
+					isResolved
+					comments(first: 1) {
+						nodes {
+							databaseId
+						}
+					}
+				}
+			}
 		}
 	}
 }`
@@ -184,7 +206,7 @@ func (c *Client) executeThreadMutation(ctx context.Context, mutation, threadID s
 }
 
 // mapGraphQLErrors converts GraphQL errors to appropriate error types.
-// Checks for specific error types first, then aggregates all messages.
+// Wraps with triage sentinel errors where appropriate for errors.Is() compatibility.
 func mapGraphQLErrors(errors []GraphQLError) error {
 	if len(errors) == 0 {
 		return nil
@@ -195,14 +217,14 @@ func mapGraphQLErrors(errors []GraphQLError) error {
 		lowerMsg := strings.ToLower(e.Message)
 		lowerType := strings.ToLower(e.Type)
 
-		// Not found errors - return immediately as this is actionable
+		// Not found errors - wrap with sentinel for errors.Is() compatibility
 		if lowerType == "not_found" || strings.Contains(lowerMsg, "could not resolve to a node") {
-			return fmt.Errorf("thread not found: %s", e.Message)
+			return fmt.Errorf("thread not found (%s): %w", e.Message, triage.ErrThreadNotFound)
 		}
 
-		// Permission errors - return immediately as this is actionable
+		// Permission errors - wrap with sentinel for errors.Is() compatibility
 		if lowerType == "forbidden" || strings.Contains(lowerMsg, "not accessible") {
-			return fmt.Errorf("permission denied: %s", e.Message)
+			return fmt.Errorf("permission denied (%s): %w", e.Message, triage.ErrPermissionDenied)
 		}
 	}
 
@@ -216,4 +238,144 @@ func mapGraphQLErrors(errors []GraphQLError) error {
 		messages[i] = e.Message
 	}
 	return fmt.Errorf("GraphQL errors: %s", strings.Join(messages, "; "))
+}
+
+// ThreadInfo contains information about a review thread.
+type ThreadInfo struct {
+	ID         string // GraphQL node ID (PRRT_...)
+	IsResolved bool
+}
+
+// FindThreadForComment finds the review thread ID for a given comment ID.
+// The commentID is the REST API comment ID (database ID).
+// Returns the thread's GraphQL node ID which can be used with ResolveThread/UnresolveThread.
+func (c *Client) FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*ThreadInfo, error) {
+	// Validate inputs
+	if err := validatePathSegment(owner, "owner"); err != nil {
+		return nil, err
+	}
+	if err := validatePathSegment(repo, "repo"); err != nil {
+		return nil, err
+	}
+	if prNumber <= 0 {
+		return nil, fmt.Errorf("prNumber must be positive")
+	}
+	if commentID <= 0 {
+		return nil, fmt.Errorf("commentID must be positive")
+	}
+
+	reqBody := GraphQLRequest{
+		Query: findThreadForCommentQuery,
+		Variables: map[string]interface{}{
+			"owner":    owner,
+			"repo":     repo,
+			"prNumber": prNumber,
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	apiURL := c.baseURL + "/graphql"
+
+	var resp *http.Response
+	err = llmhttp.RetryWithBackoff(ctx, func(ctx context.Context) error {
+		req, reqErr := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
+		if reqErr != nil {
+			return &llmhttp.Error{
+				Type:      llmhttp.ErrTypeUnknown,
+				Message:   reqErr.Error(),
+				Retryable: false,
+				Provider:  providerName,
+			}
+		}
+
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		var callErr error
+		resp, callErr = c.httpClient.Do(req)
+		if callErr != nil {
+			return &llmhttp.Error{
+				Type:      llmhttp.ErrTypeTimeout,
+				Message:   callErr.Error(),
+				Retryable: true,
+				Provider:  providerName,
+			}
+		}
+
+		if resp.StatusCode >= 400 {
+			bodyBytes, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				return &llmhttp.Error{
+					Type:       llmhttp.ErrTypeUnknown,
+					Message:    fmt.Sprintf("HTTP %d (failed to read response: %v)", resp.StatusCode, readErr),
+					StatusCode: resp.StatusCode,
+					Retryable:  resp.StatusCode >= 500,
+					Provider:   providerName,
+				}
+			}
+			return MapHTTPError(resp.StatusCode, bodyBytes)
+		}
+
+		return nil
+	}, c.retryConf)
+
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse the GraphQL response
+	var gqlResp struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					ReviewThreads struct {
+						Nodes []struct {
+							ID         string `json:"id"`
+							IsResolved bool   `json:"isResolved"`
+							Comments   struct {
+								Nodes []struct {
+									DatabaseID int64 `json:"databaseId"`
+								} `json:"nodes"`
+							} `json:"comments"`
+						} `json:"nodes"`
+					} `json:"reviewThreads"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+		Errors []GraphQLError `json:"errors,omitempty"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &gqlResp); err != nil {
+		return nil, fmt.Errorf("failed to parse GraphQL response: %w", err)
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return nil, mapGraphQLErrors(gqlResp.Errors)
+	}
+
+	// Search for the thread containing this comment
+	for _, thread := range gqlResp.Data.Repository.PullRequest.ReviewThreads.Nodes {
+		for _, comment := range thread.Comments.Nodes {
+			if comment.DatabaseID == commentID {
+				return &ThreadInfo{
+					ID:         thread.ID,
+					IsResolved: thread.IsResolved,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("thread not found for comment %d: %w", commentID, triage.ErrThreadNotFound)
 }

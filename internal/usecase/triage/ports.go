@@ -128,6 +128,17 @@ type ReviewManager interface {
 	// ListReviews returns all reviews for a PR.
 	// Needed for dismiss stale functionality to find bot reviews.
 	ListReviews(ctx context.Context, owner, repo string, prNumber int) ([]Review, error)
+
+	// FindThreadForComment finds the review thread ID for a given comment ID.
+	// Returns the thread's GraphQL node ID (PRRT_...) which can be used with ResolveThread.
+	// Returns ErrThreadNotFound if no thread contains the comment.
+	FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*ThreadInfo, error)
+}
+
+// ThreadInfo contains information about a review thread.
+type ThreadInfo struct {
+	ID         string // GraphQL node ID (PRRT_...)
+	IsResolved bool
 }
 
 // Review represents a PR review summary for the ReviewManager port.

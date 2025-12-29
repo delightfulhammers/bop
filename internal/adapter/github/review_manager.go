@@ -65,3 +65,16 @@ func (a *ReviewManagerAdapter) ListReviews(ctx context.Context, owner, repo stri
 	}
 	return reviews, nil
 }
+
+// FindThreadForComment finds the review thread ID for a given comment ID.
+// Converts from github.ThreadInfo to triage.ThreadInfo.
+func (a *ReviewManagerAdapter) FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*triage.ThreadInfo, error) {
+	info, err := a.client.FindThreadForComment(ctx, owner, repo, prNumber, commentID)
+	if err != nil {
+		return nil, err
+	}
+	return &triage.ThreadInfo{
+		ID:         info.ID,
+		IsResolved: info.IsResolved,
+	}, nil
+}
