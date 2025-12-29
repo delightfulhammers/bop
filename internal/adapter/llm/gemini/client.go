@@ -23,6 +23,7 @@ const (
 
 	// systemInstruction is the system instruction for Gemini to return structured JSON.
 	// Gemini requires explicit formatting instructions unlike OpenAI/Anthropic.
+	// Field names must match what the JSON parser expects (description, lineStart, lineEnd).
 	systemInstruction = `You are a code review assistant. Analyze the code and provide feedback in JSON format.
 
 Return your response as JSON wrapped in a markdown code block like this:
@@ -32,9 +33,10 @@ Return your response as JSON wrapped in a markdown code block like this:
     {
       "severity": "error|warning|info",
       "category": "bug|style|performance|security|maintainability",
-      "message": "Description of the issue",
+      "description": "Description of the issue",
       "file": "path/to/file.ext",
-      "line": 42,
+      "lineStart": 42,
+      "lineEnd": 42,
       "suggestion": "How to fix it (optional)"
     }
   ]
@@ -210,18 +212,14 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		var callErr error
 		resp, callErr = c.client.Do(retryReq)
 		if callErr != nil {
-			return &llmhttp.Error{
-				Type:      llmhttp.ErrTypeTimeout,
-				Message:   callErr.Error(),
-				Retryable: false,
-				Provider:  "gemini",
-			}
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError("gemini", callErr, ctx)
 		}
 
 		// Check for error status codes
 		if resp.StatusCode >= 400 {
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return c.handleErrorResponse(resp.StatusCode, bodyBytes)
 		}
 
@@ -256,7 +254,7 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		}
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Parse response
 	bodyBytes, err := io.ReadAll(resp.Body)

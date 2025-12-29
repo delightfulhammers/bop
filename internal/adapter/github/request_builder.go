@@ -160,8 +160,9 @@ func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool
 		return "", false
 	}
 
-	// Extract and trim the fingerprint
-	fp := strings.TrimSpace(remaining[:endIdx])
+	// Extract, trim, and normalize case (fingerprints are stored lowercase internally,
+	// but might be edited to uppercase accidentally in GitHub comments)
+	fp := strings.ToLower(strings.TrimSpace(remaining[:endIdx]))
 	if fp == "" {
 		return "", false
 	}
@@ -181,7 +182,8 @@ func isValidFingerprint(fp string) bool {
 		return false
 	}
 	for _, c := range fp {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		// Check if character is not a valid hex digit (0-9 or a-f)
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

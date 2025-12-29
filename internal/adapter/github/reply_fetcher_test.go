@@ -38,7 +38,7 @@ func TestListPullRequestComments_Success(t *testing.T) {
 		assert.Equal(t, "100", r.URL.Query().Get("per_page"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(comments)
+		_ = json.NewEncoder(w).Encode(comments)
 	}))
 	defer server.Close()
 
@@ -63,12 +63,12 @@ func TestListPullRequestComments_Pagination(t *testing.T) {
 		if page == 0 {
 			// First page with Link header - use full URL
 			w.Header().Set("Link", `<`+serverURL+`/repos/owner/repo/pulls/42/comments?page=2>; rel="next"`)
-			json.NewEncoder(w).Encode([]github.PullRequestComment{
+			_ = json.NewEncoder(w).Encode([]github.PullRequestComment{
 				{ID: 1, Body: "Comment 1"},
 			})
 		} else {
 			// Second page (no Link header = last page)
-			json.NewEncoder(w).Encode([]github.PullRequestComment{
+			_ = json.NewEncoder(w).Encode([]github.PullRequestComment{
 				{ID: 2, Body: "Comment 2"},
 			})
 		}
@@ -91,7 +91,7 @@ func TestListPullRequestComments_Pagination(t *testing.T) {
 func TestListPullRequestComments_EmptyResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]github.PullRequestComment{})
+		_ = json.NewEncoder(w).Encode([]github.PullRequestComment{})
 	}))
 	defer server.Close()
 

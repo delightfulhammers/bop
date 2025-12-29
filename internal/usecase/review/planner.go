@@ -349,7 +349,7 @@ func (p *PlanningAgent) presentQuestions(questions []Question) (map[int]string, 
 // Returns: "yes" or "no"
 func (p *PlanningAgent) promptYesNo(scanner *scanner, q Question) (string, error) {
 	for {
-		fmt.Fprintf(p.output, "\n%s [y/n]: ", q.Text)
+		_, _ = fmt.Fprintf(p.output, "\n%s [y/n]: ", q.Text)
 
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
@@ -366,7 +366,7 @@ func (p *PlanningAgent) promptYesNo(scanner *scanner, q Question) (string, error
 		case "n", "no":
 			return "no", nil
 		default:
-			fmt.Fprintf(p.output, "Invalid input. Please enter 'y' or 'n'.\n")
+			_, _ = fmt.Fprintf(p.output, "Invalid input. Please enter 'y' or 'n'.\n")
 		}
 	}
 }
@@ -375,13 +375,13 @@ func (p *PlanningAgent) promptYesNo(scanner *scanner, q Question) (string, error
 // User enters a number (1-based), returns the selected option text.
 func (p *PlanningAgent) promptMultipleChoice(scanner *scanner, q Question) (string, error) {
 	// Display question and options
-	fmt.Fprintf(p.output, "\n%s\n", q.Text)
+	_, _ = fmt.Fprintf(p.output, "\n%s\n", q.Text)
 	for i, option := range q.Options {
-		fmt.Fprintf(p.output, "%d. %s\n", i+1, option)
+		_, _ = fmt.Fprintf(p.output, "%d. %s\n", i+1, option)
 	}
 
 	for {
-		fmt.Fprintf(p.output, "Enter number (1-%d): ", len(q.Options))
+		_, _ = fmt.Fprintf(p.output, "Enter number (1-%d): ", len(q.Options))
 
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
@@ -396,7 +396,7 @@ func (p *PlanningAgent) promptMultipleChoice(scanner *scanner, q Question) (stri
 		var choice int
 		_, err := fmt.Sscanf(answer, "%d", &choice)
 		if err != nil || choice < 1 || choice > len(q.Options) {
-			fmt.Fprintf(p.output, "Invalid choice. Please enter a number between 1 and %d.\n", len(q.Options))
+			_, _ = fmt.Fprintf(p.output, "Invalid choice. Please enter a number between 1 and %d.\n", len(q.Options))
 			continue
 		}
 
@@ -407,7 +407,7 @@ func (p *PlanningAgent) promptMultipleChoice(scanner *scanner, q Question) (stri
 // promptText prompts for free-form text input.
 // Empty input is allowed.
 func (p *PlanningAgent) promptText(scanner *scanner, q Question) (string, error) {
-	fmt.Fprintf(p.output, "\n%s\n> ", q.Text)
+	_, _ = fmt.Fprintf(p.output, "\n%s\n> ", q.Text)
 
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {

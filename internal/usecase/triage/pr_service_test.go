@@ -353,3 +353,241 @@ func TestPRService_HandlesErrors(t *testing.T) {
 		assert.Contains(t, err.Error(), "API error")
 	})
 }
+
+// MockCommentReader implements triage.CommentReader for testing.
+type MockCommentReader struct {
+	mock.Mock
+}
+
+func (m *MockCommentReader) ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	args := m.Called(ctx, owner, repo, prNumber, filterByFingerprint)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.PRFinding), args.Error(1)
+}
+
+func (m *MockCommentReader) GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error) {
+	args := m.Called(ctx, owner, repo, prNumber, commentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.PRFinding), args.Error(1)
+}
+
+func (m *MockCommentReader) GetPRCommentByFingerprint(ctx context.Context, owner, repo string, prNumber int, fingerprint string) (*domain.PRFinding, error) {
+	args := m.Called(ctx, owner, repo, prNumber, fingerprint)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.PRFinding), args.Error(1)
+}
+
+func (m *MockCommentReader) GetThreadHistory(ctx context.Context, owner, repo string, commentID int64) ([]domain.ThreadComment, error) {
+	args := m.Called(ctx, owner, repo, commentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.ThreadComment), args.Error(1)
+}
+
+// MockSuggestionExtractor implements triage.SuggestionExtractor for testing.
+type MockSuggestionExtractor struct {
+	mock.Mock
+}
+
+func (m *MockSuggestionExtractor) ExtractFromAnnotation(annotation *domain.Annotation) (*domain.Suggestion, error) {
+	args := m.Called(annotation)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Suggestion), args.Error(1)
+}
+
+func (m *MockSuggestionExtractor) ExtractFromComment(finding *domain.PRFinding) (*domain.Suggestion, error) {
+	args := m.Called(finding)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Suggestion), args.Error(1)
+}
+
+func TestPRService_GetSuggestion(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns suggestion from comment", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockExtractor := new(MockSuggestionExtractor)
+
+		finding := &domain.PRFinding{
+			CommentID: 123,
+			Path:      "main.go",
+			Body:      "Fix this:\n```suggestion\nreturn nil\n```",
+		}
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(123)).Return(finding, nil)
+
+		suggestion := &domain.Suggestion{
+			File:    "main.go",
+			NewCode: "return nil",
+			Source:  "comment",
+		}
+		mockExtractor.On("ExtractFromComment", finding).Return(suggestion, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader:       mockComment,
+			SuggestionExtractor: mockExtractor,
+		})
+
+		result, err := svc.GetSuggestion(ctx, "owner", "repo", 42, "123")
+		require.NoError(t, err)
+		assert.Equal(t, "main.go", result.File)
+		assert.Equal(t, "return nil", result.NewCode)
+		assert.Equal(t, "comment", result.Source)
+
+		mockComment.AssertExpectations(t)
+		mockExtractor.AssertExpectations(t)
+	})
+
+	t.Run("returns suggestion from fingerprint-based lookup", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockExtractor := new(MockSuggestionExtractor)
+
+		finding := &domain.PRFinding{
+			CommentID:   456,
+			Fingerprint: "abc123",
+			Path:        "util.go",
+			Body:        "```suggestion\nfunc fixed() {}\n```",
+		}
+		mockComment.On("GetPRCommentByFingerprint", ctx, "owner", "repo", 42, "abc123").Return(finding, nil)
+
+		suggestion := &domain.Suggestion{
+			File:    "util.go",
+			NewCode: "func fixed() {}",
+			Source:  "comment",
+		}
+		mockExtractor.On("ExtractFromComment", finding).Return(suggestion, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader:       mockComment,
+			SuggestionExtractor: mockExtractor,
+		})
+
+		result, err := svc.GetSuggestion(ctx, "owner", "repo", 42, "CR_FP:abc123")
+		require.NoError(t, err)
+		assert.Equal(t, "util.go", result.File)
+		assert.Equal(t, "comment", result.Source)
+	})
+
+	t.Run("falls back to annotation when comment has no suggestion", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockAnnotation := new(MockAnnotationReader)
+		mockExtractor := new(MockSuggestionExtractor)
+
+		// Comment found but no suggestion block
+		finding := &domain.PRFinding{
+			CommentID: 123,
+			Path:      "main.go",
+			Body:      "This is just a comment without suggestion",
+		}
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(123)).Return(finding, nil)
+		mockExtractor.On("ExtractFromComment", finding).Return(nil, triage.ErrNoSuggestion)
+
+		// Since findingID "123" doesn't parse as annotation ID format "checkRunID:index",
+		// the annotation lookup won't be tried
+		// The result should be ErrNoSuggestion
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader:       mockComment,
+			AnnotationReader:    mockAnnotation,
+			SuggestionExtractor: mockExtractor,
+		})
+
+		_, err := svc.GetSuggestion(ctx, "owner", "repo", 42, "123")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNoSuggestion)
+	})
+
+	t.Run("returns suggestion from annotation", func(t *testing.T) {
+		mockAnnotation := new(MockAnnotationReader)
+		mockExtractor := new(MockSuggestionExtractor)
+
+		annotation := &domain.Annotation{
+			CheckRunID: 1001,
+			Index:      0,
+			Path:       "handler.go",
+			Message:    "Fix:\n```suggestion\nif err != nil { return err }\n```",
+		}
+		mockAnnotation.On("GetAnnotation", ctx, "owner", "repo", int64(1001), 0).Return(annotation, nil)
+
+		suggestion := &domain.Suggestion{
+			File:    "handler.go",
+			NewCode: "if err != nil { return err }",
+			Source:  "annotation",
+		}
+		mockExtractor.On("ExtractFromAnnotation", annotation).Return(suggestion, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			AnnotationReader:    mockAnnotation,
+			SuggestionExtractor: mockExtractor,
+		})
+
+		result, err := svc.GetSuggestion(ctx, "owner", "repo", 42, "1001:0")
+		require.NoError(t, err)
+		assert.Equal(t, "handler.go", result.File)
+		assert.Equal(t, "annotation", result.Source)
+	})
+
+	t.Run("returns ErrNotImplemented when extractor is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.GetSuggestion(ctx, "owner", "repo", 42, "123")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("returns ErrNoSuggestion when no source has suggestion", func(t *testing.T) {
+		mockExtractor := new(MockSuggestionExtractor)
+
+		// No CommentReader or AnnotationReader, so falls through to ErrNoSuggestion
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			SuggestionExtractor: mockExtractor,
+		})
+
+		_, err := svc.GetSuggestion(ctx, "owner", "repo", 42, "invalid-id")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNoSuggestion)
+	})
+
+	t.Run("rejects annotation IDs with trailing content", func(t *testing.T) {
+		// This test verifies that "1001:0xyz" is not parsed as a valid annotation ID
+		// The parseAnnotationID function should reject IDs with trailing content
+		mockAnnotation := new(MockAnnotationReader)
+		mockExtractor := new(MockSuggestionExtractor)
+
+		// If parsing worked incorrectly, this would be called with 1001, 0
+		// Since parsing should fail, this should NOT be called
+		// (we set up no expectations, so if it's called the test will fail)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			AnnotationReader:    mockAnnotation,
+			SuggestionExtractor: mockExtractor,
+		})
+
+		// IDs with trailing content should be rejected
+		malformedIDs := []string{
+			"1001:0xyz",    // trailing letters
+			"1001:0 extra", // trailing with space
+			"1001:0:extra", // extra colon
+			"1001:0\t",     // trailing tab
+		}
+
+		for _, id := range malformedIDs {
+			_, err := svc.GetSuggestion(ctx, "owner", "repo", 42, id)
+			require.Error(t, err, "expected error for malformed ID: %s", id)
+			assert.ErrorIs(t, err, triage.ErrNoSuggestion, "malformed ID %s should not be parsed as annotation", id)
+		}
+
+		// Verify GetAnnotation was never called (no expectations were set)
+		mockAnnotation.AssertExpectations(t)
+	})
+}

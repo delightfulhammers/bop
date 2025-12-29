@@ -1,8 +1,11 @@
 package http_test
 
 import (
+	"context"
 	"errors"
+	"net"
 	"testing"
+	"time"
 
 	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
 	"github.com/stretchr/testify/assert"
@@ -139,6 +142,7 @@ func TestErrorTypeString(t *testing.T) {
 		{llmhttp.ErrTypeServiceUnavailable, "service unavailable"},
 		{llmhttp.ErrTypeInvalidRequest, "invalid request"},
 		{llmhttp.ErrTypeTimeout, "timeout"},
+		{llmhttp.ErrTypeNetwork, "network error"},
 		{llmhttp.ErrTypeModelNotFound, "model not found"},
 		{llmhttp.ErrTypeContentFiltered, "content filtered"},
 		{llmhttp.ErrTypeUnknown, "unknown error"},
@@ -149,4 +153,98 @@ func TestErrorTypeString(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.errType.String())
 		})
 	}
+}
+
+func TestNewNetworkError(t *testing.T) {
+	err := llmhttp.NewNetworkError("openai", "connection refused")
+
+	assert.Equal(t, llmhttp.ErrTypeNetwork, err.Type)
+	assert.Equal(t, "connection refused", err.Message)
+	assert.Equal(t, "openai", err.Provider)
+	assert.Equal(t, 0, err.StatusCode)
+	assert.True(t, err.IsRetryable())
+}
+
+// mockTimeoutErr implements net.Error with Timeout() returning true
+type mockTimeoutErr struct {
+	msg string
+}
+
+func (e *mockTimeoutErr) Error() string   { return e.msg }
+func (e *mockTimeoutErr) Timeout() bool   { return true }
+func (e *mockTimeoutErr) Temporary() bool { return true }
+
+// mockNetworkErr is a plain error that doesn't implement net.Error timeout
+type mockNetworkErr struct {
+	msg string
+}
+
+func (e *mockNetworkErr) Error() string { return e.msg }
+
+func TestClassifyNetworkError_ContextDeadlineExceeded(t *testing.T) {
+	// Create a context that's already timed out
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	defer cancel()
+	time.Sleep(10 * time.Millisecond) // Ensure deadline passes
+
+	genericErr := errors.New("some error")
+	result := llmhttp.ClassifyNetworkError("openai", genericErr, ctx)
+
+	assert.Equal(t, llmhttp.ErrTypeTimeout, result.Type)
+	assert.Equal(t, "request timed out", result.Message)
+	assert.Equal(t, "openai", result.Provider)
+	assert.True(t, result.IsRetryable())
+}
+
+func TestClassifyNetworkError_ContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	genericErr := errors.New("some error")
+	result := llmhttp.ClassifyNetworkError("anthropic", genericErr, ctx)
+
+	assert.Equal(t, llmhttp.ErrTypeUnknown, result.Type)
+	assert.Equal(t, "request canceled", result.Message)
+	assert.Equal(t, "anthropic", result.Provider)
+	assert.False(t, result.IsRetryable())
+}
+
+func TestClassifyNetworkError_NetErrorTimeout(t *testing.T) {
+	ctx := context.Background()
+	timeoutErr := &mockTimeoutErr{msg: "i/o timeout"}
+
+	result := llmhttp.ClassifyNetworkError("gemini", timeoutErr, ctx)
+
+	assert.Equal(t, llmhttp.ErrTypeTimeout, result.Type)
+	assert.Equal(t, "i/o timeout", result.Message)
+	assert.Equal(t, "gemini", result.Provider)
+	assert.True(t, result.IsRetryable())
+}
+
+func TestClassifyNetworkError_GenericNetworkError(t *testing.T) {
+	ctx := context.Background()
+	networkErr := &mockNetworkErr{msg: "connection refused"}
+
+	result := llmhttp.ClassifyNetworkError("ollama", networkErr, ctx)
+
+	assert.Equal(t, llmhttp.ErrTypeNetwork, result.Type)
+	assert.Equal(t, "connection refused", result.Message)
+	assert.Equal(t, "ollama", result.Provider)
+	assert.True(t, result.IsRetryable())
+}
+
+func TestClassifyNetworkError_DNSError(t *testing.T) {
+	ctx := context.Background()
+	// DNS errors are common network errors
+	dnsErr := &net.DNSError{
+		Err:  "no such host",
+		Name: "api.example.com",
+	}
+
+	result := llmhttp.ClassifyNetworkError("openai", dnsErr, ctx)
+
+	assert.Equal(t, llmhttp.ErrTypeNetwork, result.Type)
+	assert.Contains(t, result.Message, "no such host")
+	assert.Equal(t, "openai", result.Provider)
+	assert.True(t, result.IsRetryable())
 }

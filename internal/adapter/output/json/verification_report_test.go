@@ -15,7 +15,7 @@ func TestWriteVerificationReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	verified := []domain.VerifiedFinding{
 		{
@@ -115,7 +115,7 @@ func TestWriteVerificationReport_EmptyFindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	path, err := json.WriteVerificationReport(
 		tmpDir,
@@ -145,7 +145,7 @@ func TestWriteVerificationReport_CreatesDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Use a nested directory that doesn't exist
 	nestedDir := filepath.Join(tmpDir, "nested", "output", "dir")
@@ -187,7 +187,7 @@ func TestSanitizeFilename(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create temp dir: %v", err)
 			}
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			path, err := json.WriteVerificationReport(
 				tmpDir,

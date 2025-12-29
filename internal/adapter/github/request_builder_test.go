@@ -483,10 +483,16 @@ func TestExtractFingerprintFromComment(t *testing.T) {
 			wantFound:   false,
 		},
 		{
-			name:        "invalid characters rejected - uppercase",
+			name:        "uppercase fingerprint normalized to lowercase",
 			commentBody: "<!-- CR_FINGERPRINT:ABC123DEF456ABC123DEF456ABC12345 -->",
-			wantFP:      "",
-			wantFound:   false,
+			wantFP:      "abc123def456abc123def456abc12345", // normalized to lowercase
+			wantFound:   true,
+		},
+		{
+			name:        "mixed case fingerprint normalized to lowercase",
+			commentBody: "<!-- CR_FINGERPRINT:AbC123dEf456AbC123dEf456AbC12345 -->",
+			wantFP:      "abc123def456abc123def456abc12345", // normalized to lowercase
+			wantFound:   true,
 		},
 		{
 			name:        "invalid characters rejected - special chars",

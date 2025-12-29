@@ -209,13 +209,10 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 
 		resp, err := c.client.Do(req)
 		if err != nil {
-			// Check if it's a timeout
-			if ctx.Err() == context.DeadlineExceeded {
-				return llmhttp.NewTimeoutError("openai", "request timed out")
-			}
-			return llmhttp.NewTimeoutError("openai", err.Error())
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError("openai", err, ctx)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// Read response body
 		body, err := io.ReadAll(resp.Body)

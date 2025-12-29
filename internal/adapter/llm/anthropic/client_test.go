@@ -70,7 +70,7 @@ func TestHTTPClient_Call_Success(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropic.MessagesResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.MessagesResponse{
 			ID:   "msg_123",
 			Type: "message",
 			Role: "assistant",
@@ -109,7 +109,7 @@ func TestHTTPClient_Call_AuthenticationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(anthropic.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.ErrorResponse{
 			Type: "error",
 			Error: anthropic.ErrorDetail{
 				Type:    "authentication_error",
@@ -139,7 +139,7 @@ func TestHTTPClient_Call_RateLimitError(t *testing.T) {
 		if callCount < 3 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(anthropic.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(anthropic.ErrorResponse{
 				Type: "error",
 				Error: anthropic.ErrorDetail{
 					Type:    "rate_limit_error",
@@ -150,7 +150,7 @@ func TestHTTPClient_Call_RateLimitError(t *testing.T) {
 		}
 		// Success on 3rd attempt
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropic.MessagesResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.MessagesResponse{
 			ID:   "msg_123",
 			Type: "message",
 			Role: "assistant",
@@ -182,7 +182,7 @@ func TestHTTPClient_Call_OverloadedError(t *testing.T) {
 		if callCount < 2 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(529) // Anthropic-specific overloaded status
-			json.NewEncoder(w).Encode(anthropic.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(anthropic.ErrorResponse{
 				Type: "error",
 				Error: anthropic.ErrorDetail{
 					Type:    "overloaded_error",
@@ -193,7 +193,7 @@ func TestHTTPClient_Call_OverloadedError(t *testing.T) {
 		}
 		// Success on 2nd attempt
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropic.MessagesResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.MessagesResponse{
 			ID:      "msg_123",
 			Type:    "message",
 			Role:    "assistant",
@@ -218,7 +218,7 @@ func TestHTTPClient_Call_InvalidRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(anthropic.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.ErrorResponse{
 			Type: "error",
 			Error: anthropic.ErrorDetail{
 				Type:    "invalid_request_error",
@@ -279,7 +279,7 @@ func TestHTTPClient_Call_ContextCanceled(t *testing.T) {
 func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"invalid json`))
+		_, _ = w.Write([]byte(`{"invalid json`))
 	}))
 	defer server.Close()
 
@@ -295,7 +295,7 @@ func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 func TestHTTPClient_Call_EmptyContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropic.MessagesResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.MessagesResponse{
 			ID:         "msg_123",
 			Type:       "message",
 			Role:       "assistant",
@@ -319,7 +319,7 @@ func TestHTTPClient_Call_EmptyContent(t *testing.T) {
 func TestHTTPClient_Call_MultipleContentBlocks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropic.MessagesResponse{
+		_ = json.NewEncoder(w).Encode(anthropic.MessagesResponse{
 			ID:   "msg_123",
 			Type: "message",
 			Role: "assistant",

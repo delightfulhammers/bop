@@ -180,18 +180,14 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		var callErr error
 		resp, callErr = c.client.Do(retryReq)
 		if callErr != nil {
-			return &llmhttp.Error{
-				Type:      llmhttp.ErrTypeTimeout,
-				Message:   callErr.Error(),
-				Retryable: false,
-				Provider:  "anthropic",
-			}
+			// Classify network errors properly (timeout vs DNS/TLS/connection)
+			return llmhttp.ClassifyNetworkError("anthropic", callErr, ctx)
 		}
 
 		// Check for error status codes
 		if resp.StatusCode >= 400 {
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return c.handleErrorResponse(resp.StatusCode, bodyBytes)
 		}
 
@@ -226,7 +222,7 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		}
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Parse response
 	bodyBytes, err := io.ReadAll(resp.Body)

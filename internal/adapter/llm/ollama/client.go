@@ -179,7 +179,7 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		// Check for error status codes
 		if resp.StatusCode >= 400 {
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return c.handleErrorResponse(resp.StatusCode, bodyBytes)
 		}
 
@@ -214,7 +214,7 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 		}
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Parse response
 	bodyBytes, err := io.ReadAll(resp.Body)

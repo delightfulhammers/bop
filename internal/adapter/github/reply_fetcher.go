@@ -97,7 +97,7 @@ func (c *Client) fetchCommentsPage(ctx context.Context, pageURL string) ([]PullR
 
 		if resp.StatusCode >= 400 {
 			bodyBytes, readErr := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if readErr != nil {
 				return &llmhttp.Error{
 					Type:       llmhttp.ErrTypeUnknown,
@@ -116,7 +116,7 @@ func (c *Client) fetchCommentsPage(ctx context.Context, pageURL string) ([]PullR
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var comments []PullRequestComment
 	if err := json.NewDecoder(resp.Body).Decode(&comments); err != nil {

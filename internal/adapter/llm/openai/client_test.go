@@ -92,7 +92,7 @@ func TestHTTPClient_Call_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -117,7 +117,7 @@ func TestHTTPClient_Call_AuthenticationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(openai.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(openai.ErrorResponse{
 			Error: openai.ErrorDetail{
 				Message: "Invalid API key",
 				Type:    "invalid_request_error",
@@ -147,7 +147,7 @@ func TestHTTPClient_Call_RateLimitError(t *testing.T) {
 			// Return rate limit error first 2 times
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(openai.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(openai.ErrorResponse{
 				Error: openai.ErrorDetail{
 					Message: "Rate limit exceeded",
 					Type:    "rate_limit_error",
@@ -158,7 +158,7 @@ func TestHTTPClient_Call_RateLimitError(t *testing.T) {
 
 		// Success on 3rd attempt
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -203,7 +203,7 @@ func TestHTTPClient_Call_ServiceUnavailable(t *testing.T) {
 
 		// Success on 2nd attempt
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -233,7 +233,7 @@ func TestHTTPClient_Call_InvalidRequest(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(openai.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(openai.ErrorResponse{
 			Error: openai.ErrorDetail{
 				Message: "Invalid request",
 				Type:    "invalid_request_error",
@@ -293,7 +293,7 @@ func TestHTTPClient_Call_ContextCanceled(t *testing.T) {
 func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{invalid json`))
+		_, _ = w.Write([]byte(`{invalid json`))
 	}))
 	defer server.Close()
 
@@ -309,7 +309,7 @@ func TestHTTPClient_Call_MalformedJSON(t *testing.T) {
 func TestHTTPClient_Call_EmptyChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -347,7 +347,7 @@ func TestHTTPClient_Call_O1Model(t *testing.T) {
 
 		// Send response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -391,7 +391,7 @@ func TestHTTPClient_Call_O4Model(t *testing.T) {
 		assert.Equal(t, 0, req.MaxTokens)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -428,7 +428,7 @@ func TestHTTPClient_Call_O3Model(t *testing.T) {
 		assert.Nil(t, req.Seed, "o3 models should not set seed")
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -466,7 +466,7 @@ func TestHTTPClient_Call_O3ModelExactName(t *testing.T) {
 		assert.Equal(t, 0, req.MaxTokens, "o3 exact name should not set max_tokens")
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -504,7 +504,7 @@ func TestHTTPClient_Call_RegularModel_UsesTemperatureAndSeed(t *testing.T) {
 		assert.Equal(t, uint64(99999), *req.Seed)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -540,7 +540,7 @@ func TestHTTPClient_WithObservability(t *testing.T) {
 	// Mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-123",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),
@@ -594,7 +594,7 @@ func TestHTTPClient_WithObservability_Error(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(openai.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(openai.ErrorResponse{
 			Error: openai.ErrorDetail{
 				Message: "Rate limit exceeded",
 				Type:    "rate_limit_error",
@@ -636,7 +636,7 @@ func TestHTTPClient_Call_GPT5_UsesMaxCompletionTokens(t *testing.T) {
 		assert.Equal(t, 0.7, req.Temperature)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
+		_ = json.NewEncoder(w).Encode(openai.ChatCompletionResponse{
 			ID:      "chatcmpl-gpt5",
 			Object:  "chat.completion",
 			Created: time.Now().Unix(),

@@ -25,6 +25,7 @@ providers:
     enabled: true
     model: "gemini-3-pro-preview"
     apiKey: "${GEMINI_API_KEY}"
+    timeout: "180s"  # Gemini 3 Pro is a reasoning model that may need extra time
 
   # Ollama provider (local LLM)
   # ollama:
