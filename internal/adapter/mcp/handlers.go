@@ -98,6 +98,16 @@ func (s *Server) handleGetAnnotation(ctx context.Context, req *mcp.CallToolReque
 		return nil, GetAnnotationOutput{}, fmt.Errorf("get annotation: %w", err)
 	}
 
+	// Guard against nil annotation (defensive)
+	if annotation == nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("Annotation not found: check_run_id=%d, index=%d", input.CheckRunID, input.Index)},
+			},
+		}, GetAnnotationOutput{}, nil
+	}
+
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
 				&mcp.TextContent{Text: fmt.Sprintf("Annotation in %s (line %d): %s", annotation.Path, annotation.StartLine, annotation.Message)},
@@ -255,9 +265,11 @@ func (s *Server) handleGetCodeContext(ctx context.Context, req *mcp.CallToolRequ
 		return notImplementedResult("M2"), GetCodeContextOutput{}, nil
 	}
 
-	// Default context lines to 3 if not specified
+	// Default context lines to 3 if not specified, clamp negative values to 0
 	contextLines := input.ContextLines
-	if contextLines == 0 {
+	if contextLines < 0 {
+		contextLines = 0
+	} else if contextLines == 0 {
 		contextLines = 3
 	}
 
@@ -279,6 +291,14 @@ func (s *Server) handleGetCodeContext(ctx context.Context, req *mcp.CallToolRequ
 				IsError: true,
 				Content: []mcp.Content{
 					&mcp.TextContent{Text: fmt.Sprintf("Invalid line range: %d-%d", input.StartLine, input.EndLine)},
+				},
+			}, GetCodeContextOutput{}, nil
+		}
+		if errors.Is(err, triage.ErrFileTruncated) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("File too large: %s exceeds 10MB limit", input.File)},
 				},
 			}, GetCodeContextOutput{}, nil
 		}

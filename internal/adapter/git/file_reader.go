@@ -55,10 +55,15 @@ func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error)
 	}
 	defer func() { _ = reader.Close() }()
 
-	// Limit file size to prevent OOM on extremely large files
-	content, err := io.ReadAll(io.LimitReader(reader, maxFileSize))
+	// Read up to maxFileSize + 1 bytes to detect truncation
+	content, err := io.ReadAll(io.LimitReader(reader, maxFileSize+1))
 	if err != nil {
 		return "", fmt.Errorf("read content: %w", err)
+	}
+
+	// If we read more than maxFileSize, file was truncated
+	if len(content) > maxFileSize {
+		return "", triage.ErrFileTruncated
 	}
 
 	return string(content), nil

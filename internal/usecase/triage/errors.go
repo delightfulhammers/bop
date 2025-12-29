@@ -31,3 +31,6 @@ var ErrInvalidLineRange = errors.New("invalid line range")
 
 // ErrNoSuggestion is returned when no code suggestion could be extracted.
 var ErrNoSuggestion = errors.New("no suggestion found in content")
+
+// ErrFileTruncated is returned when a file exceeds the maximum read size.
+var ErrFileTruncated = errors.New("file truncated: exceeds 10MB limit")

@@ -134,6 +134,10 @@ func (s *PRService) GetFinding(ctx context.Context, owner, repo string, prNumber
 // GetSuggestion extracts a structured code suggestion from a finding.
 // Works with both annotations and PR comments.
 func (s *PRService) GetSuggestion(ctx context.Context, owner, repo string, prNumber int, findingID string) (*domain.Suggestion, error) {
+	// Check dependencies - requires CommentReader to fetch finding content
+	if s.deps.CommentReader == nil {
+		return nil, ErrNotImplemented
+	}
 	// For now, this is not implemented - requires parsing suggestion blocks from finding messages
 	return nil, ErrNotImplemented
 }
