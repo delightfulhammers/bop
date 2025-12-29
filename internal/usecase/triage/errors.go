@@ -41,3 +41,20 @@ var ErrInvalidFilter = errors.New("invalid filter value")
 // ValidSeverities contains all valid severity filter values.
 // Used by ListFindings to validate the severity parameter.
 var ValidSeverities = []string{"critical", "high", "medium", "low"}
+
+// Write operation errors.
+
+// ErrThreadNotFound is returned when a review thread doesn't exist.
+var ErrThreadNotFound = errors.New("thread not found")
+
+// ErrReviewNotFound is returned when a PR review doesn't exist.
+var ErrReviewNotFound = errors.New("review not found")
+
+// ErrUserNotFound is returned when a requested reviewer user doesn't exist.
+var ErrUserNotFound = errors.New("user not found")
+
+// ErrNotImplemented is returned when an operation is not supported by the adapter.
+var ErrNotImplemented = errors.New("operation not implemented")
+
+// ErrPermissionDenied is returned when the operation requires permissions not available.
+var ErrPermissionDenied = errors.New("permission denied")

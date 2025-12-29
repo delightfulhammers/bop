@@ -7,8 +7,7 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/domain"
 )
 
-// ErrNotImplemented is returned by stub methods awaiting M2 implementation.
-var ErrNotImplemented = errors.New("not implemented: awaiting M2 implementation")
+// Note: ErrNotImplemented is defined in errors.go
 
 // ErrSessionNotFound is returned when a session ID doesn't exist.
 var ErrSessionNotFound = errors.New("triage session not found")

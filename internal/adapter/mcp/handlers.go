@@ -411,147 +411,292 @@ func (s *Server) handleGetDiffContext(ctx context.Context, req *mcp.CallToolRequ
 		}, nil
 }
 
-// M3 Write Tool Handlers (session-based, for future implementation)
+// =============================================================================
+// M3 Write Tool Handlers (PR-based, stateless)
+// =============================================================================
 
-// registerTriageFindingTool registers the triage_finding tool.
-func (s *Server) registerTriageFindingTool() {
+// registerGetThreadTool registers the get_thread tool.
+func (s *Server) registerGetThreadTool() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "triage_finding",
-		Description: "Apply a triage decision to a finding (accept, dispute, question, resolve, or won't fix).",
-	}, s.handleTriageFinding)
+		Name:        "get_thread",
+		Description: "Get the full comment thread for a review comment, including all replies.",
+	}, s.handleGetThread)
 }
 
-func (s *Server) handleTriageFinding(ctx context.Context, req *mcp.CallToolRequest, input TriageFindingInput) (*mcp.CallToolResult, TriageFindingOutput, error) {
-	if s.deps.TriageService == nil {
-		return notImplementedResult("M3"), TriageFindingOutput{Success: false, Message: "Not implemented"}, nil
+func (s *Server) handleGetThread(ctx context.Context, req *mcp.CallToolRequest, input GetThreadInput) (*mcp.CallToolResult, GetThreadOutput, error) {
+	if s.deps.PRService == nil {
+		return notImplementedResult("M3"), GetThreadOutput{}, nil
 	}
 
-	// Validate status before creating decision
-	status := domain.TriageStatus(input.Status)
-	if !status.IsValid() {
-		return &mcp.CallToolResult{
-			IsError: true,
-			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("invalid triage status: %s (valid: pending, accepted, disputed, question, resolved, wont_fix)", input.Status)},
-			},
-		}, TriageFindingOutput{Success: false, Message: "Invalid status"}, nil
-	}
-
-	decision := domain.TriageDecision{
-		FindingID: input.FindingID,
-		Status:    status,
-		Reason:    input.Reason,
-		TriagedAt: time.Now(),
-	}
-
-	err := s.deps.TriageService.TriageFinding(ctx, input.SessionID, input.FindingID, decision)
+	// Get thread history from the CommentReader
+	comments, err := s.deps.PRService.GetThreadHistory(ctx, input.Owner, input.Repo, input.CommentID)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return notImplementedResult("M3"), TriageFindingOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), GetThreadOutput{}, nil
 		}
-		return nil, TriageFindingOutput{}, fmt.Errorf("failed to triage finding: %w", err)
+		return nil, GetThreadOutput{}, fmt.Errorf("get thread: %w", err)
+	}
+
+	output := GetThreadOutput{
+		CommentID: input.CommentID,
+		Comments:  make([]ThreadCommentOutput, len(comments)),
+		Total:     len(comments),
+		Message:   fmt.Sprintf("Found %d comments in thread", len(comments)),
+	}
+
+	for i, c := range comments {
+		output.Comments[i] = ThreadCommentOutput{
+			Author:    c.Author,
+			Body:      c.Body,
+			CreatedAt: c.CreatedAt.Format(time.RFC3339),
+			IsReply:   c.IsReply,
+		}
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: output.Message},
+		},
+	}, output, nil
+}
+
+// registerReplyToFindingTool registers the reply_to_finding tool.
+func (s *Server) registerReplyToFindingTool() {
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "reply_to_finding",
+		Description: "Reply to a code reviewer finding or SARIF comment. Optionally include a status tag.",
+	}, s.handleReplyToFinding)
+}
+
+func (s *Server) handleReplyToFinding(ctx context.Context, req *mcp.CallToolRequest, input ReplyToFindingInput) (*mcp.CallToolResult, ReplyToFindingOutput, error) {
+	if s.deps.PRService == nil {
+		return notImplementedResult("M3"), ReplyToFindingOutput{Success: false}, nil
+	}
+
+	// Build the reply body with optional status tag
+	body := input.Body
+	if input.Status != nil && *input.Status != "" {
+		// Prepend status tag for machine parsing
+		body = fmt.Sprintf("**Status:** %s\n\n%s", *input.Status, input.Body)
+	}
+
+	commentID, err := s.deps.PRService.ReplyToFinding(ctx, input.Owner, input.Repo, input.PRNumber, input.FindingID, body)
+	if err != nil {
+		if errors.Is(err, triage.ErrNotImplemented) {
+			return notImplementedResult("M3"), ReplyToFindingOutput{Success: false}, nil
+		}
+		if errors.Is(err, triage.ErrCommentNotFound) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Finding not found: %s", input.FindingID)},
+				},
+			}, ReplyToFindingOutput{Success: false, Message: "Finding not found"}, nil
+		}
+		return nil, ReplyToFindingOutput{}, fmt.Errorf("reply to finding: %w", err)
 	}
 
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Finding %s marked as %s", input.FindingID, input.Status)},
+				&mcp.TextContent{Text: fmt.Sprintf("Reply posted (comment ID: %d)", commentID)},
 			},
-		}, TriageFindingOutput{
-			Success: true,
-			Message: fmt.Sprintf("Finding triaged as %s", input.Status),
+		}, ReplyToFindingOutput{
+			Success:   true,
+			CommentID: commentID,
+			Message:   "Reply posted successfully",
 		}, nil
 }
 
 // registerPostCommentTool registers the post_comment tool.
 func (s *Server) registerPostCommentTool() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "post_review_comment",
-		Description: "Post a new review comment on GitHub for a finding.",
+		Name:        "post_comment",
+		Description: "Post a new review comment at a specific file and line. Use for responding to SARIF annotations.",
 	}, s.handlePostComment)
 }
 
 func (s *Server) handlePostComment(ctx context.Context, req *mcp.CallToolRequest, input PostCommentInput) (*mcp.CallToolResult, PostCommentOutput, error) {
-	if s.deps.TriageService == nil {
-		return notImplementedResult("M3"), PostCommentOutput{Success: false, Message: "Not implemented"}, nil
+	if s.deps.PRService == nil {
+		return notImplementedResult("M3"), PostCommentOutput{Success: false}, nil
 	}
 
-	err := s.deps.TriageService.PostComment(ctx, input.SessionID, input.FindingID, input.Body)
+	// Validate inputs
+	if input.File == "" {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "file path is required"},
+			},
+		}, PostCommentOutput{Success: false, Message: "Missing file path"}, nil
+	}
+	if input.Line <= 0 {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("Invalid line number: %d (must be positive)", input.Line)},
+			},
+		}, PostCommentOutput{Success: false, Message: "Invalid line number"}, nil
+	}
+
+	commentID, err := s.deps.PRService.PostComment(ctx, input.Owner, input.Repo, input.PRNumber, input.File, input.Line, input.Body)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return notImplementedResult("M3"), PostCommentOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), PostCommentOutput{Success: false}, nil
 		}
-		return nil, PostCommentOutput{}, fmt.Errorf("failed to post comment: %w", err)
+		return nil, PostCommentOutput{}, fmt.Errorf("post comment: %w", err)
 	}
 
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Comment posted successfully"},
+				&mcp.TextContent{Text: fmt.Sprintf("Comment posted at %s:%d (ID: %d)", input.File, input.Line, commentID)},
 			},
 		}, PostCommentOutput{
-			Success: true,
-			Message: "Comment posted",
+			Success:   true,
+			CommentID: commentID,
+			Message:   "Comment posted successfully",
 		}, nil
 }
 
-// registerReplyToThreadTool registers the reply_to_thread tool.
-func (s *Server) registerReplyToThreadTool() {
+// registerMarkResolvedTool registers the mark_resolved tool.
+func (s *Server) registerMarkResolvedTool() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "reply_to_thread",
-		Description: "Reply to an existing review thread on GitHub.",
-	}, s.handleReplyToThread)
+		Name:        "mark_resolved",
+		Description: "Mark a review thread as resolved or unresolved. Requires the thread's node_id (e.g., PRRT_kwDO...).",
+	}, s.handleMarkResolved)
 }
 
-func (s *Server) handleReplyToThread(ctx context.Context, req *mcp.CallToolRequest, input ReplyToThreadInput) (*mcp.CallToolResult, ReplyToThreadOutput, error) {
-	if s.deps.TriageService == nil {
-		return notImplementedResult("M3"), ReplyToThreadOutput{Success: false, Message: "Not implemented"}, nil
+func (s *Server) handleMarkResolved(ctx context.Context, req *mcp.CallToolRequest, input MarkResolvedInput) (*mcp.CallToolResult, MarkResolvedOutput, error) {
+	if s.deps.PRService == nil {
+		return notImplementedResult("M3"), MarkResolvedOutput{Success: false}, nil
 	}
 
-	err := s.deps.TriageService.ReplyToFinding(ctx, input.SessionID, input.FindingID, input.Body)
+	var err error
+	if input.Resolved {
+		err = s.deps.PRService.ResolveThread(ctx, input.Owner, input.Repo, input.ThreadID)
+	} else {
+		err = s.deps.PRService.UnresolveThread(ctx, input.Owner, input.Repo, input.ThreadID)
+	}
+
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
-			return notImplementedResult("M3"), ReplyToThreadOutput{Success: false, Message: "Not implemented"}, nil
+			return notImplementedResult("M3"), MarkResolvedOutput{Success: false}, nil
 		}
-		return nil, ReplyToThreadOutput{}, fmt.Errorf("failed to reply to thread: %w", err)
+		if errors.Is(err, triage.ErrThreadNotFound) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Thread not found: %s", input.ThreadID)},
+				},
+			}, MarkResolvedOutput{Success: false, Message: "Thread not found"}, nil
+		}
+		return nil, MarkResolvedOutput{}, fmt.Errorf("mark resolved: %w", err)
+	}
+
+	action := "resolved"
+	if !input.Resolved {
+		action = "unresolved"
 	}
 
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Reply posted successfully"},
+				&mcp.TextContent{Text: fmt.Sprintf("Thread marked as %s", action)},
 			},
-		}, ReplyToThreadOutput{
-			Success: true,
-			Message: "Reply posted",
+		}, MarkResolvedOutput{
+			Success:  true,
+			Resolved: input.Resolved,
+			Message:  fmt.Sprintf("Thread marked as %s", action),
 		}, nil
 }
 
-// registerResolveThreadTool registers the resolve_thread tool.
-func (s *Server) registerResolveThreadTool() {
+// registerRequestRereviewTool registers the request_rereview tool.
+func (s *Server) registerRequestRereviewTool() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "resolve_thread",
-		Description: "Mark a review thread as resolved on GitHub.",
-	}, s.handleResolveThread)
+		Name:        "request_rereview",
+		Description: "Dismiss stale bot reviews and request fresh review from specified reviewers.",
+	}, s.handleRequestRereview)
 }
 
-func (s *Server) handleResolveThread(ctx context.Context, req *mcp.CallToolRequest, input ResolveThreadInput) (*mcp.CallToolResult, ResolveThreadOutput, error) {
-	if s.deps.TriageService == nil {
-		return notImplementedResult("M3"), ResolveThreadOutput{Success: false, Message: "Not implemented"}, nil
+func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolRequest, input RequestRereviewInput) (*mcp.CallToolResult, RequestRereviewOutput, error) {
+	if s.deps.PRService == nil {
+		return notImplementedResult("M3"), RequestRereviewOutput{Success: false}, nil
 	}
 
-	err := s.deps.TriageService.ResolveFinding(ctx, input.SessionID, input.FindingID)
-	if err != nil {
-		if errors.Is(err, triage.ErrNotImplemented) {
-			return notImplementedResult("M3"), ResolveThreadOutput{Success: false, Message: "Not implemented"}, nil
+	var reviewsDismissed int
+
+	// Dismiss stale bot reviews if requested
+	if input.DismissStale {
+		reviews, err := s.deps.PRService.ListReviews(ctx, input.Owner, input.Repo, input.PRNumber)
+		if err != nil {
+			if errors.Is(err, triage.ErrNotImplemented) {
+				return notImplementedResult("M3 - ListReviews"), RequestRereviewOutput{Success: false}, nil
+			}
+			return nil, RequestRereviewOutput{}, fmt.Errorf("list reviews: %w", err)
 		}
-		return nil, ResolveThreadOutput{}, fmt.Errorf("failed to resolve thread: %w", err)
+
+		// Find bot reviews with actionable states (APPROVED or CHANGES_REQUESTED)
+		// These are "stale" because the code may have changed since the bot reviewed
+		dismissMessage := input.Message
+		if dismissMessage == "" {
+			dismissMessage = "Dismissed stale bot review to allow fresh re-review"
+		}
+
+		for _, review := range reviews {
+			// Only dismiss bot reviews
+			if review.UserType != "Bot" {
+				continue
+			}
+			// Only dismiss actionable review states
+			if review.State != "APPROVED" && review.State != "CHANGES_REQUESTED" {
+				continue
+			}
+
+			err := s.deps.PRService.DismissReview(ctx, input.Owner, input.Repo, input.PRNumber, review.ID, dismissMessage)
+			if err != nil {
+				// Log but don't fail - some reviews may not be dismissable
+				continue
+			}
+			reviewsDismissed++
+		}
+	}
+
+	// Request review from specified reviewers
+	reviewsRequested := len(input.Reviewers) + len(input.TeamReviewers)
+	if reviewsRequested > 0 {
+		err := s.deps.PRService.RequestReview(ctx, input.Owner, input.Repo, input.PRNumber, input.Reviewers, input.TeamReviewers)
+		if err != nil {
+			if errors.Is(err, triage.ErrNotImplemented) {
+				return notImplementedResult("M3"), RequestRereviewOutput{Success: false}, nil
+			}
+			if errors.Is(err, triage.ErrUserNotFound) {
+				return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: "One or more requested reviewers not found or not collaborators"},
+					},
+				}, RequestRereviewOutput{Success: false, Message: "Reviewer not found"}, nil
+			}
+			return nil, RequestRereviewOutput{}, fmt.Errorf("request review: %w", err)
+		}
+	}
+
+	message := fmt.Sprintf("Dismissed %d stale reviews, requested review from %d reviewers", reviewsDismissed, reviewsRequested)
+	if reviewsDismissed == 0 && reviewsRequested == 0 {
+		message = "No reviews dismissed or requested"
+	} else if reviewsDismissed == 0 {
+		message = fmt.Sprintf("Requested review from %d reviewers", reviewsRequested)
+	} else if reviewsRequested == 0 {
+		message = fmt.Sprintf("Dismissed %d stale reviews", reviewsDismissed)
 	}
 
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: "Thread resolved successfully"},
+				&mcp.TextContent{Text: message},
 			},
-		}, ResolveThreadOutput{
-			Success: true,
-			Message: "Thread resolved",
+		}, RequestRereviewOutput{
+			Success:          true,
+			ReviewsDismissed: reviewsDismissed,
+			ReviewsRequested: reviewsRequested,
+			Message:          message,
 		}, nil
 }
 
