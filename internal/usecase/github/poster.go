@@ -114,7 +114,8 @@ type PostReviewResult struct {
 	// ReviewID is the GitHub review ID.
 	ReviewID int64
 
-	// CommentsPosted is the number of inline comments posted.
+	// CommentsPosted is the number of inline comments we attempted to post.
+	// This is the count of in-diff findings after deduplication.
 	CommentsPosted int
 
 	// CommentsSkipped is the number of findings skipped (not in diff).
@@ -146,6 +147,16 @@ type PostReviewResult struct {
 
 	// OpenCount is the number of existing findings with no status-changing replies.
 	OpenCount int
+
+	// Comment verification fields (Issue #129)
+	// CommentsVerified is the actual number of comments GitHub accepted for this review.
+	// A value of -1 indicates verification failed (e.g., API error fetching comments).
+	// A value of 0 when CommentsPosted > 0 may indicate GitHub silently dropped comments.
+	CommentsVerified int
+
+	// CommentMismatch is true when CommentsPosted != CommentsVerified and verification succeeded.
+	// This indicates GitHub silently rejected some comments (e.g., stale diff positions).
+	CommentMismatch bool
 }
 
 // PostReview posts a code review to GitHub.
@@ -263,6 +274,12 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		dismissedCount = p.dismissStaleReviews(ctx, req.Owner, req.Repo, req.PullNumber, req.BotUsername, resp.ID)
 	}
 
+	// Verify that comments were actually posted (Issue #129)
+	// This detects when GitHub silently drops comments due to stale positions
+	commentsVerified, commentMismatch := p.verifyPostedComments(
+		ctx, req.Owner, req.Repo, req.PullNumber, req.BotUsername, resp.ID, inDiffCount,
+	)
+
 	return &PostReviewResult{
 		ReviewID:                  resp.ID,
 		CommentsPosted:            inDiffCount,
@@ -275,6 +292,8 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		AcknowledgedCount:         statusCounts.Acknowledged,
 		DisputedCount:             statusCounts.Disputed,
 		OpenCount:                 statusCounts.Open,
+		CommentsVerified:          commentsVerified,
+		CommentMismatch:           commentMismatch,
 	}, nil
 }
 
@@ -328,6 +347,59 @@ func shouldDismissReview(review github.ReviewSummary, botUsername string) bool {
 
 	// Dismiss all other states (APPROVED, CHANGES_REQUESTED, COMMENTED)
 	return true
+}
+
+// verifyPostedComments verifies that the expected number of comments were actually
+// posted to GitHub. This detects when GitHub silently drops comments due to stale
+// diff positions or other validation failures.
+//
+// Returns:
+//   - commentsVerified: actual count of comments from this review (-1 if verification failed)
+//   - commentMismatch: true if expected != actual and verification succeeded
+//
+// If botUsername is empty, verification is skipped (returns 0, false).
+// Errors are logged but do not affect the main review posting workflow.
+func (p *ReviewPoster) verifyPostedComments(
+	ctx context.Context,
+	owner, repo string,
+	pullNumber int,
+	botUsername string,
+	reviewID int64,
+	expectedCount int,
+) (commentsVerified int, commentMismatch bool) {
+	// Skip verification if no bot username (can't identify our comments)
+	if botUsername == "" {
+		return 0, false
+	}
+
+	// Skip verification if we didn't expect any comments
+	if expectedCount == 0 {
+		return 0, false
+	}
+
+	// Fetch all comments on the PR
+	comments, err := p.client.ListPullRequestComments(ctx, owner, repo, pullNumber)
+	if err != nil {
+		log.Printf("[WARN] Failed to verify posted comments (Issue #129): %v", err)
+		return -1, false // -1 indicates verification failed
+	}
+
+	// Count comments that belong to this specific review
+	actualCount := 0
+	for _, comment := range comments {
+		if comment.PullRequestReviewID == reviewID {
+			actualCount++
+		}
+	}
+
+	// Check for mismatch
+	if actualCount != expectedCount {
+		log.Printf("[WARN] Comment count mismatch (Issue #129): expected %d, got %d for review %d on %s/%s#%d",
+			expectedCount, actualCount, reviewID, owner, repo, pullNumber)
+		return actualCount, true
+	}
+
+	return actualCount, false
 }
 
 // StatusCounts tracks the count of findings by status.
