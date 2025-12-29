@@ -174,7 +174,9 @@ func (c *Client) executeThreadMutation(ctx context.Context, mutation, threadID s
 
 	// Validate response data is not empty/null
 	// GraphQL can return HTTP 200 with empty data without errors in some edge cases
-	if len(gqlResp.Data) == 0 || string(gqlResp.Data) == "null" {
+	// json.RawMessage for {"data":null} contains the literal bytes "null"
+	dataStr := strings.TrimSpace(string(gqlResp.Data))
+	if len(dataStr) == 0 || dataStr == "null" {
 		return fmt.Errorf("GraphQL mutation returned empty data without errors")
 	}
 

@@ -169,11 +169,17 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 		return 0, fmt.Errorf("path cannot be empty")
 	}
 	// Validate path doesn't contain path traversal sequences
+	// Note: URL-encoded variants (%2e%2e) don't apply here since this is JSON body content,
+	// not a URL path - the string is used literally. GitHub API validates server-side.
 	if strings.Contains(path, "..") {
 		return 0, fmt.Errorf("invalid path: must not contain '..'")
 	}
 	if strings.HasPrefix(path, "/") {
 		return 0, fmt.Errorf("invalid path: must be relative (no leading '/')")
+	}
+	// Check for Windows-style absolute paths (defensive - git repos don't use these)
+	if len(path) >= 2 && path[1] == ':' {
+		return 0, fmt.Errorf("invalid path: must be relative (no drive letter)")
 	}
 	if line <= 0 {
 		return 0, fmt.Errorf("line must be positive")

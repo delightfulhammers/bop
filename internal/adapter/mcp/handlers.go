@@ -693,9 +693,10 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 
 	// Append dismiss errors to message if any occurred
 	if len(dismissErrors) > 0 {
-		message = fmt.Sprintf("%s (failed to dismiss %d: %s)", message, len(dismissErrors), dismissErrors[0])
-		if len(dismissErrors) > 1 {
-			message = fmt.Sprintf("%s (failed to dismiss %d reviews)", message[:len(message)-len(dismissErrors[0])-1], len(dismissErrors))
+		if len(dismissErrors) == 1 {
+			message = fmt.Sprintf("%s (failed to dismiss 1: %s)", message, dismissErrors[0])
+		} else {
+			message = fmt.Sprintf("%s (failed to dismiss %d reviews: %s, ...)", message, len(dismissErrors), dismissErrors[0])
 		}
 	}
 
