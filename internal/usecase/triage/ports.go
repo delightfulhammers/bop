@@ -97,7 +97,9 @@ type CommentWriter interface {
 	// CreateComment creates a new review comment at a specific file and line.
 	// This is used when responding to SARIF annotations which exist as check run
 	// annotations rather than PR comments - we create a new comment at the same location.
-	// The position is the diff-relative line position (not the absolute line number).
+	// The line parameter is the absolute line number in the file (1-based).
+	// GitHub's API maps this to the appropriate diff position internally.
+	// Comments are placed on the RIGHT side of the diff (new file version).
 	// Returns the ID of the newly created comment.
 	CreateComment(ctx context.Context, owner, repo string, prNumber int, commitSHA, path string, line int, body string) (int64, error)
 }

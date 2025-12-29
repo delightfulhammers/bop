@@ -622,6 +622,7 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 	}
 
 	var reviewsDismissed int
+	var dismissErrors []string
 
 	// Dismiss stale bot reviews if requested
 	if input.DismissStale {
@@ -652,7 +653,8 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 
 			err := s.deps.PRService.DismissReview(ctx, input.Owner, input.Repo, input.PRNumber, review.ID, dismissMessage)
 			if err != nil {
-				// Log but don't fail - some reviews may not be dismissable
+				// Track error but continue - some reviews may not be dismissable (e.g., permissions)
+				dismissErrors = append(dismissErrors, fmt.Sprintf("review %d: %v", review.ID, err))
 				continue
 			}
 			reviewsDismissed++
@@ -679,6 +681,7 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 		}
 	}
 
+	// Build result message including any dismiss errors
 	message := fmt.Sprintf("Dismissed %d stale reviews, requested review from %d reviewers", reviewsDismissed, reviewsRequested)
 	if reviewsDismissed == 0 && reviewsRequested == 0 {
 		message = "No reviews dismissed or requested"
@@ -686,6 +689,14 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 		message = fmt.Sprintf("Requested review from %d reviewers", reviewsRequested)
 	} else if reviewsRequested == 0 {
 		message = fmt.Sprintf("Dismissed %d stale reviews", reviewsDismissed)
+	}
+
+	// Append dismiss errors to message if any occurred
+	if len(dismissErrors) > 0 {
+		message = fmt.Sprintf("%s (failed to dismiss %d: %s)", message, len(dismissErrors), dismissErrors[0])
+		if len(dismissErrors) > 1 {
+			message = fmt.Sprintf("%s (failed to dismiss %d reviews)", message[:len(message)-len(dismissErrors[0])-1], len(dismissErrors))
+		}
 	}
 
 	return &mcp.CallToolResult{

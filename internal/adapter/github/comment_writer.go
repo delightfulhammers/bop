@@ -8,9 +8,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 
 	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
 )
+
+// githubNamePattern validates GitHub usernames and team slugs.
+// GitHub usernames: alphanumeric and hyphens, 1-39 chars, no leading/trailing hyphens.
+// Team slugs: alphanumeric, hyphens, and underscores.
+var githubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$|^[a-zA-Z0-9]$`)
 
 // ReplyCommentRequest is the request body for replying to a PR comment.
 // See: https://docs.github.com/en/rest/pulls/comments#create-a-reply-for-a-review-comment
@@ -55,6 +62,9 @@ func (c *Client) ReplyToComment(ctx context.Context, owner, repo string, prNumbe
 	}
 	if err := validatePathSegment(repo, "repo"); err != nil {
 		return 0, err
+	}
+	if prNumber <= 0 {
+		return 0, fmt.Errorf("prNumber must be positive")
 	}
 	if body == "" {
 		return 0, fmt.Errorf("body cannot be empty")
@@ -146,6 +156,9 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	if err := validatePathSegment(repo, "repo"); err != nil {
 		return 0, err
 	}
+	if prNumber <= 0 {
+		return 0, fmt.Errorf("prNumber must be positive")
+	}
 	if body == "" {
 		return 0, fmt.Errorf("body cannot be empty")
 	}
@@ -154,6 +167,13 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	}
 	if path == "" {
 		return 0, fmt.Errorf("path cannot be empty")
+	}
+	// Validate path doesn't contain path traversal sequences
+	if strings.Contains(path, "..") {
+		return 0, fmt.Errorf("invalid path: must not contain '..'")
+	}
+	if strings.HasPrefix(path, "/") {
+		return 0, fmt.Errorf("invalid path: must be relative (no leading '/')")
 	}
 	if line <= 0 {
 		return 0, fmt.Errorf("line must be positive")
@@ -244,8 +264,22 @@ func (c *Client) RequestReviewers(ctx context.Context, owner, repo string, prNum
 	if err := validatePathSegment(repo, "repo"); err != nil {
 		return err
 	}
+	if prNumber <= 0 {
+		return fmt.Errorf("prNumber must be positive")
+	}
 	if len(reviewers) == 0 && len(teamReviewers) == 0 {
 		return fmt.Errorf("at least one reviewer (user or team) must be specified")
+	}
+	// Validate reviewer names match GitHub's username/team slug patterns
+	for _, r := range reviewers {
+		if !githubNamePattern.MatchString(r) {
+			return fmt.Errorf("invalid reviewer username: %q", r)
+		}
+	}
+	for _, t := range teamReviewers {
+		if !githubNamePattern.MatchString(t) {
+			return fmt.Errorf("invalid team slug: %q", t)
+		}
 	}
 
 	reqBody := RequestReviewersRequest{

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -369,36 +370,7 @@ func TestClient_RequestReviewers(t *testing.T) {
 }
 
 // contains checks if s contains substr (case-insensitive).
+// Uses standard library for proper UTF-8 handling.
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && containsCI(s, substr)))
-}
-
-func containsCI(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if eqCI(s[i:i+len(substr)], substr) {
-			return true
-		}
-	}
-	return false
-}
-
-func eqCI(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := 0; i < len(a); i++ {
-		ca, cb := a[i], b[i]
-		if ca >= 'A' && ca <= 'Z' {
-			ca += 32
-		}
-		if cb >= 'A' && cb <= 'Z' {
-			cb += 32
-		}
-		if ca != cb {
-			return false
-		}
-	}
-	return true
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

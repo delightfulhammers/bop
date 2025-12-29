@@ -172,31 +172,46 @@ func (c *Client) executeThreadMutation(ctx context.Context, mutation, threadID s
 		return mapGraphQLErrors(gqlResp.Errors)
 	}
 
+	// Validate response data is not empty/null
+	// GraphQL can return HTTP 200 with empty data without errors in some edge cases
+	if len(gqlResp.Data) == 0 || string(gqlResp.Data) == "null" {
+		return fmt.Errorf("GraphQL mutation returned empty data without errors")
+	}
+
 	return nil
 }
 
 // mapGraphQLErrors converts GraphQL errors to appropriate error types.
+// Checks for specific error types first, then aggregates all messages.
 func mapGraphQLErrors(errors []GraphQLError) error {
 	if len(errors) == 0 {
 		return nil
 	}
 
-	// Check for specific error types
+	// Check for specific error types first
 	for _, e := range errors {
 		lowerMsg := strings.ToLower(e.Message)
 		lowerType := strings.ToLower(e.Type)
 
-		// Not found errors
+		// Not found errors - return immediately as this is actionable
 		if lowerType == "not_found" || strings.Contains(lowerMsg, "could not resolve to a node") {
 			return fmt.Errorf("thread not found: %s", e.Message)
 		}
 
-		// Permission errors
+		// Permission errors - return immediately as this is actionable
 		if lowerType == "forbidden" || strings.Contains(lowerMsg, "not accessible") {
 			return fmt.Errorf("permission denied: %s", e.Message)
 		}
 	}
 
-	// Return first error message for generic errors
-	return fmt.Errorf("GraphQL error: %s", errors[0].Message)
+	// For generic errors, aggregate all messages to preserve context
+	if len(errors) == 1 {
+		return fmt.Errorf("GraphQL error: %s", errors[0].Message)
+	}
+
+	messages := make([]string, len(errors))
+	for i, e := range errors {
+		messages[i] = e.Message
+	}
+	return fmt.Errorf("GraphQL errors: %s", strings.Join(messages, "; "))
 }
