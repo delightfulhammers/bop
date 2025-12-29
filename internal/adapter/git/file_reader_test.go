@@ -80,6 +80,13 @@ func TestEngine_ReadFile(t *testing.T) {
 		_, err := engine.ReadFile(cancelledCtx, "main.go", commit1.String())
 		require.Error(t, err)
 	})
+
+	t.Run("nil context returns error", func(t *testing.T) {
+		//nolint:staticcheck // SA1012: intentionally passing nil context to test defensive check
+		_, err := engine.ReadFile(nil, "main.go", commit1.String())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "context cannot be nil")
+	})
 }
 
 func TestEngine_ReadFileLines(t *testing.T) {

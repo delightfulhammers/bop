@@ -26,6 +26,11 @@ const maxFileSize = 10 * 1024 * 1024
 // Performance note: Each call reads from disk. For high-concurrency scenarios,
 // consider implementing request coalescing or caching at a higher layer.
 func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error) {
+	// Defensive nil check - callers should pass context.Background() instead of nil
+	if ctx == nil {
+		return "", errors.New("context cannot be nil")
+	}
+
 	// Check context cancellation
 	if ctx.Err() != nil {
 		return "", ctx.Err()
