@@ -12,11 +12,15 @@ const (
 	ServerName = "code-reviewer-triage"
 
 	// ServerVersion is the version reported to MCP clients.
-	ServerVersion = "0.5.0"
+	ServerVersion = "0.6.0"
 )
 
 // ServerDeps contains the dependencies for the MCP server.
 type ServerDeps struct {
+	// PRService is the PR-based triage service (M2 scope).
+	PRService *triage.PRService
+
+	// TriageService is the session-based service (deprecated, for M3 write ops).
 	TriageService triage.TriageService
 }
 
@@ -54,100 +58,171 @@ func (s *Server) Run(ctx context.Context) error {
 
 // registerTools registers all triage MCP tools with the server.
 func (s *Server) registerTools() {
-	// Read-only tools (M2 scope)
-	s.registerStartSessionTool()
-	s.registerGetCurrentFindingTool()
-	s.registerGetFindingContextTool()
+	// M2 Read-only tools (PR-based, stateless)
+	s.registerListAnnotationsTool()
+	s.registerGetAnnotationTool()
 	s.registerListFindingsTool()
-	s.registerGetProgressTool()
+	s.registerGetFindingTool()
+	s.registerGetSuggestionTool()
+	s.registerGetCodeContextTool()
+	s.registerGetDiffContextTool()
 
-	// Write tools (M3 scope)
+	// M3 Write tools (session-based, for future implementation)
 	s.registerTriageFindingTool()
 	s.registerPostCommentTool()
 	s.registerReplyToThreadTool()
 	s.registerResolveThreadTool()
 }
 
-// Tool input/output types are defined below.
-// The MCP SDK uses these structs to auto-generate JSON schemas.
+// Tool input/output types for M2 PR-based tools.
 
-// StartSessionInput is the input for the start_triage_session tool.
-type StartSessionInput struct {
-	Repository string `json:"repository" jsonschema:"description=Repository in owner/repo format"`
-	PRNumber   int    `json:"pr_number" jsonschema:"description=Pull request number"`
+// ListAnnotationsInput is the input for the list_annotations tool.
+type ListAnnotationsInput struct {
+	Owner     string  `json:"owner" jsonschema:"description=Repository owner"`
+	Repo      string  `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int     `json:"pr_number" jsonschema:"description=Pull request number"`
+	CheckName *string `json:"check_name,omitempty" jsonschema:"description=Filter by check run name (e.g. 'code-reviewer')"`
+	Level     *string `json:"level,omitempty" jsonschema:"description=Filter by annotation level,enum=notice,enum=warning,enum=failure"`
 }
 
-// StartSessionOutput is the output for the start_triage_session tool.
-type StartSessionOutput struct {
-	SessionID    string `json:"session_id"`
-	FindingCount int    `json:"finding_count"`
-	Message      string `json:"message"`
+// ListAnnotationsOutput is the output for the list_annotations tool.
+type ListAnnotationsOutput struct {
+	Annotations []AnnotationOutput `json:"annotations"`
+	Total       int                `json:"total"`
 }
 
-// GetCurrentFindingInput is the input for the get_current_finding tool.
-type GetCurrentFindingInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
+// AnnotationOutput represents an annotation in tool output.
+type AnnotationOutput struct {
+	CheckRunID int64  `json:"check_run_id"`
+	Index      int    `json:"index"`
+	Path       string `json:"path"`
+	StartLine  int    `json:"start_line"`
+	EndLine    int    `json:"end_line"`
+	Level      string `json:"level"`
+	Message    string `json:"message"`
+	Title      string `json:"title,omitempty"`
 }
 
-// FindingOutput represents a finding in tool output.
-type FindingOutput struct {
-	ID           string `json:"id"`
-	File         string `json:"file"`
-	LineStart    int    `json:"line_start"`
-	LineEnd      int    `json:"line_end"`
-	Severity     string `json:"severity"`
-	Category     string `json:"category"`
-	Description  string `json:"description"`
-	Suggestion   string `json:"suggestion,omitempty"`
-	TriageStatus string `json:"triage_status"`
+// GetAnnotationInput is the input for the get_annotation tool.
+type GetAnnotationInput struct {
+	Owner      string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo       string `json:"repo" jsonschema:"description=Repository name"`
+	CheckRunID int64  `json:"check_run_id" jsonschema:"description=GitHub check run ID"`
+	Index      int    `json:"index" jsonschema:"description=Annotation index (0-based)"`
 }
 
-// GetFindingContextInput is the input for the get_finding_context tool.
-type GetFindingContextInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID to get context for"`
-}
-
-// ContextOutput represents context information in tool output.
-type ContextOutput struct {
-	PRTitle       string          `json:"pr_title"`
-	PRDescription string          `json:"pr_description,omitempty"`
-	PRAuthor      string          `json:"pr_author"`
-	FileContent   string          `json:"file_content,omitempty"`
-	ThreadHistory []CommentOutput `json:"thread_history,omitempty"`
-}
-
-// CommentOutput represents a comment in tool output.
-type CommentOutput struct {
-	Author    string `json:"author"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
+// GetAnnotationOutput is the output for the get_annotation tool.
+type GetAnnotationOutput struct {
+	Annotation AnnotationOutput `json:"annotation"`
+	Message    string           `json:"message"`
 }
 
 // ListFindingsInput is the input for the list_findings tool.
 type ListFindingsInput struct {
-	SessionID    string  `json:"session_id" jsonschema:"description=Triage session ID"`
-	StatusFilter *string `json:"status_filter,omitempty" jsonschema:"description=Filter by triage status,enum=pending,enum=accepted,enum=disputed,enum=question,enum=resolved,enum=wont_fix"`
+	Owner    string  `json:"owner" jsonschema:"description=Repository owner"`
+	Repo     string  `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber int     `json:"pr_number" jsonschema:"description=Pull request number"`
+	Severity *string `json:"severity,omitempty" jsonschema:"description=Filter by severity,enum=critical,enum=high,enum=medium,enum=low"`
+	Category *string `json:"category,omitempty" jsonschema:"description=Filter by category"`
 }
 
 // ListFindingsOutput is the output for the list_findings tool.
 type ListFindingsOutput struct {
-	Findings []FindingOutput `json:"findings"`
-	Total    int             `json:"total"`
+	Findings []PRFindingOutput `json:"findings"`
+	Total    int               `json:"total"`
 }
 
-// GetProgressInput is the input for the get_progress tool.
-type GetProgressInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
+// PRFindingOutput represents a PR comment finding in tool output.
+type PRFindingOutput struct {
+	CommentID    int64  `json:"comment_id"`
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	Path         string `json:"path"`
+	Line         int    `json:"line"`
+	Severity     string `json:"severity,omitempty"`
+	Category     string `json:"category,omitempty"`
+	Body         string `json:"body"`
+	Author       string `json:"author"`
+	IsResolved   bool   `json:"is_resolved"`
+	ReplyCount   int    `json:"reply_count"`
+	ThreadStatus string `json:"thread_status"`
 }
 
-// GetProgressOutput is the output for the get_progress tool.
-type GetProgressOutput struct {
-	Triaged int    `json:"triaged"`
-	Total   int    `json:"total"`
-	Percent int    `json:"percent"`
-	Message string `json:"message"`
+// GetFindingInput is the input for the get_finding tool.
+type GetFindingInput struct {
+	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo      string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int    `json:"pr_number" jsonschema:"description=Pull request number"`
+	FindingID string `json:"finding_id" jsonschema:"description=Finding ID (fingerprint or comment ID)"`
 }
+
+// GetFindingOutput is the output for the get_finding tool.
+type GetFindingOutput struct {
+	Finding PRFindingOutput `json:"finding"`
+	Message string          `json:"message"`
+}
+
+// GetSuggestionInput is the input for the get_suggestion tool.
+type GetSuggestionInput struct {
+	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo      string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int    `json:"pr_number" jsonschema:"description=Pull request number"`
+	FindingID string `json:"finding_id" jsonschema:"description=Finding ID (fingerprint or comment ID)"`
+}
+
+// GetSuggestionOutput is the output for the get_suggestion tool.
+type GetSuggestionOutput struct {
+	File        string `json:"file"`
+	OldCode     string `json:"old_code"`
+	NewCode     string `json:"new_code"`
+	Explanation string `json:"explanation,omitempty"`
+	Message     string `json:"message"`
+}
+
+// GetCodeContextInput is the input for the get_code_context tool.
+type GetCodeContextInput struct {
+	Owner        string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo         string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber     int    `json:"pr_number" jsonschema:"description=Pull request number"`
+	File         string `json:"file" jsonschema:"description=File path"`
+	StartLine    int    `json:"start_line" jsonschema:"description=Start line (1-based)"`
+	EndLine      int    `json:"end_line" jsonschema:"description=End line (1-based)"`
+	ContextLines int    `json:"context_lines,omitempty" jsonschema:"description=Lines of context before and after (default: 3)"`
+}
+
+// GetCodeContextOutput is the output for the get_code_context tool.
+type GetCodeContextOutput struct {
+	File          string `json:"file"`
+	Ref           string `json:"ref"`
+	StartLine     int    `json:"start_line"`
+	EndLine       int    `json:"end_line"`
+	Content       string `json:"content"`
+	ContextBefore int    `json:"context_before"`
+	ContextAfter  int    `json:"context_after"`
+	Message       string `json:"message"`
+}
+
+// GetDiffContextInput is the input for the get_diff_context tool.
+type GetDiffContextInput struct {
+	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo      string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int    `json:"pr_number" jsonschema:"description=Pull request number"`
+	File      string `json:"file" jsonschema:"description=File path"`
+	StartLine int    `json:"start_line" jsonschema:"description=Start line (1-based, in new file)"`
+	EndLine   int    `json:"end_line" jsonschema:"description=End line (1-based, in new file)"`
+}
+
+// GetDiffContextOutput is the output for the get_diff_context tool.
+type GetDiffContextOutput struct {
+	File        string `json:"file"`
+	BaseBranch  string `json:"base_branch"`
+	TargetRef   string `json:"target_ref"`
+	HunkContent string `json:"hunk_content"`
+	StartLine   int    `json:"start_line"`
+	EndLine     int    `json:"end_line"`
+	Message     string `json:"message"`
+}
+
+// Legacy M3 write tool types (kept for backward compatibility)
 
 // TriageFindingInput is the input for the triage_finding tool.
 type TriageFindingInput struct {
