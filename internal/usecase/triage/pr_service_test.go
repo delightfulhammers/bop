@@ -341,9 +341,11 @@ func TestPRService_HandlesErrors(t *testing.T) {
 	t.Run("propagates PR metadata error", func(t *testing.T) {
 		mockPR := new(MockPRReader)
 		mockPR.On("GetPRMetadata", ctx, "owner", "repo", 42).Return(nil, errors.New("API error"))
+		mockAnno := new(MockAnnotationReader)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
-			PRReader: mockPR,
+			PRReader:         mockPR,
+			AnnotationReader: mockAnno,
 		})
 
 		_, err := svc.ListAnnotations(ctx, "owner", "repo", 42, nil, nil)

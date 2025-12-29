@@ -30,6 +30,11 @@ func NewPRService(deps PRServiceDeps) *PRService {
 // ListAnnotations returns all SARIF annotations for a PR's head commit.
 // Optionally filters by check name and/or annotation level.
 func (s *PRService) ListAnnotations(ctx context.Context, owner, repo string, prNumber int, checkName *string, level *domain.AnnotationLevel) ([]domain.Annotation, error) {
+	// Validate required dependencies
+	if s.deps.PRReader == nil || s.deps.AnnotationReader == nil {
+		return nil, ErrNotImplemented
+	}
+
 	// Get PR metadata to find head SHA
 	prMeta, err := s.deps.PRReader.GetPRMetadata(ctx, owner, repo, prNumber)
 	if err != nil {
@@ -71,6 +76,9 @@ func (s *PRService) ListAnnotations(ctx context.Context, owner, repo string, prN
 
 // GetAnnotation retrieves a single annotation by check run ID and index.
 func (s *PRService) GetAnnotation(ctx context.Context, owner, repo string, checkRunID int64, index int) (*domain.Annotation, error) {
+	if s.deps.AnnotationReader == nil {
+		return nil, ErrNotImplemented
+	}
 	return s.deps.AnnotationReader.GetAnnotation(ctx, owner, repo, checkRunID, index)
 }
 
@@ -127,7 +135,7 @@ func (s *PRService) GetSuggestion(ctx context.Context, owner, repo string, prNum
 
 // GetCodeContext retrieves file content at the PR's head ref.
 func (s *PRService) GetCodeContext(ctx context.Context, owner, repo string, prNumber int, file string, startLine, endLine, contextLines int) (*domain.CodeContext, error) {
-	if s.deps.FileReader == nil {
+	if s.deps.FileReader == nil || s.deps.PRReader == nil {
 		return nil, ErrNotImplemented
 	}
 
@@ -142,7 +150,7 @@ func (s *PRService) GetCodeContext(ctx context.Context, owner, repo string, prNu
 
 // GetDiffContext retrieves the diff hunk for a file at specific lines.
 func (s *PRService) GetDiffContext(ctx context.Context, owner, repo string, prNumber int, file string, startLine, endLine int) (*domain.DiffContext, error) {
-	if s.deps.DiffReader == nil {
+	if s.deps.DiffReader == nil || s.deps.PRReader == nil {
 		return nil, ErrNotImplemented
 	}
 

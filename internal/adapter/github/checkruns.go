@@ -16,7 +16,8 @@ import (
 
 // ListCheckRuns returns check runs for a commit, optionally filtered by name.
 // If checkName is nil, all check runs are returned.
-// Returns check runs sorted by completion time (most recent first).
+// Note: Returns up to 100 check runs in GitHub API order (not sorted).
+// TODO: Implement pagination for repos with >100 check runs per commit.
 func (c *Client) ListCheckRuns(ctx context.Context, owner, repo, ref string, checkName *string) ([]domain.CheckRunSummary, error) {
 	// Validate inputs
 	if err := validatePathSegment(owner, "owner"); err != nil {
@@ -107,8 +108,9 @@ func (c *Client) ListCheckRuns(ctx context.Context, owner, repo, ref string, che
 	return result, nil
 }
 
-// GetAnnotations retrieves all annotations for a specific check run.
-// Returns annotations in their original order from the API.
+// GetAnnotations retrieves annotations for a specific check run.
+// Note: Returns up to 100 annotations in GitHub API order.
+// TODO: Implement pagination for check runs with >100 annotations.
 func (c *Client) GetAnnotations(ctx context.Context, owner, repo string, checkRunID int64) ([]domain.Annotation, error) {
 	// Validate inputs
 	if err := validatePathSegment(owner, "owner"); err != nil {

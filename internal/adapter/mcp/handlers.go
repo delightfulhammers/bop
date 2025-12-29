@@ -174,9 +174,25 @@ func (s *Server) handleGetFinding(ctx context.Context, req *mcp.CallToolRequest,
 		return nil, GetFindingOutput{}, fmt.Errorf("get finding: %w", err)
 	}
 
+	// Guard against nil finding (should not happen, but defensive)
+	if finding == nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("Finding not found: %s", input.FindingID)},
+			},
+		}, GetFindingOutput{}, nil
+	}
+
+	// Safely truncate body for display
+	bodyPreview := finding.Body
+	if len(bodyPreview) > 100 {
+		bodyPreview = bodyPreview[:100] + "..."
+	}
+
 	return &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: fmt.Sprintf("Finding in %s (line %d): %s", finding.Path, finding.Line, finding.Body[:min(100, len(finding.Body))])},
+				&mcp.TextContent{Text: fmt.Sprintf("Finding in %s (line %d): %s", finding.Path, finding.Line, bodyPreview)},
 			},
 		}, GetFindingOutput{
 			Finding: findingToOutput(*finding),

@@ -2,6 +2,7 @@ package git
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,6 +13,9 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
+
+// maxFileSize is the maximum file size that can be read (10 MB).
+const maxFileSize = 10 * 1024 * 1024
 
 // ReadFile retrieves the content of a file at a specific ref.
 // The ref can be a commit SHA, branch name, or tag.
@@ -39,7 +43,7 @@ func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error)
 
 	file, err := tree.File(path)
 	if err != nil {
-		if err == object.ErrFileNotFound {
+		if errors.Is(err, object.ErrFileNotFound) {
 			return "", triage.ErrFileNotFound
 		}
 		return "", fmt.Errorf("get file %s: %w", path, err)
@@ -51,7 +55,8 @@ func (e *Engine) ReadFile(ctx context.Context, path, ref string) (string, error)
 	}
 	defer func() { _ = reader.Close() }()
 
-	content, err := io.ReadAll(reader)
+	// Limit file size to prevent OOM on extremely large files
+	content, err := io.ReadAll(io.LimitReader(reader, maxFileSize))
 	if err != nil {
 		return "", fmt.Errorf("read content: %w", err)
 	}
