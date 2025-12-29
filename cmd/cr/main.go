@@ -186,17 +186,20 @@ func run() error {
 		githubClient := githubadapter.NewClient(githubToken)
 
 		// Configure semantic deduplication (Issue #125)
+		// Use DefaultConfig as base, then override with user config if provided
 		var posterOpts []usecasegithub.ReviewPosterOption
 		if semanticComparer := createSemanticComparer(cfg); semanticComparer != nil {
+			defaults := usecasedeup.DefaultConfig()
 			semanticConfig := usecasegithub.SemanticDedupConfig{
-				LineThreshold: cfg.Deduplication.Semantic.LineThreshold,
-				MaxCandidates: cfg.Deduplication.Semantic.MaxCandidates,
+				LineThreshold: defaults.LineThreshold,
+				MaxCandidates: defaults.MaxCandidates,
 			}
-			if semanticConfig.LineThreshold == 0 {
-				semanticConfig.LineThreshold = usecasedeup.DefaultConfig().LineThreshold
+			// Override with user config if explicitly set
+			if cfg.Deduplication.Semantic.LineThreshold > 0 {
+				semanticConfig.LineThreshold = cfg.Deduplication.Semantic.LineThreshold
 			}
-			if semanticConfig.MaxCandidates == 0 {
-				semanticConfig.MaxCandidates = usecasedeup.DefaultConfig().MaxCandidates
+			if cfg.Deduplication.Semantic.MaxCandidates > 0 {
+				semanticConfig.MaxCandidates = cfg.Deduplication.Semantic.MaxCandidates
 			}
 			posterOpts = append(posterOpts, usecasegithub.WithSemanticComparer(semanticComparer, semanticConfig))
 		}
@@ -870,20 +873,22 @@ func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 		return nil
 	}
 
-	// Get provider and model, with defaults
-	provider := semanticCfg.Provider
-	if provider == "" {
-		provider = "anthropic"
+	// Start with defaults, override with user config if provided
+	defaults := usecasedeup.DefaultConfig()
+
+	provider := defaults.Provider
+	if semanticCfg.Provider != "" {
+		provider = semanticCfg.Provider
 	}
 
-	model := semanticCfg.Model
-	if model == "" {
-		model = "claude-haiku-4-5"
+	model := defaults.Model
+	if semanticCfg.Model != "" {
+		model = semanticCfg.Model
 	}
 
-	maxTokens := semanticCfg.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = usecasedeup.DefaultConfig().MaxTokens
+	maxTokens := defaults.MaxTokens
+	if semanticCfg.MaxTokens > 0 {
+		maxTokens = semanticCfg.MaxTokens
 	}
 
 	// Currently only Anthropic is supported for semantic dedup

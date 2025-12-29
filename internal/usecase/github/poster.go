@@ -231,6 +231,8 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		summary = github.AppendSections(programmaticSummary, appendix) + formatStatusSection(statusCounts)
 	} else {
 		// Fall back to pre-built summary (legacy behavior)
+		// Note: This may contain stale counts if deduplication removed findings
+		log.Println("[WARN] No Diff provided to PostReview; using pre-built summary (counts may be stale)")
 		summary = req.Review.Summary + formatStatusSection(statusCounts)
 	}
 
