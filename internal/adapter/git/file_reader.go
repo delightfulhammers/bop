@@ -112,12 +112,12 @@ func (e *Engine) ReadFileLines(ctx context.Context, path, ref string, startLine,
 		lines = lines[:totalLines]
 	}
 
-	// Validate line numbers against actual file
-	if startLine > totalLines {
-		return nil, triage.ErrInvalidLineRange
-	}
-	if endLine > totalLines {
-		return nil, triage.ErrInvalidLineRange
+	// Validate line numbers against actual file length
+	// ErrLineOutOfBounds is distinct from ErrInvalidLineRange: the former means
+	// the file is shorter than expected (may have changed), the latter means
+	// the request itself is malformed (start > end, negative line, etc.)
+	if startLine > totalLines || endLine > totalLines {
+		return nil, triage.ErrLineOutOfBounds
 	}
 
 	// Calculate context bounds

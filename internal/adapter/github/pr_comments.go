@@ -29,10 +29,21 @@ var (
 	categoryPattern = regexp.MustCompile(`(?i)\*\*Category:\s*(\w+)\*\*`)
 )
 
+// trustedBots is the allowlist of bot usernames whose comments are included
+// in findings even without fingerprints. This prevents arbitrary bots from
+// injecting findings into the triage workflow.
+var trustedBots = map[string]bool{
+	"github-actions[bot]":           true, // GitHub Actions (code-reviewer)
+	"github-advanced-security[bot]": true, // GitHub Advanced Security (CodeQL, etc.)
+	"dependabot[bot]":               true, // Dependabot security updates
+	"renovate[bot]":                 true, // Renovate dependency updates
+}
+
 // ListPRComments retrieves all review comments on a PR.
 // If filterByFingerprint is true, comments are included if they have CR_FP markers
-// OR if they are from bot users (User.Type == "Bot"). This ensures all automated
-// review feedback is captured, not just fingerprinted comments.
+// OR if they are from trusted bot users (in the trustedBots allowlist). This ensures
+// automated review feedback from known sources is captured while preventing arbitrary
+// bots from injecting findings into the triage workflow.
 func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
 	// Fetch all raw comments using existing method
 	rawComments, err := c.ListPullRequestComments(ctx, owner, repo, prNumber)
@@ -54,10 +65,11 @@ func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumbe
 		// Parse fingerprint from body
 		fingerprint := parseFingerprint(comment.Body)
 
-		// Apply fingerprint filter: include if has fingerprint OR is from a bot
-		// This ensures all automated review feedback is captured
-		isBot := comment.User.Type == "Bot"
-		if filterByFingerprint && fingerprint == "" && !isBot {
+		// Apply fingerprint filter: include if has fingerprint OR is from a trusted bot
+		// This ensures automated review feedback from known sources is captured
+		// while preventing arbitrary bots from injecting findings
+		isTrustedBot := comment.User.Type == "Bot" && trustedBots[comment.User.Login]
+		if filterByFingerprint && fingerprint == "" && !isTrustedBot {
 			continue
 		}
 
