@@ -438,6 +438,12 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 
 	// Fetch prior triage context if posting to GitHub and fetcher is configured (Issue #138)
 	// This injects previously-addressed findings into the prompt so LLMs don't re-raise them.
+	//
+	// Note: There's a theoretical race condition where GitHub state could change between
+	// this fetch and when PostReview runs. This is acceptable because:
+	// 1. The time window is very short (seconds during LLM review)
+	// 2. The worst case is slightly stale triage context, not data corruption
+	// 3. OUTPUT-SIDE deduplication in poster.go provides the safety net
 	if req.PostToGitHub && o.deps.TriageContextFetcher != nil {
 		triageCtx := o.deps.TriageContextFetcher.FetchTriagedFindings(
 			ctx, req.GitHubOwner, req.GitHubRepo, req.PRNumber,
