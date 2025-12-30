@@ -26,6 +26,22 @@ builds:
       - -s -w
       - -X github.com/bkyoung/code-reviewer/internal/version.version={{.Version}}
 
+  - id: code-reviewer-mcp
+    main: ./cmd/code-reviewer-mcp
+    binary: code-reviewer-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/bkyoung/code-reviewer/internal/version.version={{.Version}}
+
 archives:
   - id: default
     formats:

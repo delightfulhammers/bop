@@ -404,6 +404,102 @@ observability:
 
 See [docs/PROJECT_RESET_PLAN.md](docs/PROJECT_RESET_PLAN.md) for detailed roadmap.
 
+## MCP Server for Triage Workflow
+
+The `code-reviewer-mcp` server enables AI assistants (Claude Code, Claude Desktop) to triage PR review findings interactively.
+
+### Installing the MCP Server
+
+**Option 1: Download from Releases (Recommended)**
+
+Download the pre-built binary from [GitHub Releases](https://github.com/bkyoung/code-reviewer/releases). Each release archive contains both `cr` and `code-reviewer-mcp` binaries.
+
+```bash
+# Example for macOS ARM64
+curl -L https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_darwin_arm64.tar.gz | tar xz
+sudo mv code-reviewer-mcp /usr/local/bin/
+```
+
+**Option 2: Build from Source**
+
+```bash
+go build -o code-reviewer-mcp ./cmd/code-reviewer-mcp
+```
+
+### Claude Code Configuration
+
+Add to your Claude Code MCP settings (`.claude/settings.local.json` or global settings):
+
+```json
+{
+  "mcpServers": {
+    "code-reviewer": {
+      "command": "/path/to/code-reviewer-mcp",
+      "env": {
+        "GITHUB_TOKEN": "ghp_your_token_here"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop Configuration
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "code-reviewer": {
+      "command": "/path/to/code-reviewer-mcp",
+      "env": {
+        "GITHUB_TOKEN": "ghp_your_token_here"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_TOKEN` | Yes | GitHub personal access token with `repo` scope |
+
+### Available MCP Tools
+
+The server provides 12 tools for PR triage:
+
+**Read Tools (Information Gathering):**
+- `list_annotations` — SARIF findings for HEAD commit
+- `get_annotation` — Single annotation details
+- `list_findings` — PR comment findings
+- `get_finding` — Single finding with thread context
+- `get_suggestion` — Extract structured code fix
+- `get_code_context` — Current file content at lines
+- `get_diff_context` — Diff hunk at location
+
+**Write Tools (Actions):**
+- `get_thread` — Full comment thread history
+- `reply_to_finding` — Reply to PR comment with status
+- `post_comment` — New comment at file/line
+- `mark_resolved` — Mark thread as resolved
+- `request_rereview` — Dismiss stale reviews, request fresh
+
+### Usage with Claude Code
+
+Once configured, use the triage skill:
+
+```
+/skill triage-pr-review
+```
+
+Then interact with PR findings:
+
+```
+Triage the findings on PR #123 in owner/repo
+```
+
 ## Documentation
 
 - [Configuration Guide](docs/CONFIGURATION.md) — Complete configuration reference
