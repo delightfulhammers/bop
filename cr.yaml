@@ -112,10 +112,60 @@ observability:
   metrics:
     enabled: true
 
+# Deduplication Configuration
+# Controls finding deduplication across providers
+deduplication:
+  semantic:
+    enabled: true
+    # LLM provider for semantic comparison (uses a fast model)
+    # NOTE: Change provider/model if you don't have ANTHROPIC_API_KEY configured
+    provider: "anthropic"
+    model: "claude-haiku-4-5"
+    maxTokens: 64000
+    # Only compare findings within this line distance
+    lineThreshold: 10
+    # Cost guard: max pairs to compare per review
+    maxCandidates: 50
+
+# Size Guards Configuration
+# Prevents context overflow when reviewing large PRs
+sizeGuards:
+  enabled: true
+  # Emit warning at this token count
+  warnTokens: 150000
+  # Truncate PR at this token count
+  maxTokens: 200000
+  # Per-provider overrides for different context limits
+  providers:
+    gemini:
+      warnTokens: 750000
+      maxTokens: 1000000
+
 # Review Configuration
 # Custom instructions to guide the code review process
 # NOTE: Output format is handled by the system. These instructions focus on WHAT to review.
 review:
+  # GitHub bot username for auto-dismissing stale reviews
+  # Set to "none" to disable auto-dismiss
+  botUsername: "github-actions[bot]"
+
+  # Block threshold: which severity levels trigger REQUEST_CHANGES
+  # Valid: "critical", "high" (default), "medium", "low", "none"
+  blockThreshold: "high"
+
+  # Categories that always block regardless of severity
+  alwaysBlockCategories:
+    - "security"
+
+  # Fine-grained action control (overrides blockThreshold for specific severities)
+  # actions:
+  #   onCritical: "request_changes"
+  #   onHigh: "request_changes"
+  #   onMedium: "comment"
+  #   onLow: "comment"
+  #   onClean: "approve"
+  #   onNonBlocking: "approve"
+
   instructions: |
     Perform a thorough, systematic review focusing on these categories:
 
