@@ -118,8 +118,9 @@ deduplication:
   semantic:
     enabled: true
     # LLM provider for semantic comparison (uses a fast model)
+    # NOTE: Change provider/model if you don't have ANTHROPIC_API_KEY configured
     provider: "anthropic"
-    model: "claude-haiku-4-5-latest"
+    model: "claude-haiku-4-5"
     maxTokens: 64000
     # Only compare findings within this line distance
     lineThreshold: 10
