@@ -452,7 +452,9 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		for i, f := range acknowledged {
 			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
 				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
-			sb.WriteString(fmt.Sprintf("   - %s\n", f.Description))
+			// Indent continuation lines to maintain Markdown list structure
+			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
+			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
 			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
 		}
 	}
@@ -466,7 +468,9 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		for i, f := range disputed {
 			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
 				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
-			sb.WriteString(fmt.Sprintf("   - %s\n", f.Description))
+			// Indent continuation lines to maintain Markdown list structure
+			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
+			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
 			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
 		}
 	}
