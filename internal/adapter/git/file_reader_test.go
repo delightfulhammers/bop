@@ -174,7 +174,9 @@ line10
 	t.Run("returns error for out of bounds line", func(t *testing.T) {
 		_, err := engine.ReadFileLines(ctx, "test.txt", commit.String(), 100, 105, 0)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, triage.ErrInvalidLineRange)
+		// ErrLineOutOfBounds is semantically distinct from ErrInvalidLineRange:
+		// the request is valid (start < end, positive lines) but the file is too short
+		assert.ErrorIs(t, err, triage.ErrLineOutOfBounds)
 	})
 
 	t.Run("returns error for non-existent file", func(t *testing.T) {

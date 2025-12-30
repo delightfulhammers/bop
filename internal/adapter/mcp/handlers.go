@@ -216,7 +216,7 @@ func (s *Server) handleGetFinding(ctx context.Context, req *mcp.CallToolRequest,
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Finding not found: %s", input.FindingID)},
+					&mcp.TextContent{Text: fmt.Sprintf("Finding not found: %s. The comment may have been deleted. Use list_findings to get current findings.", input.FindingID)},
 				},
 			}, GetFindingOutput{}, nil
 		}
@@ -272,7 +272,7 @@ func (s *Server) handleGetSuggestion(ctx context.Context, req *mcp.CallToolReque
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: "No structured suggestion found in finding"},
+					&mcp.TextContent{Text: fmt.Sprintf("No structured suggestion found in finding %s. Use get_code_context to read the current code and craft a fix manually.", input.FindingID)},
 				},
 			}, GetSuggestionOutput{}, nil
 		}
@@ -327,7 +327,7 @@ func (s *Server) handleGetCodeContext(ctx context.Context, req *mcp.CallToolRequ
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("File not found: %s", input.File)},
+					&mcp.TextContent{Text: fmt.Sprintf("File not found: %s. The file may have been deleted or renamed since the review. Use request_rereview to get updated findings.", input.File)},
 				},
 			}, GetCodeContextOutput{}, nil
 		}
@@ -335,7 +335,15 @@ func (s *Server) handleGetCodeContext(ctx context.Context, req *mcp.CallToolRequ
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Invalid line range: %d-%d", input.StartLine, input.EndLine)},
+					&mcp.TextContent{Text: fmt.Sprintf("Invalid line range: %d-%d. Ensure start <= end and both are positive.", input.StartLine, input.EndLine)},
+				},
+			}, GetCodeContextOutput{}, nil
+		}
+		if errors.Is(err, triage.ErrLineOutOfBounds) {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Line range %d-%d out of bounds for file %s. The file may have changed since the review. Use request_rereview to get updated findings.", input.StartLine, input.EndLine, input.File)},
 				},
 			}, GetCodeContextOutput{}, nil
 		}
@@ -502,7 +510,7 @@ func (s *Server) handleReplyToFinding(ctx context.Context, req *mcp.CallToolRequ
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Finding not found: %s", input.FindingID)},
+					&mcp.TextContent{Text: fmt.Sprintf("Finding not found: %s. The comment may have been deleted. Use list_findings to refresh the findings list.", input.FindingID)},
 				},
 			}, ReplyToFindingOutput{Success: false, Message: "Finding not found"}, nil
 		}
@@ -625,9 +633,32 @@ func (s *Server) handleMarkResolved(ctx context.Context, req *mcp.CallToolReques
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Thread not found: %s", input.ThreadID)},
+					&mcp.TextContent{Text: fmt.Sprintf("Thread not found: %s. The thread may have been deleted or the ID is incorrect.", input.ThreadID)},
 				},
 			}, MarkResolvedOutput{Success: false, Message: "Thread not found"}, nil
+		}
+		// Handle idempotent cases - thread already in desired state is a success, not an error
+		if errors.Is(err, triage.ErrThreadAlreadyResolved) {
+			return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: "Thread already resolved (no action needed)"},
+					},
+				}, MarkResolvedOutput{
+					Success:  true,
+					Resolved: true,
+					Message:  "Thread already resolved",
+				}, nil
+		}
+		if errors.Is(err, triage.ErrThreadAlreadyUnresolved) {
+			return &mcp.CallToolResult{
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: "Thread already unresolved (no action needed)"},
+					},
+				}, MarkResolvedOutput{
+					Success:  true,
+					Resolved: false,
+					Message:  "Thread already unresolved",
+				}, nil
 		}
 		return nil, MarkResolvedOutput{}, fmt.Errorf("mark resolved: %w", err)
 	}
@@ -713,7 +744,7 @@ func (s *Server) handleRequestRereview(ctx context.Context, req *mcp.CallToolReq
 				return &mcp.CallToolResult{
 					IsError: true,
 					Content: []mcp.Content{
-						&mcp.TextContent{Text: "One or more requested reviewers not found or not collaborators"},
+						&mcp.TextContent{Text: fmt.Sprintf("One or more requested reviewers not found or not collaborators: %v. Verify usernames are correct and users have repository access.", input.Reviewers)},
 					},
 				}, RequestRereviewOutput{Success: false, Message: "Reviewer not found"}, nil
 			}

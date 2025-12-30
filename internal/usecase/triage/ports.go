@@ -28,7 +28,8 @@ type AnnotationReader interface {
 // This is a port that must be implemented by the GitHub adapter layer.
 type CommentReader interface {
 	// ListPRComments retrieves all review comments on a PR.
-	// If filterByFingerprint is true, only comments with CR_FP markers are returned.
+	// If filterByFingerprint is true, comments are included if they have CR_FP markers
+	// OR if they are from bot users. This ensures all automated review feedback is captured.
 	ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error)
 
 	// GetPRComment retrieves a single comment by ID.

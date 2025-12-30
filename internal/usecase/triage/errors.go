@@ -47,6 +47,17 @@ var ValidSeverities = []string{"critical", "high", "medium", "low"}
 // ErrThreadNotFound is returned when a review thread doesn't exist.
 var ErrThreadNotFound = errors.New("thread not found")
 
+// ErrThreadAlreadyResolved is returned when trying to resolve an already-resolved thread.
+// This is not an error condition for the handler - it should be treated as a no-op.
+var ErrThreadAlreadyResolved = errors.New("thread already resolved")
+
+// ErrThreadAlreadyUnresolved is returned when trying to unresolve an already-unresolved thread.
+// This is not an error condition for the handler - it should be treated as a no-op.
+var ErrThreadAlreadyUnresolved = errors.New("thread already unresolved")
+
+// ErrLineOutOfBounds is returned when requested line numbers exceed the file length.
+var ErrLineOutOfBounds = errors.New("line numbers out of bounds")
+
 // ErrReviewNotFound is returned when a PR review doesn't exist.
 var ErrReviewNotFound = errors.New("review not found")
 

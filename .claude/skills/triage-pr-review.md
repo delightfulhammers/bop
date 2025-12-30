@@ -17,6 +17,16 @@ The `code-reviewer` MCP server must be running and configured in Claude Code. It
 
 **Always query both sources.** SARIF annotations are authoritative for current code state; PR comments show accumulated reviewer feedback.
 
+### Bot Comment Handling
+
+`list_findings` returns both:
+- Comments with `CR_FP` fingerprint markers (from code-reviewer)
+- **All comments from bot users** (e.g., `github-actions[bot]`, `github-advanced-security[bot]`)
+
+This ensures all automated review feedback is captured, regardless of whether the bot uses fingerprints.
+
+The `finding_id` parameter in `reply_to_finding` and `get_finding` accepts both fingerprints (`CR_FP:xxx`) and raw comment IDs, so you can respond to any finding.
+
 ---
 
 ## Available MCP Tools
@@ -248,6 +258,66 @@ gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations
 # Get PR comments
 gh api repos/{owner}/{repo}/pulls/{pr}/comments
 ```
+
+---
+
+## Tips & Best Practices
+
+### Apply Edits Bottom-Up
+
+When fixing multiple findings in the same file, **always apply edits from bottom to top** (highest line numbers first). This prevents line number drift as edits change file length.
+
+```
+# BAD: Top-down (line numbers shift)
+Fix finding at line 10  -> File grows by 2 lines
+Fix finding at line 50  -> Now it's actually line 52!
+
+# GOOD: Bottom-up (line numbers stable)
+Fix finding at line 50  -> Line 10 unaffected
+Fix finding at line 10  -> Correct location
+```
+
+### Batch Similar Operations
+
+Group operations by type for efficiency:
+
+1. **First:** Gather all findings (both sources)
+2. **Second:** Read all needed context in parallel
+3. **Third:** Apply all code fixes
+4. **Fourth:** Post all responses
+5. **Fifth:** Mark threads resolved
+6. **Last:** Push and request re-review
+
+### Use Native Tools Together with MCP
+
+The MCP server provides **finding discovery and GitHub interaction**. Combine with native tools:
+
+| Task | Tool |
+|------|------|
+| Get findings | MCP: `list_annotations`, `list_findings` |
+| Read current code | MCP: `get_code_context` or native `Read` tool |
+| Edit files | Native `Edit` tool (not MCP) |
+| Run tests | Native `Bash` tool: `go test ./...` |
+| Commit changes | Native `Bash` tool: `git commit` |
+| Respond to findings | MCP: `reply_to_finding`, `post_comment` |
+
+### Handle Edge Cases
+
+| Situation | Action |
+|-----------|--------|
+| Finding on deleted file | Skip fix, reply explaining file was removed |
+| Line numbers out of bounds | Request re-review; file has changed |
+| No suggestion available | Use `get_code_context` and craft fix manually |
+| Thread already resolved | No action needed (idempotent) |
+| Rate limited | Wait and retry; surface to user if persistent |
+
+### Prioritize by Severity
+
+Address findings in this order:
+1. **Blocking:** SARIF errors, check failures (must fix to merge)
+2. **Critical/High:** Security issues, bugs
+3. **Medium:** Code quality, performance
+4. **Low:** Style, minor improvements
 
 ---
 
