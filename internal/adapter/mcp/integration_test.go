@@ -104,11 +104,17 @@ type MockIntegrationCommentWriter struct {
 
 func (m *MockIntegrationCommentWriter) ReplyToComment(ctx context.Context, owner, repo string, prNumber int, replyTo int64, body string) (int64, error) {
 	args := m.Called(ctx, owner, repo, prNumber, replyTo, body)
+	if args.Get(0) == nil {
+		return 0, args.Error(1)
+	}
 	return args.Get(0).(int64), args.Error(1)
 }
 
 func (m *MockIntegrationCommentWriter) CreateComment(ctx context.Context, owner, repo string, prNumber int, commitSHA, path string, line int, body string) (int64, error) {
 	args := m.Called(ctx, owner, repo, prNumber, commitSHA, path, line, body)
+	if args.Get(0) == nil {
+		return 0, args.Error(1)
+	}
 	return args.Get(0).(int64), args.Error(1)
 }
 
