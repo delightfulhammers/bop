@@ -1,334 +1,261 @@
 # PR Code Review Triage Skill
 
-Triage, respond to, and address PR code review feedback including SARIF code scanning alerts.
+Triage, respond to, and address PR code review feedback using the `code-reviewer` MCP server.
 
-## Instructions
+## Prerequisites
 
-When this skill is invoked (e.g., "triage the latest pr code review findings"), perform a comprehensive assessment of all feedback on the current PR and take appropriate action.
+The `code-reviewer` MCP server must be running and configured in Claude Code. It provides 12 tools for PR triage.
 
-## CRITICAL: Check Run Annotations vs PR Comments
+## Understanding the Two Sources
 
-**IMPORTANT:** There are TWO sources of findings, and they behave very differently:
+**CRITICAL:** There are TWO sources of findings with different behaviors:
 
-### 1. Check Run Annotations (AUTHORITATIVE)
-- **What:** SARIF findings from the LATEST review cycle only
-- **Where:** `/check-runs/{id}/annotations`
-- **Use for:** Determining what issues exist NOW on the current code
-- **Behavior:** Each push creates NEW annotations; old ones don't accumulate
+| Source | MCP Tools | Behavior |
+|--------|-----------|----------|
+| **SARIF Annotations** | `list_annotations`, `get_annotation` | Reset each push; shows CURRENT issues only |
+| **PR Comments** | `list_findings`, `get_finding` | Accumulate across commits; contains historical noise |
 
-### 2. PR Comments (ACCUMULATED)
-- **What:** Inline comments from ALL review cycles across the PR's lifetime
-- **Where:** `/pulls/{pr}/comments`
-- **Use for:** Responding to human reviewers, checking reply status
-- **Behavior:** Comments ACCUMULATE - you'll see stale findings from old commits!
-
-**ALWAYS query check run annotations first** to see the actual current findings. PR comments contain historical noise from previous review cycles.
-
-```bash
-# Get the HEAD commit and check run
-HEAD_SHA=$(gh pr view --json headRefOid -q '.headRefOid')
-CHECK_RUN_ID=$(gh api repos/{owner}/{repo}/commits/${HEAD_SHA}/check-runs \
-  --jq '.check_runs[] | select(.name == "openai" or .name == "review") | .id' | head -1)
-
-# Get CURRENT findings from check run annotations (authoritative source)
-gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
-  --jq '.[] | {level: .annotation_level, path: .path, line: .start_line, message: .message}'
-```
-
-**Why this matters:** If you query PR comments, you'll see 20+ findings from old commits when the actual latest review might only have 3. This leads to triaging already-fixed issues.
+**Always query both sources.** SARIF annotations are authoritative for current code state; PR comments show accumulated reviewer feedback.
 
 ---
 
-## Understanding Comment Accumulation (Issue #125 Learnings)
+## Available MCP Tools
 
-### PR Comments NEVER Disappear
+### Read Tools (Information Gathering)
 
-**CRITICAL:** PR comments persist forever, even when:
-- The review is dismissed
-- The code is fixed
-- A new review is posted
-- The finding no longer exists in current code
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `list_annotations` | SARIF findings for HEAD commit | `owner`, `repo`, `pr_number`, optional `level`/`check_name` filters |
+| `get_annotation` | Single annotation details | `owner`, `repo`, `check_run_id`, `index` |
+| `list_findings` | PR comment findings | `owner`, `repo`, `pr_number`, optional `severity`/`category` filters |
+| `get_finding` | Single finding with thread | `owner`, `repo`, `pr_number`, `finding_id` (fingerprint or comment ID) |
+| `get_suggestion` | Extract structured code fix | `owner`, `repo`, `pr_number`, `finding_id` |
+| `get_code_context` | Current file content at lines | `owner`, `repo`, `pr_number`, `file`, `start_line`, `end_line` |
+| `get_diff_context` | Diff hunk at location | `owner`, `repo`, `pr_number`, `file`, `start_line`, `end_line` |
 
-Each review cycle creates NEW comments. Dismissing old reviews only changes their state; inline comments remain visible.
+### Write Tools (Actions)
 
-### Why You See "Stale" Findings
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `get_thread` | Full comment thread history | `owner`, `repo`, `comment_id` |
+| `reply_to_finding` | Reply to PR comment with status | `owner`, `repo`, `pr_number`, `finding_id`, `body`, optional `status` |
+| `post_comment` | New comment at file/line (for SARIF) | `owner`, `repo`, `pr_number`, `file`, `line`, `body` |
+| `mark_resolved` | Mark thread as resolved | `owner`, `repo`, `thread_id`, `resolved` |
+| `request_rereview` | Dismiss stale reviews, request fresh | `owner`, `repo`, `pr_number`, `dismiss_stale`, optional `reviewers` |
 
-The LLM generates slightly different wording each run:
-- Run 1: "The MCP **binary constructs** the triage service with all dependencies **set to nil**..."
-- Run 2: "The MCP **server is started with** a triage service **constructed with nil** dependencies..."
+### Status Tags for `reply_to_finding`
 
-Different wording → different fingerprints → not deduplicated → duplicate comments posted.
-
-**Semantic deduplication** (Issue #125) catches these, but only when enabled.
-
-### To See Only NEW Comments (After Your Last Push)
-
-```bash
-# Get timestamp of your last push
-LAST_PUSH=$(git log -1 --format='%aI' HEAD)
-
-# Filter comments created after that time
-gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100" \
-  --jq "[.[] | select(.created_at > \"$LAST_PUSH\") | {id, path, created_at, body: .body[0:80]}]"
-```
-
-### To Identify Which Review Cycle a Comment Belongs To
-
-```bash
-# Group comments by review ID with timestamps
-gh api "repos/{owner}/{repo}/pulls/{pr}/comments?per_page=100" \
-  --jq 'group_by(.pull_request_review_id) | map({
-    review_id: .[0].pull_request_review_id,
-    created: .[0].created_at,
-    count: length
-  })'
-```
-
-### Check Workflow Logs for Deduplication Stats
-
-```bash
-# Find the latest review workflow run
-RUN_ID=$(gh run list --workflow="AI Code Review" --limit 1 --json databaseId -q '.[0].databaseId')
-
-# Check deduplication stats in logs
-gh run view $RUN_ID --log 2>&1 | grep -E "duplicate|dedup|skipped|posted"
-```
-
-Look for: `commentsPosted=X duplicatesSkipped=Y semanticDuplicatesSkipped=Z`
+Use the `status` parameter to tag your response:
+- `acknowledged` - Noted, will address later
+- `disputed` - Won't fix, with explanation
+- `fixed` - Addressed in code
+- `wont_fix` - Intentionally not addressing
 
 ---
 
-## Pre-Flight Checklist
+## Triage Workflow
 
-Before presenting triage results, verify you have checked ALL sources:
+### Step 1: Gather All Findings
 
-- [ ] **Check Run Annotations** - `gh api repos/{owner}/{repo}/check-runs/{id}/annotations`
-- [ ] **PR Comments** - `gh api repos/{owner}/{repo}/pulls/{pr}/comments`
+**Always check both sources:**
 
-**Both must be queried.** If one source has no findings, explicitly state "0 findings from [source]" in your output.
+```
+# SARIF annotations (authoritative for current code)
+list_annotations(owner, repo, pr_number)
 
----
-
-## Workflow
-
-### Step 1: Gather Feedback from LATEST Review
-
-**Start with check run annotations (the authoritative source):**
-
-```bash
-# Get current PR info
-PR_NUMBER=$(gh pr view --json number -q '.number' 2>/dev/null)
-HEAD_SHA=$(gh pr view --json headRefOid -q '.headRefOid')
-
-# Check PR status first
-gh pr view ${PR_NUMBER} --json state,reviewDecision
-gh pr checks ${PR_NUMBER}
-
-# Find the code review check run on HEAD commit
-CHECK_RUN_ID=$(gh api repos/{owner}/{repo}/commits/${HEAD_SHA}/check-runs \
-  --jq '.check_runs[] | select(.name == "openai" or .name == "review" or .name == "anthropic") | .id' | head -1)
-
-# Get CURRENT findings from check run annotations (THIS IS THE AUTHORITATIVE SOURCE)
-gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
-  --jq '.[] | {level: .annotation_level, path: .path, line: .start_line, message: .message}'
+# PR comment findings (accumulated reviewer feedback)
+list_findings(owner, repo, pr_number)
 ```
 
-**Only if needed, check PR comments for human reviewer feedback:**
-
-```bash
-# PR comments accumulate across all commits - use sparingly
-# Only needed for responding to human reviewers, not for SARIF triage
-gh api repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments \
-  --jq '.[] | select(.user.type == "User") | {id: .id, path: .path, body: .body[0:100]}'
-```
+If either returns empty, explicitly note "0 findings from [source]" in your summary.
 
 ### Step 2: Categorize Findings
 
-Group findings into categories:
+For each finding, determine the action:
 
 | Category | Action | Examples |
 |----------|--------|----------|
 | **Errors/Failures** | Must fix | SARIF errors, blocking check failures |
-| **Security Issues** | Must fix | Vulnerabilities, injection risks, secret exposure |
-| **Bugs** | Should fix | Logic errors, edge cases, null handling |
+| **Security Issues** | Must fix | Vulnerabilities, injection risks |
+| **Bugs** | Should fix | Logic errors, null handling |
 | **Valid Suggestions** | Consider fixing | Performance, clarity improvements |
-| **Design Disputes** | Reply inline | Intentional patterns, architecture decisions |
-| **False Positives** | Reply inline | Incorrect analysis, missing context |
-| **Low Priority** | Defer/note | Micro-optimizations, style preferences |
+| **Design Disputes** | Reply with explanation | Intentional patterns, architecture decisions |
+| **False Positives** | Reply with context | Incorrect analysis, missing context |
 
-### Step 3: Triage Decision Matrix
-
-For each finding, apply this decision matrix:
+### Step 3: Get Details for Complex Findings
 
 ```
-Is it a blocking error (SARIF error, check failure)?
-  YES → Fix immediately (highest priority)
-  NO  → Continue...
+# Get full finding with thread context
+get_finding(owner, repo, pr_number, finding_id)
 
-Is it a security vulnerability?
-  YES → Fix immediately
-  NO  → Continue...
+# Get current code at the location
+get_code_context(owner, repo, pr_number, file, start_line, end_line)
 
-Is it a real bug or logic error?
-  YES → Fix it
-  NO  → Continue...
-
-Is it about intentional design or architecture?
-  YES → Reply with explanation (cite principles: clean architecture, SOLID, etc.)
-  NO  → Continue...
-
-Is it a false positive or lacks context?
-  YES → Reply explaining why (reference existing code, design docs)
-  NO  → Continue...
-
-Is the fix worth the code churn?
-  YES → Fix it
-  NO  → Reply noting it's deferred or accepted risk
+# Get structured suggestion for applying fix
+get_suggestion(owner, repo, pr_number, finding_id)
 ```
 
-### Step 4: Address Valid Findings
+### Step 4: Apply Fixes
 
-For findings that need fixing:
+For findings you're addressing:
 
-1. **Make the fix** - Edit the relevant code
-2. **Add tests** - If the fix addresses a bug or edge case
-3. **Run validation** - `go test ./... && go build -o cr ./cmd/cr`
-4. **Commit with context** - Reference the finding in commit message (but DON'T push yet!)
+1. Use `get_suggestion` to extract the proposed fix
+2. Apply the fix using standard file editing
+3. Run validation: `go test ./... && go build -o cr ./cmd/cr`
+4. Commit locally (don't push yet)
 
-```bash
-git add -A && git commit -m "$(cat <<'EOF'
-fix: <description of fix>
+### Step 5: Respond to Findings
 
-Addresses code review finding: <brief description>
-EOF
-)"
-# DO NOT push yet - reply to findings first!
+**For PR comment findings:**
+```
+reply_to_finding(owner, repo, pr_number, finding_id, body, status="fixed")
 ```
 
-**IMPORTANT ORDER OF OPERATIONS:**
-1. Make fixes and commit locally
-2. Reply to ALL findings on GitHub (Step 5)
-3. THEN push changes
-
-This order prevents race conditions where a new review cycle starts before you've responded to the current findings, causing confusion about which findings were addressed.
-
-### Step 5: Reply to Disputed Findings
-
-For findings you won't address, reply inline with clear reasoning:
-
-```bash
-# Reply to a PR comment
-gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies \
-  -X POST -f body="<explanation>"
+**For SARIF annotations** (can't reply directly - create new comment):
+```
+post_comment(owner, repo, pr_number, file, line, body)
 ```
 
 **Good reply patterns:**
+- **Fixed:** "Addressed in commit [hash]. [Brief description of fix]."
+- **Disputed:** "This is intentional. [Pattern] is used because [reason]."
+- **Won't fix:** "Acceptable risk because [reason]. Cost of fix outweighs benefit."
+- **False positive:** "[Code] actually does [X], not [Y]. The [context] ensures safety."
 
-- **Intentional design:** "This is intentional. [Pattern] is used because [reason]. See [reference]."
-- **Already fixed:** "Addressed in commit [hash]. See lines [X-Y]."
-- **False positive:** "[Function/pattern] actually does [X], not [Y]. The [context] ensures safety."
-- **Acceptable risk:** "This edge case is [acceptable/rare] because [reason]. The cost of fixing outweighs the risk."
-- **Separation of concerns:** "This tests [X], not [Y]. [Y] is tested separately in [location]."
+### Step 6: Mark Threads Resolved
 
-### Step 6: Iterate Until Clean
-
-Continue the triage cycle until:
-- All blocking errors are fixed
-- All check runs pass
-- Remaining findings are either fixed or have replies
-- No new actionable feedback appears
-
-## SARIF Code Scanning Specifics
-
-SARIF alerts have severity levels:
-
-| Level | Meaning | Action |
-|-------|---------|--------|
-| `error` / `failure` | Blocking issue | Must fix to merge |
-| `warning` | Significant concern | Should fix or explain |
-| `note` / `notice` | Observation | Fix if easy, otherwise explain |
-
-**Fetching SARIF annotations:**
-```bash
-# Find the code scanning check run
-CHECK_RUN_ID=$(gh api repos/{owner}/{repo}/commits/{sha}/check-runs \
-  --jq '.check_runs[] | select(.name == "anthropic" or .app.slug == "github-code-scanning") | .id' | head -1)
-
-# Get annotations
-gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations \
-  --jq '.[] | {level: .annotation_level, path: .path, line: .start_line, msg: .message}'
+After addressing a finding:
+```
+mark_resolved(owner, repo, thread_id, resolved=true)
 ```
 
-## Common Dispute Categories
+### Step 7: Push and Request Re-review
 
-### Clean Architecture / Design Patterns
-- "Following clean architecture, domain types are data without behavior. Validation belongs in the use case layer."
-- "This is intentional separation of concerns between adapters."
+After all fixes are committed and responses posted:
 
-### Premature Optimization
-- "This is a micro-optimization for code called [rarely/once]. The [X] dominates runtime."
-- "Optimizing this path would be premature - [real bottleneck] is orders of magnitude larger."
+```bash
+git push
+```
 
-### Test Design
-- "This tests [specific thing], not [other thing]. Testing both together conflates concerns."
-- "The mock isolates [X] for unit testing. Integration tests cover [Y] separately."
+Then request fresh review:
+```
+request_rereview(owner, repo, pr_number, dismiss_stale=true)
+```
 
-### Error Handling
-- "Fail-fast is intentional. If [condition], it's a configuration error that should surface immediately."
-- "The fallback is documented and logged. Callers can check logs if needed."
+---
 
-### Configuration Design
-- "By design, use `[explicit option]` rather than [implicit behavior]. This keeps the API clear."
+## Decision Matrix
+
+```
+Is it a blocking error (SARIF error, check failure)?
+  YES -> Fix immediately
+  NO  -> Continue...
+
+Is it a security vulnerability?
+  YES -> Fix immediately
+  NO  -> Continue...
+
+Is it a real bug or logic error?
+  YES -> Fix it
+  NO  -> Continue...
+
+Is it about intentional design or architecture?
+  YES -> Reply with explanation (cite clean architecture, SOLID, etc.)
+  NO  -> Continue...
+
+Is it a false positive or lacks context?
+  YES -> Reply explaining why
+  NO  -> Continue...
+
+Is the fix worth the code churn?
+  YES -> Fix it
+  NO  -> Reply noting it's deferred
+```
+
+---
 
 ## Output Format
 
-**IMPORTANT:** You MUST show findings from BOTH sources explicitly. Never skip one.
-
-After triaging, summarize actions taken:
+After triaging, provide a summary:
 
 ```markdown
-## PR Review Triage Summary
+## PR Triage Summary
 
 ### Sources Checked
-- [ ] Check Run Annotations (SARIF): X findings from check run ID [id]
-- [ ] PR Comments: Y comments from human/bot reviewers
+- [x] SARIF Annotations: X findings
+- [x] PR Comments: Y findings
 
 ### Findings by Source
 
-#### Check Run Annotations (Static Analysis)
-| # | File:Line | Severity | Finding | Decision | Reason |
-|---|-----------|----------|---------|----------|--------|
-| 1 | path:line | error/warning/note | [description] | accept/dispute/defer | [reason] |
+#### SARIF Annotations
+| # | File:Line | Severity | Finding | Decision |
+|---|-----------|----------|---------|----------|
+| 1 | path:42 | error | [description] | Fixed |
 
-#### PR Comments (Reviewer Feedback)
-| # | File:Line | Author | Finding | Decision | Reason |
-|---|-----------|--------|---------|----------|--------|
-| 1 | path:line | user | [description] | accept/dispute/defer | [reason] |
+#### PR Comments
+| # | File:Line | Finding ID | Finding | Decision |
+|---|-----------|------------|---------|----------|
+| 1 | path:100 | CR_FP-xxx | [description] | Disputed |
 
-### Action Summary
+### Actions Taken
 | Decision | Count | Details |
 |----------|-------|---------|
-| Accept (will fix) | X | [brief list] |
-| Dispute (won't fix) | Y | [brief list] |
-| Defer | Z | [brief list] |
-| Duplicate | N | [findings that appear in both sources] |
+| Fixed | X | [list] |
+| Disputed | Y | [list] |
+| Deferred | Z | [list] |
 
 ### Status
 - Blocking errors: X fixed, Y remaining
-- Check status: [passing/failing]
-- Ready for next review: [yes/no]
+- Ready for re-review: [yes/no]
 ```
 
-**If either source has 0 findings, explicitly state it** (e.g., "No check run annotations found" or "No PR comments").
+---
 
-## After Loading Context
+## Common Dispute Patterns
 
-1. Identify the current PR and HEAD commit SHA
-2. **Query BOTH sources** (check this off mentally):
-   - Check run annotations (SARIF/static analysis)
-   - PR comments (reviewer feedback)
-3. Present findings **by source** in separate tables
-4. Categorize each finding: accept, dispute, or defer
-5. Fix accepted issues
-6. Reply to disputed findings on GitHub
-7. Report summary with counts from each source
+### Clean Architecture
+> "Following clean architecture, domain types are pure data. Validation belongs in the use case layer, not the domain."
+
+### Premature Optimization
+> "This is a micro-optimization for code called rarely. The [real bottleneck] dominates runtime."
+
+### Test Design
+> "This tests [specific behavior], not [other thing]. Testing both together conflates concerns."
+
+### Error Handling
+> "Fail-fast is intentional. If [condition], it's a configuration error that should surface immediately."
+
+### Intentional Patterns
+> "This follows [pattern name] per [reference]. The apparent [issue] is actually [explanation]."
+
+---
+
+## Fallback: Raw GitHub API
+
+If MCP tools are unavailable, fall back to `gh api`:
+
+```bash
+# Get HEAD commit
+HEAD_SHA=$(gh pr view --json headRefOid -q '.headRefOid')
+
+# Find check run
+CHECK_RUN_ID=$(gh api repos/{owner}/{repo}/commits/${HEAD_SHA}/check-runs \
+  --jq '.check_runs[] | select(.name == "review") | .id' | head -1)
+
+# Get annotations
+gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations
+
+# Get PR comments
+gh api repos/{owner}/{repo}/pulls/{pr}/comments
+```
+
+---
+
+## After Loading This Skill
+
+1. Identify current PR: `owner`, `repo`, `pr_number`
+2. Query both sources using MCP tools
+3. Present findings by source in separate tables
+4. Categorize each: fix, dispute, or defer
+5. Apply fixes and respond to findings
+6. Push and request re-review

@@ -3,7 +3,7 @@
 **Project:** AI-Powered Code Review Tool
 **Status:** Phase 3 In Development
 **Version:** v0.4.2 (targeting v0.5.0)
-**Last Updated:** 2025-12-28
+**Last Updated:** 2025-12-29
 
 ---
 
@@ -39,10 +39,10 @@
 
 | Component | Status |
 |-----------|--------|
-| `code-reviewer-mcp` binary | 🚧 Planned |
-| `internal/usecase/triage/` | 🚧 Planned |
-| 9 MCP tool handlers | 🚧 Planned |
-| Claude Code skill update | 🚧 Planned |
+| `code-reviewer-mcp` binary | ✅ Complete |
+| `internal/usecase/triage/` | ✅ Complete |
+| 12 MCP tool handlers | ✅ Complete |
+| Claude Code skill update | ✅ Complete |
 | `cr triage` CLI (P2) | 🚧 Planned |
 
 ### Key Documents
@@ -140,7 +140,7 @@ Use these skills for targeted context instead of reading docs manually:
 ```
 cmd/
   cr/                    # CLI entry point
-  code-reviewer-mcp/     # MCP server (Phase 3.1 - planned)
+  code-reviewer-mcp/     # MCP server for triage workflow
 internal/
   adapter/               # External integrations
     cli/                 # Command-line interface
@@ -150,7 +150,7 @@ internal/
       gemini/
       ollama/
       openai/
-    mcp/                 # MCP tool handlers (Phase 3.1 - planned)
+    mcp/                 # MCP tool handlers (12 tools)
     output/              # Output formatters (markdown, json, sarif)
     store/               # SQLite persistence
   config/                # Configuration loading
@@ -159,7 +159,7 @@ internal/
   usecase/               # Business logic
     merge/               # Multi-provider merge
     review/              # Review orchestration
-    triage/              # Triage workflow (Phase 3.1 - planned)
+    triage/              # Triage workflow service
 docs/
   design/                # Active design docs (Phase 3)
   archive/               # Historical docs
@@ -191,31 +191,25 @@ When running `golangci-lint run`, fix **every error** you encounter - not just e
 
 ## PR Triage Protocol
 
-When triaging PR review findings, **ALWAYS** fetch and address findings from ALL sources as a single logical unit:
+When triaging PR review findings, use the `code-reviewer` MCP server tools. The server exposes 12 tools that handle both finding sources:
 
-1. **LLM Review Comments** (`github-actions[bot]`) - CR_FP-marked findings from code review
-2. **SARIF/Security Findings** (`github-advanced-security[bot]`) - CodeQL/security scanner findings
-
-**These are a single logical unit. Never triage one without the other.**
-
-### Query Commands
-
-```bash
-# LLM review findings
-gh api repos/{owner}/{repo}/pulls/{pr}/comments --jq '.[] | select(.user.login == "github-actions[bot]") | {id, path, line, body: .body[:400]}'
-
-# SARIF/security findings
-gh api repos/{owner}/{repo}/pulls/{pr}/comments --jq '.[] | select(.user.login == "github-advanced-security[bot]") | {id, path, line, body: .body[:400]}'
-```
+| Source | MCP Tools |
+|--------|-----------|
+| **SARIF Annotations** | `list_annotations`, `get_annotation` |
+| **PR Comments** | `list_findings`, `get_finding`, `get_thread` |
+| **Code Context** | `get_code_context`, `get_diff_context`, `get_suggestion` |
+| **Actions** | `reply_to_finding`, `post_comment`, `mark_resolved`, `request_rereview` |
 
 ### Triage Workflow
 
-1. Fetch findings from BOTH bots
-2. Categorize: Fix vs Won't Fix vs Acknowledged
-3. Apply code fixes for valid findings
-4. Reply to ALL findings (both bots) with status: **Fixed**, **Won't fix**, or **Acknowledged**
-5. Commit and push fixes
-6. Verify all findings have responses
+1. **List findings:** `list_annotations` + `list_findings` (always check both)
+2. **Analyze:** Use `get_finding`, `get_code_context`, `get_suggestion` for details
+3. **Fix:** Apply code fixes for valid findings
+4. **Respond:** `reply_to_finding` for PR comments, `post_comment` for SARIF
+5. **Resolve:** `mark_resolved` for addressed threads
+6. **Re-review:** `request_rereview` after fixes are pushed
+
+See `/skill triage-pr-review` for detailed workflow.
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Target Version:** v0.5.0
 **Estimated Effort:** ~50 hours
-**Status:** In Progress (M1, M2 handlers complete)
+**Status:** In Progress (M1-M3 complete, M4 in progress)
 
 ---
 
@@ -25,13 +25,13 @@ Both must be queryable for complete triage.
 
 | Deliverable | Priority | Effort | Status |
 |-------------|----------|--------|--------|
-| MCP Server Binary | P0 | 8h | Done (M1) |
-| Triage Use Case Layer | P0 | 10h | Done (M2) |
-| Read Adapter Layer | P0 | 10h | **Pending (M2.5)** |
-| GitHub Write Extensions | P0 | 8h | Pending (M3) |
-| 12 MCP Tool Handlers | P0 | 12h | Handlers done, adapters pending |
+| MCP Server Binary | P0 | 8h | ✅ Done (M1) |
+| Triage Use Case Layer | P0 | 10h | ✅ Done (M2) |
+| Read Adapter Layer | P0 | 10h | ✅ Done (M2.5) |
+| GitHub Write Extensions | P0 | 8h | ✅ Done (M3) |
+| 12 MCP Tool Handlers | P0 | 12h | ✅ Done |
 | Triage Skill Document | P1 | 2h | Pending (M5) |
-| Integration Tests | P0 | 4h | Pending (M4) |
+| Integration Tests | P0 | 4h | 🚧 In Progress (M4) |
 
 ---
 
@@ -43,18 +43,18 @@ M1: Foundation        M2: Core Tools       M2.5: Adapters       M3: Write Tools 
 ├── Service skeleton  ├── Use case logic   ├── CommentReader    ├── Thread ops       ├── Integration
 ├── MCP server setup  ├── Tool registration├── Wire to server   ├── Review mgmt      ├── Skill doc
 │                     │                    │                    │                    │
-│  DONE               │  DONE (handlers)   │  PENDING #130      │  PENDING #120      │  PENDING
+│  ✅ DONE            │  ✅ DONE           │  ✅ DONE           │  ✅ DONE           │  🚧 IN PROGRESS
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Dependency Chain
 
 ```
-M1 (Foundation)
-    └── M2 (Core Tool Handlers) - DONE
-            └── M2.5 (Adapter Layer) - #130
-                    └── M3 (Write Tools) - #120
-                            └── M4 (Testing)
+M1 (Foundation) ✅
+    └── M2 (Core Tool Handlers) ✅
+            └── M2.5 (Adapter Layer) ✅
+                    └── M3 (Write Tools) ✅
+                            └── M4 (Testing) 🚧 ← YOU ARE HERE
                                     └── M5 (Polish)
 ```
 
@@ -76,23 +76,23 @@ M1 (Foundation)
 
 ---
 
-## Milestone 2: Core Tools (10 hours) - HANDLERS COMPLETE
+## Milestone 2: Core Tools (10 hours) - COMPLETE
 
 **Goal:** Implement the 7 read-only information tools.
 
-**Status:** MCP handlers and use case logic are implemented. Tools return "not implemented" until M2.5 provides the adapter layer.
+**Status:** All MCP handlers, use case logic, and adapters are fully implemented.
 
 ### Tools Implemented
 
 | Tool | Source | Handler | Use Case | Adapter |
 |------|--------|---------|----------|---------|
-| `list_annotations` | SARIF | Done | Done | **Needs PRReader** |
-| `get_annotation` | SARIF | Done | Done | Done (checkruns.go) |
-| `list_findings` | PR Comments | Done | Done | **Needs CommentReader** |
-| `get_finding` | PR Comments | Done | Done | **Needs CommentReader** |
-| `get_suggestion` | Both | Done | Stub | **Needs SuggestionExtractor** |
-| `get_code_context` | Git | Done | Done | **Needs PRReader** |
-| `get_diff_context` | Git | Done | Done | **Needs PRReader** |
+| `list_annotations` | SARIF | ✅ | ✅ | ✅ |
+| `get_annotation` | SARIF | ✅ | ✅ | ✅ |
+| `list_findings` | PR Comments | ✅ | ✅ | ✅ |
+| `get_finding` | PR Comments | ✅ | ✅ | ✅ |
+| `get_suggestion` | Both | ✅ | ✅ | ✅ |
+| `get_code_context` | Git | ✅ | ✅ | ✅ |
+| `get_diff_context` | Git | ✅ | ✅ | ✅ |
 
 ### Acceptance Criteria
 
@@ -100,80 +100,64 @@ M1 (Foundation)
 - [x] Tools return proper JSON responses
 - [x] Error handling returns structured MCP errors
 - [x] Handlers implemented with proper validation
-- [ ] **Blocked:** Tools functional end-to-end (requires M2.5)
+- [x] Tools functional end-to-end
 
 ---
 
-## Milestone 2.5: Adapter Layer (10 hours) - PENDING
+## Milestone 2.5: Adapter Layer (10 hours) - COMPLETE
 
-**Issue:** #130
+**Issue:** #130 (closed)
 **Goal:** Implement GitHub adapter methods required by M2 read tools.
 
-**Why This Exists:** M2 implemented handlers and use case logic, but the underlying adapter implementations (GitHub API calls) were implicitly assumed but not explicitly scoped. This milestone completes the adapter layer.
+**Why This Existed:** M2 implemented handlers and use case logic, but the underlying adapter implementations (GitHub API calls) were implicitly assumed but not explicitly scoped. This milestone completed the adapter layer.
 
 ### Tasks
 
-| Task | Effort | Enables |
-|------|--------|---------|
-| 2.5.1 PRReader - GetPRMetadata | 1.5h | list_annotations, get_code_context, get_diff_context |
-| 2.5.2 CommentReader - ListPRComments | 2h | list_findings |
-| 2.5.3 CommentReader - GetPRComment | 1h | get_finding |
-| 2.5.4 CommentReader - GetPRCommentByFingerprint | 1.5h | get_finding |
-| 2.5.5 CommentReader - GetThreadHistory | 1h | get_finding (thread context) |
-| 2.5.6 Wire adapters into MCP server | 1h | All M2 tools |
-| 2.5.7 Integration tests | 2h | Verification |
-
-### Port Interfaces (Already Defined in ports.go)
-
-```go
-type PRReader interface {
-    GetPRMetadata(ctx context.Context, owner, repo string, prNumber int) (*domain.PRMetadata, error)
-}
-
-type CommentReader interface {
-    ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error)
-    GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error)
-    GetPRCommentByFingerprint(ctx context.Context, owner, repo string, prNumber int, fingerprint string) (*domain.PRFinding, error)
-    GetThreadHistory(ctx context.Context, owner, repo string, commentID int64) ([]domain.ThreadComment, error)
-}
-```
+| Task | Effort | Status |
+|------|--------|--------|
+| 2.5.1 PRReader - GetPRMetadata | 1.5h | ✅ |
+| 2.5.2 CommentReader - ListPRComments | 2h | ✅ |
+| 2.5.3 CommentReader - GetPRComment | 1h | ✅ |
+| 2.5.4 CommentReader - GetPRCommentByFingerprint | 1.5h | ✅ |
+| 2.5.5 CommentReader - GetThreadHistory | 1h | ✅ |
+| 2.5.6 Wire adapters into MCP server | 1h | ✅ |
+| 2.5.7 Unit tests for adapters | 2h | ✅ |
 
 ### Deliverables
 
-- [ ] `internal/adapter/github/pr_metadata.go` - PRReader implementation
-- [ ] `internal/adapter/github/pr_comments.go` - CommentReader implementation
-- [ ] Update `internal/adapter/mcp/server.go` - Wire adapters to PRService
-- [ ] Unit tests for new adapter methods
-- [ ] Integration test: end-to-end M2 tool calls
+- [x] `internal/adapter/github/pr_metadata.go` - PRReader implementation
+- [x] `internal/adapter/github/pr_comments.go` - CommentReader implementation
+- [x] Update `internal/adapter/mcp/server.go` - Wire adapters to PRService
+- [x] Unit tests for new adapter methods
 
 ### Acceptance Criteria
 
-- [ ] `list_annotations` returns real SARIF data for a PR
-- [ ] `list_findings` returns real PR comment findings
-- [ ] `get_finding` works with both fingerprint and comment ID
-- [ ] `get_code_context` returns file content from PR head
-- [ ] `get_diff_context` returns diff hunks
-- [ ] All tests pass
+- [x] `list_annotations` returns real SARIF data for a PR
+- [x] `list_findings` returns real PR comment findings
+- [x] `get_finding` works with both fingerprint and comment ID
+- [x] `get_code_context` returns file content from PR head
+- [x] `get_diff_context` returns diff hunks
+- [x] All tests pass
 
 ---
 
-## Milestone 3: GitHub Integration (9.5 hours) - PENDING
+## Milestone 3: GitHub Integration (9.5 hours) - COMPLETE
 
-**Issue:** #120
-**Depends On:** #130 (M2.5)
+**Issue:** #120 (closed)
+**Depends On:** #130 (M2.5) ✅
 **Goal:** Implement GitHub adapter write extensions and 5 write tool handlers.
 
 ### Tasks
 
-| Task | Effort | Dependencies |
-|------|--------|--------------|
-| 3.1 `comments.go` - Thread write operations | 2h | M2.5 |
-| 3.2 `reviews.go` - Review listing/dismissal | 2h | M2.5 |
-| 3.3 `get_thread` handler | 1h | 3.1 |
-| 3.4 `reply_to_finding` handler | 1h | 3.1 |
-| 3.5 `post_comment` handler | 1.5h | 3.1 |
-| 3.6 `mark_resolved` handler | 1h | 3.1 |
-| 3.7 `request_rereview` handler | 1h | 3.2 |
+| Task | Effort | Status |
+|------|--------|--------|
+| 3.1 `comment_writer.go` - Thread write operations | 2h | ✅ |
+| 3.2 `review_manager.go` - Review listing/dismissal | 2h | ✅ |
+| 3.3 `get_thread` handler | 1h | ✅ |
+| 3.4 `reply_to_finding` handler | 1h | ✅ |
+| 3.5 `post_comment` handler | 1.5h | ✅ |
+| 3.6 `mark_resolved` handler | 1h | ✅ |
+| 3.7 `request_rereview` handler | 1h | ✅ |
 
 ### Tool Specifications
 
@@ -191,27 +175,36 @@ Check run annotations (SARIF findings) **cannot be replied to directly** via Git
 
 ### Acceptance Criteria
 
-- [ ] All 5 GitHub tools implemented and callable
-- [ ] Thread resolution works correctly
-- [ ] Reply creates proper threaded comments
-- [ ] `post_comment` creates new comment at file/line
-- [ ] Stale review dismissal works
-- [ ] Rate limiting handled gracefully
+- [x] All 5 GitHub tools implemented and callable
+- [x] Thread resolution works correctly
+- [x] Reply creates proper threaded comments
+- [x] `post_comment` creates new comment at file/line
+- [x] Stale review dismissal works
+- [x] Rate limiting handled gracefully
 
 ---
 
-## Milestone 4: Testing (4 hours) - PENDING
+## Milestone 4: Testing (4 hours) - IN PROGRESS
 
+**Issue:** #121
 **Goal:** Comprehensive test coverage for all components.
 
 ### Tasks
 
-| Task | Effort | Dependencies |
-|------|--------|--------------|
-| 4.1 Unit tests for service layer | 1.5h | M2.5, M3 |
-| 4.2 Unit tests for MCP handlers | 1h | M2.5, M3 |
-| 4.3 Integration tests (GitHub mock) | 1h | M3 |
-| 4.4 E2E workflow test | 0.5h | M3 |
+| Task | Effort | Status |
+|------|--------|--------|
+| 4.1 Unit tests for service layer | 1.5h | ✅ (`pr_service_test.go`, `suggestion_extractor_test.go`) |
+| 4.2 Unit tests for MCP handlers | 1h | ❌ **Missing** (`internal/adapter/mcp/` has no tests) |
+| 4.3 Integration tests (GitHub mock) | 1h | ❌ Pending |
+| 4.4 E2E workflow test | 0.5h | ❌ Pending |
+
+### Current Test Coverage
+
+| Package | Tests Exist | Coverage |
+|---------|-------------|----------|
+| `internal/usecase/triage/` | ✅ | TBD |
+| `internal/adapter/mcp/` | ❌ | 0% |
+| `internal/adapter/github/` (new) | ✅ | TBD |
 
 ### Acceptance Criteria
 
@@ -324,3 +317,4 @@ Location: `skills/triage-pr-review/SKILL.md`
 |---------|------|---------|
 | 1.0 | 2025-12-28 | Initial roadmap |
 | 1.1 | 2025-12-29 | Added M2.5 milestone (#130) for adapter layer. Updated tool count to 12 (7 read + 5 write). Clarified M2 status (handlers done, adapters pending). Added dependency chain diagram. |
+| 1.2 | 2025-12-29 | Status sync: M1-M3 marked complete. M2.5 adapter layer done. M3 write tools done. M4 in progress (service tests exist, MCP handler tests missing). Updated all checklists and task tables. |
