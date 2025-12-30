@@ -79,11 +79,11 @@ func (s *Server) registerTools() {
 
 // ListAnnotationsInput is the input for the list_annotations tool.
 type ListAnnotationsInput struct {
-	Owner     string  `json:"owner" jsonschema:"description=Repository owner"`
-	Repo      string  `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber  int     `json:"pr_number" jsonschema:"description=Pull request number"`
-	CheckName *string `json:"check_name,omitempty" jsonschema:"description=Filter by check run name (e.g. 'code-reviewer')"`
-	Level     *string `json:"level,omitempty" jsonschema:"description=Filter by annotation level,enum=notice,enum=warning,enum=failure"`
+	Owner     string  `json:"owner" jsonschema:"Repository owner"`
+	Repo      string  `json:"repo" jsonschema:"Repository name"`
+	PRNumber  int     `json:"pr_number" jsonschema:"Pull request number"`
+	CheckName *string `json:"check_name,omitempty" jsonschema:"Filter by check run name (e.g. 'code-reviewer')"`
+	Level     *string `json:"level,omitempty" jsonschema:"Filter by annotation level (notice, warning, failure)"`
 }
 
 // ListAnnotationsOutput is the output for the list_annotations tool.
@@ -106,10 +106,10 @@ type AnnotationOutput struct {
 
 // GetAnnotationInput is the input for the get_annotation tool.
 type GetAnnotationInput struct {
-	Owner      string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo       string `json:"repo" jsonschema:"description=Repository name"`
-	CheckRunID int64  `json:"check_run_id" jsonschema:"description=GitHub check run ID"`
-	Index      int    `json:"index" jsonschema:"description=Annotation index (0-based)"`
+	Owner      string `json:"owner" jsonschema:"Repository owner"`
+	Repo       string `json:"repo" jsonschema:"Repository name"`
+	CheckRunID int64  `json:"check_run_id" jsonschema:"GitHub check run ID"`
+	Index      int    `json:"index" jsonschema:"Annotation index (0-based)"`
 }
 
 // GetAnnotationOutput is the output for the get_annotation tool.
@@ -120,11 +120,11 @@ type GetAnnotationOutput struct {
 
 // ListFindingsInput is the input for the list_findings tool.
 type ListFindingsInput struct {
-	Owner    string  `json:"owner" jsonschema:"description=Repository owner"`
-	Repo     string  `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber int     `json:"pr_number" jsonschema:"description=Pull request number"`
-	Severity *string `json:"severity,omitempty" jsonschema:"description=Filter by severity,enum=critical,enum=high,enum=medium,enum=low"`
-	Category *string `json:"category,omitempty" jsonschema:"description=Filter by category"`
+	Owner    string  `json:"owner" jsonschema:"Repository owner"`
+	Repo     string  `json:"repo" jsonschema:"Repository name"`
+	PRNumber int     `json:"pr_number" jsonschema:"Pull request number"`
+	Severity *string `json:"severity,omitempty" jsonschema:"Filter by severity (critical, high, medium, low)"`
+	Category *string `json:"category,omitempty" jsonschema:"Filter by category"`
 }
 
 // ListFindingsOutput is the output for the list_findings tool.
@@ -150,10 +150,10 @@ type PRFindingOutput struct {
 
 // GetFindingInput is the input for the get_finding tool.
 type GetFindingInput struct {
-	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo      string `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber  int    `json:"pr_number" jsonschema:"description=Pull request number"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID (fingerprint or comment ID)"`
+	Owner     string `json:"owner" jsonschema:"Repository owner"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	PRNumber  int    `json:"pr_number" jsonschema:"Pull request number"`
+	FindingID string `json:"finding_id" jsonschema:"Finding ID (fingerprint or comment ID)"`
 }
 
 // GetFindingOutput is the output for the get_finding tool.
@@ -164,10 +164,10 @@ type GetFindingOutput struct {
 
 // GetSuggestionInput is the input for the get_suggestion tool.
 type GetSuggestionInput struct {
-	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo      string `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber  int    `json:"pr_number" jsonschema:"description=Pull request number"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID (fingerprint or comment ID)"`
+	Owner     string `json:"owner" jsonschema:"Repository owner"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	PRNumber  int    `json:"pr_number" jsonschema:"Pull request number"`
+	FindingID string `json:"finding_id" jsonschema:"Finding ID (fingerprint or comment ID)"`
 }
 
 // GetSuggestionOutput is the output for the get_suggestion tool.
@@ -181,13 +181,13 @@ type GetSuggestionOutput struct {
 
 // GetCodeContextInput is the input for the get_code_context tool.
 type GetCodeContextInput struct {
-	Owner        string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo         string `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber     int    `json:"pr_number" jsonschema:"description=Pull request number"`
-	File         string `json:"file" jsonschema:"description=File path"`
-	StartLine    int    `json:"start_line" jsonschema:"description=Start line (1-based)"`
-	EndLine      int    `json:"end_line" jsonschema:"description=End line (1-based)"`
-	ContextLines int    `json:"context_lines,omitempty" jsonschema:"description=Lines of context before and after (default: 3)"`
+	Owner        string `json:"owner" jsonschema:"Repository owner"`
+	Repo         string `json:"repo" jsonschema:"Repository name"`
+	PRNumber     int    `json:"pr_number" jsonschema:"Pull request number"`
+	File         string `json:"file" jsonschema:"File path"`
+	StartLine    int    `json:"start_line" jsonschema:"Start line (1-based)"`
+	EndLine      int    `json:"end_line" jsonschema:"End line (1-based)"`
+	ContextLines int    `json:"context_lines,omitempty" jsonschema:"Lines of context before and after (default: 3)"`
 }
 
 // GetCodeContextOutput is the output for the get_code_context tool.
@@ -204,12 +204,12 @@ type GetCodeContextOutput struct {
 
 // GetDiffContextInput is the input for the get_diff_context tool.
 type GetDiffContextInput struct {
-	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo      string `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber  int    `json:"pr_number" jsonschema:"description=Pull request number"`
-	File      string `json:"file" jsonschema:"description=File path"`
-	StartLine int    `json:"start_line" jsonschema:"description=Start line (1-based, in new file)"`
-	EndLine   int    `json:"end_line" jsonschema:"description=End line (1-based, in new file)"`
+	Owner     string `json:"owner" jsonschema:"Repository owner"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	PRNumber  int    `json:"pr_number" jsonschema:"Pull request number"`
+	File      string `json:"file" jsonschema:"File path"`
+	StartLine int    `json:"start_line" jsonschema:"Start line (1-based, in new file)"`
+	EndLine   int    `json:"end_line" jsonschema:"End line (1-based, in new file)"`
 }
 
 // GetDiffContextOutput is the output for the get_diff_context tool.
@@ -229,12 +229,12 @@ type GetDiffContextOutput struct {
 
 // ReplyToFindingInput is the input for the reply_to_finding tool.
 type ReplyToFindingInput struct {
-	Owner     string  `json:"owner" jsonschema:"description=Repository owner"`
-	Repo      string  `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber  int     `json:"pr_number" jsonschema:"description=Pull request number"`
-	FindingID string  `json:"finding_id" jsonschema:"description=Finding ID (fingerprint or comment ID)"`
-	Body      string  `json:"body" jsonschema:"description=Reply body (markdown supported)"`
-	Status    *string `json:"status,omitempty" jsonschema:"description=Optional status tag: acknowledged/disputed/fixed/wont_fix"`
+	Owner     string  `json:"owner" jsonschema:"Repository owner"`
+	Repo      string  `json:"repo" jsonschema:"Repository name"`
+	PRNumber  int     `json:"pr_number" jsonschema:"Pull request number"`
+	FindingID string  `json:"finding_id" jsonschema:"Finding ID (fingerprint or comment ID)"`
+	Body      string  `json:"body" jsonschema:"Reply body (markdown supported)"`
+	Status    *string `json:"status,omitempty" jsonschema:"Optional status tag: acknowledged, disputed, fixed, wont_fix"`
 }
 
 // ReplyToFindingOutput is the output for the reply_to_finding tool.
@@ -246,12 +246,12 @@ type ReplyToFindingOutput struct {
 
 // PostCommentInput is the input for the post_comment tool.
 type PostCommentInput struct {
-	Owner    string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo     string `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber int    `json:"pr_number" jsonschema:"description=Pull request number"`
-	File     string `json:"file" jsonschema:"description=File path to comment on"`
-	Line     int    `json:"line" jsonschema:"description=Line number (1-based)"`
-	Body     string `json:"body" jsonschema:"description=Comment body (markdown supported)"`
+	Owner    string `json:"owner" jsonschema:"Repository owner"`
+	Repo     string `json:"repo" jsonschema:"Repository name"`
+	PRNumber int    `json:"pr_number" jsonschema:"Pull request number"`
+	File     string `json:"file" jsonschema:"File path to comment on"`
+	Line     int    `json:"line" jsonschema:"Line number (1-based)"`
+	Body     string `json:"body" jsonschema:"Comment body (markdown supported)"`
 }
 
 // PostCommentOutput is the output for the post_comment tool.
@@ -263,10 +263,10 @@ type PostCommentOutput struct {
 
 // MarkResolvedInput is the input for the mark_resolved tool.
 type MarkResolvedInput struct {
-	Owner    string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo     string `json:"repo" jsonschema:"description=Repository name"`
-	ThreadID string `json:"thread_id" jsonschema:"description=Thread node ID (e.g., PRRT_kwDO...)"`
-	Resolved bool   `json:"resolved" jsonschema:"description=True to resolve, false to unresolve"`
+	Owner    string `json:"owner" jsonschema:"Repository owner"`
+	Repo     string `json:"repo" jsonschema:"Repository name"`
+	ThreadID string `json:"thread_id" jsonschema:"Thread node ID (e.g., PRRT_kwDO...)"`
+	Resolved bool   `json:"resolved" jsonschema:"True to resolve, false to unresolve"`
 }
 
 // MarkResolvedOutput is the output for the mark_resolved tool.
@@ -278,13 +278,13 @@ type MarkResolvedOutput struct {
 
 // RequestRereviewInput is the input for the request_rereview tool.
 type RequestRereviewInput struct {
-	Owner         string   `json:"owner" jsonschema:"description=Repository owner"`
-	Repo          string   `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber      int      `json:"pr_number" jsonschema:"description=Pull request number"`
-	DismissStale  bool     `json:"dismiss_stale" jsonschema:"description=Dismiss stale bot reviews before requesting"`
-	Reviewers     []string `json:"reviewers,omitempty" jsonschema:"description=User logins to request review from"`
-	TeamReviewers []string `json:"team_reviewers,omitempty" jsonschema:"description=Team slugs to request review from"`
-	Message       string   `json:"message,omitempty" jsonschema:"description=Message for dismissing stale reviews"`
+	Owner         string   `json:"owner" jsonschema:"Repository owner"`
+	Repo          string   `json:"repo" jsonschema:"Repository name"`
+	PRNumber      int      `json:"pr_number" jsonschema:"Pull request number"`
+	DismissStale  bool     `json:"dismiss_stale" jsonschema:"Dismiss stale bot reviews before requesting"`
+	Reviewers     []string `json:"reviewers,omitempty" jsonschema:"User logins to request review from"`
+	TeamReviewers []string `json:"team_reviewers,omitempty" jsonschema:"Team slugs to request review from"`
+	Message       string   `json:"message,omitempty" jsonschema:"Message for dismissing stale reviews"`
 }
 
 // RequestRereviewOutput is the output for the request_rereview tool.
@@ -297,10 +297,10 @@ type RequestRereviewOutput struct {
 
 // GetThreadInput is the input for the get_thread tool.
 type GetThreadInput struct {
-	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
-	Repo      string `json:"repo" jsonschema:"description=Repository name"`
-	PRNumber  int    `json:"pr_number,omitempty" jsonschema:"description=PR number (required for thread_id lookup)"`
-	CommentID int64  `json:"comment_id" jsonschema:"description=Comment ID to get thread for"`
+	Owner     string `json:"owner" jsonschema:"Repository owner"`
+	Repo      string `json:"repo" jsonschema:"Repository name"`
+	PRNumber  int    `json:"pr_number,omitempty" jsonschema:"PR number (required for thread_id lookup)"`
+	CommentID int64  `json:"comment_id" jsonschema:"Comment ID to get thread for"`
 }
 
 // GetThreadOutput is the output for the get_thread tool.
