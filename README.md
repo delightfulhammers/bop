@@ -16,8 +16,8 @@ AI code reviews that actually matter. Multiple LLMs review your PR, agree on wha
 ## Quick Start
 
 ```bash
-# Install
-go install github.com/bkyoung/code-reviewer/cmd/cr@latest
+# Install (macOS)
+brew install bkyoung/code-reviewer/code-reviewer
 
 # Set your API key
 export OPENAI_API_KEY="sk-..."
@@ -30,18 +30,25 @@ That's it. You'll get a detailed review in `./reviews/`.
 
 ## Installation
 
-**From releases (recommended):**
+**Homebrew (macOS — recommended):**
+```bash
+brew install bkyoung/code-reviewer/code-reviewer
+```
+
+**From releases:**
 ```bash
 # macOS ARM64
 curl -L https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_darwin_arm64.tar.gz | tar xz
+sudo mv cr /usr/local/bin/
+
+# Linux AMD64
+curl -L https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_linux_amd64.tar.gz | tar xz
 sudo mv cr /usr/local/bin/
 ```
 
 **From source:**
 ```bash
-git clone https://github.com/bkyoung/code-reviewer
-cd code-reviewer
-go build -o cr ./cmd/cr
+go install github.com/bkyoung/code-reviewer/cmd/cr@latest
 ```
 
 ## GitHub Actions

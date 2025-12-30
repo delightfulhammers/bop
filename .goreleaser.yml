@@ -62,8 +62,7 @@ archives:
 brews:
   - name: code-reviewer
     ids:
-      - cr
-      - code-reviewer-mcp
+      - default
     repository:
       owner: bkyoung
       name: code-reviewer
