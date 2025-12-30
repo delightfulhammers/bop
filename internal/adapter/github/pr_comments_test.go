@@ -20,7 +20,7 @@ func TestClient_ListPRComments(t *testing.T) {
 			Body:        "**Severity: high**\n**Category: security**\nCR_FP:abc123\nSecurity issue found",
 			Path:        "main.go",
 			Line:        intPtr(10),
-			User:        User{Login: "code-reviewer"},
+			User:        User{Login: "code-reviewer", Type: "User"},
 			CreatedAt:   "2024-01-15T10:00:00Z",
 			InReplyToID: 0,
 		},
@@ -29,7 +29,7 @@ func TestClient_ListPRComments(t *testing.T) {
 			Body:        "This is a reply",
 			Path:        "main.go",
 			Line:        intPtr(10),
-			User:        User{Login: "developer"},
+			User:        User{Login: "developer", Type: "User"},
 			CreatedAt:   "2024-01-15T11:00:00Z",
 			InReplyToID: 1001,
 		},
@@ -38,8 +38,26 @@ func TestClient_ListPRComments(t *testing.T) {
 			Body:        "Regular comment without fingerprint",
 			Path:        "util.go",
 			Line:        intPtr(25),
-			User:        User{Login: "reviewer"},
+			User:        User{Login: "reviewer", Type: "User"},
 			CreatedAt:   "2024-01-15T12:00:00Z",
+			InReplyToID: 0,
+		},
+		{
+			ID:          1004,
+			Body:        "**Severity: medium**\nBot comment without fingerprint",
+			Path:        "api.go",
+			Line:        intPtr(50),
+			User:        User{Login: "github-actions[bot]", Type: "Bot"},
+			CreatedAt:   "2024-01-15T13:00:00Z",
+			InReplyToID: 0,
+		},
+		{
+			ID:          1005,
+			Body:        "Security scan result from bot",
+			Path:        "security.go",
+			Line:        intPtr(100),
+			User:        User{Login: "github-advanced-security[bot]", Type: "Bot"},
+			CreatedAt:   "2024-01-15T14:00:00Z",
 			InReplyToID: 0,
 		},
 	}
@@ -51,19 +69,21 @@ func TestClient_ListPRComments(t *testing.T) {
 		wantFingerprint     string
 		wantSeverity        string
 		wantCategory        string
+		wantBotComments     bool // expect bot comments without fingerprints to be included
 	}{
 		{
 			name:                "returns all top-level comments without filter",
 			filterByFingerprint: false,
-			wantCount:           2, // Two top-level comments (1001 and 1003)
+			wantCount:           4, // Four top-level comments (1001, 1003, 1004, 1005)
 		},
 		{
-			name:                "filters by fingerprint",
+			name:                "filters by fingerprint but includes bot comments",
 			filterByFingerprint: true,
-			wantCount:           1, // Only comment 1001 has fingerprint
+			wantCount:           3, // Comment 1001 (fingerprint) + 1004 and 1005 (bots)
 			wantFingerprint:     "abc123",
 			wantSeverity:        "high",
 			wantCategory:        "security",
+			wantBotComments:     true,
 		},
 	}
 
@@ -88,6 +108,26 @@ func TestClient_ListPRComments(t *testing.T) {
 				assert.Equal(t, tt.wantFingerprint, findings[0].Fingerprint)
 				assert.Equal(t, tt.wantSeverity, findings[0].Severity)
 				assert.Equal(t, tt.wantCategory, findings[0].Category)
+			}
+
+			// Verify bot comments are included when filtering
+			if tt.wantBotComments {
+				// Should have 3 findings: 1 with fingerprint + 2 from bots
+				var botFindings []domain.PRFinding
+				for _, f := range findings {
+					if f.Fingerprint == "" {
+						botFindings = append(botFindings, f)
+					}
+				}
+				assert.Len(t, botFindings, 2, "expected 2 bot comments without fingerprints")
+
+				// Verify bot authors are included
+				authors := make(map[string]bool)
+				for _, f := range botFindings {
+					authors[f.Author] = true
+				}
+				assert.True(t, authors["github-actions[bot]"], "should include github-actions[bot]")
+				assert.True(t, authors["github-advanced-security[bot]"], "should include github-advanced-security[bot]")
 			}
 		})
 	}

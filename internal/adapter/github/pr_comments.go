@@ -30,7 +30,9 @@ var (
 )
 
 // ListPRComments retrieves all review comments on a PR.
-// If filterByFingerprint is true, only comments with CR_FP markers are returned.
+// If filterByFingerprint is true, comments are included if they have CR_FP markers
+// OR if they are from bot users (User.Type == "Bot"). This ensures all automated
+// review feedback is captured, not just fingerprinted comments.
 func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
 	// Fetch all raw comments using existing method
 	rawComments, err := c.ListPullRequestComments(ctx, owner, repo, prNumber)
@@ -52,8 +54,10 @@ func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumbe
 		// Parse fingerprint from body
 		fingerprint := parseFingerprint(comment.Body)
 
-		// Apply fingerprint filter
-		if filterByFingerprint && fingerprint == "" {
+		// Apply fingerprint filter: include if has fingerprint OR is from a bot
+		// This ensures all automated review feedback is captured
+		isBot := comment.User.Type == "Bot"
+		if filterByFingerprint && fingerprint == "" && !isBot {
 			continue
 		}
 
