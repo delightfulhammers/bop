@@ -807,3 +807,236 @@ func TestBuildWithSizeGuards_NilEstimator(t *testing.T) {
 		t.Errorf("error should mention nil, got: %v", err)
 	}
 }
+
+// Tests for formatPriorFindings (Issue #138)
+
+func TestFormatPriorFindings_NilContext(t *testing.T) {
+	result := formatPriorFindings(nil)
+	if result != "" {
+		t.Errorf("expected empty string for nil context, got: %q", result)
+	}
+}
+
+func TestFormatPriorFindings_NoFindings(t *testing.T) {
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{},
+	}
+	result := formatPriorFindings(ctx)
+	if result != "" {
+		t.Errorf("expected empty string for empty findings, got: %q", result)
+	}
+}
+
+func TestFormatPriorFindings_OnlyOpenFindings(t *testing.T) {
+	// Open findings should not appear in prior findings (they haven't been addressed)
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:        "main.go",
+				LineStart:   10,
+				LineEnd:     15,
+				Category:    "security",
+				Description: "Open issue",
+				Status:      domain.StatusOpen,
+			},
+		},
+	}
+	result := formatPriorFindings(ctx)
+	if result != "" {
+		t.Errorf("expected empty string for open-only findings, got: %q", result)
+	}
+}
+
+func TestFormatPriorFindings_AcknowledgedFindings(t *testing.T) {
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:         "auth.go",
+				LineStart:    20,
+				LineEnd:      25,
+				Category:     "security",
+				Description:  "Missing input validation",
+				Status:       domain.StatusAcknowledged,
+				StatusReason: "Author acknowledged the concern",
+			},
+		},
+	}
+	result := formatPriorFindings(ctx)
+
+	// Should contain acknowledged section
+	if !strings.Contains(result, "Acknowledged Findings") {
+		t.Error("expected 'Acknowledged Findings' header")
+	}
+	if !strings.Contains(result, "do NOT re-raise") {
+		t.Error("expected instruction not to re-raise")
+	}
+	if !strings.Contains(result, "auth.go") {
+		t.Error("expected file name in output")
+	}
+	if !strings.Contains(result, "security") {
+		t.Error("expected category in output")
+	}
+	if !strings.Contains(result, "Missing input validation") {
+		t.Error("expected description in output")
+	}
+
+	// Should NOT contain disputed section
+	if strings.Contains(result, "Disputed Findings") {
+		t.Error("should not contain 'Disputed Findings' when there are none")
+	}
+}
+
+func TestFormatPriorFindings_DisputedFindings(t *testing.T) {
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:         "config.go",
+				LineStart:    5,
+				LineEnd:      5,
+				Category:     "performance",
+				Description:  "Unnecessary allocation",
+				Status:       domain.StatusDisputed,
+				StatusReason: "Author disputed as false positive",
+			},
+		},
+	}
+	result := formatPriorFindings(ctx)
+
+	// Should contain disputed section
+	if !strings.Contains(result, "Disputed Findings") {
+		t.Error("expected 'Disputed Findings' header")
+	}
+	if !strings.Contains(result, "false positives") {
+		t.Error("expected mention of false positives")
+	}
+	if !strings.Contains(result, "config.go") {
+		t.Error("expected file name in output")
+	}
+
+	// Should NOT contain acknowledged section
+	if strings.Contains(result, "Acknowledged Findings") {
+		t.Error("should not contain 'Acknowledged Findings' when there are none")
+	}
+}
+
+func TestFormatPriorFindings_MixedFindings(t *testing.T) {
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:         "auth.go",
+				LineStart:    20,
+				LineEnd:      25,
+				Category:     "security",
+				Description:  "Acknowledged security issue",
+				Status:       domain.StatusAcknowledged,
+				StatusReason: "Author acknowledged",
+			},
+			{
+				File:         "config.go",
+				LineStart:    5,
+				LineEnd:      5,
+				Category:     "performance",
+				Description:  "Disputed performance issue",
+				Status:       domain.StatusDisputed,
+				StatusReason: "Author disputed",
+			},
+			{
+				File:         "main.go",
+				LineStart:    1,
+				LineEnd:      1,
+				Category:     "bug",
+				Description:  "Open bug - should not appear",
+				Status:       domain.StatusOpen,
+				StatusReason: "",
+			},
+		},
+	}
+	result := formatPriorFindings(ctx)
+
+	// Should contain both sections
+	if !strings.Contains(result, "Acknowledged Findings") {
+		t.Error("expected 'Acknowledged Findings' header")
+	}
+	if !strings.Contains(result, "Disputed Findings") {
+		t.Error("expected 'Disputed Findings' header")
+	}
+
+	// Should contain acknowledged and disputed findings
+	if !strings.Contains(result, "Acknowledged security issue") {
+		t.Error("expected acknowledged finding description")
+	}
+	if !strings.Contains(result, "Disputed performance issue") {
+		t.Error("expected disputed finding description")
+	}
+
+	// Should NOT contain open findings
+	if strings.Contains(result, "Open bug") {
+		t.Error("open findings should not appear in prior findings")
+	}
+}
+
+func TestPromptTemplate_IncludesPriorFindings(t *testing.T) {
+	// Verify that the default template has the PriorFindings section
+	template := defaultPromptTemplate()
+
+	if !strings.Contains(template, "{{if .PriorFindings}}") {
+		t.Error("template should have conditional for PriorFindings")
+	}
+	if !strings.Contains(template, "Previously Addressed Concerns") {
+		t.Error("template should have 'Previously Addressed Concerns' section header")
+	}
+	if !strings.Contains(template, "DO NOT raise similar concerns") {
+		t.Error("template should instruct LLM not to raise similar concerns")
+	}
+}
+
+func TestRenderTemplate_WithPriorFindings(t *testing.T) {
+	builder := NewEnhancedPromptBuilder()
+
+	// Create context with triaged findings
+	triageCtx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:         "auth.go",
+				LineStart:    20,
+				LineEnd:      25,
+				Category:     "security",
+				Description:  "Test acknowledged finding",
+				Status:       domain.StatusAcknowledged,
+				StatusReason: "Author acknowledged the concern",
+			},
+		},
+	}
+
+	context := ProjectContext{
+		TriagedFindings: triageCtx,
+	}
+	diff := domain.Diff{
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "patch content"},
+		},
+	}
+	req := BranchRequest{BaseRef: "main", TargetRef: "feature"}
+
+	result, err := builder.Build(context, diff, req, "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify prior findings appear in the prompt
+	if !strings.Contains(result.Prompt, "Previously Addressed Concerns") {
+		t.Error("prompt should contain 'Previously Addressed Concerns' section")
+	}
+	if !strings.Contains(result.Prompt, "Test acknowledged finding") {
+		t.Error("prompt should contain the triaged finding description")
+	}
+	if !strings.Contains(result.Prompt, "auth.go") {
+		t.Error("prompt should contain the triaged finding file")
+	}
+}

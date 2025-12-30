@@ -24,6 +24,12 @@ type ProjectContext struct {
 	// Automatically gathered context
 	RelevantDocs []string // Docs related to changed files
 
+	// Prior triage context (Issue #138)
+	// Contains findings from previous reviews that have been acknowledged or disputed.
+	// When populated, the LLM prompt includes this context to prevent re-raising
+	// concerns that have already been addressed.
+	TriagedFindings *domain.TriagedFindingContext
+
 	// Metadata
 	ChangedPaths []string // Paths of changed files
 	ChangeTypes  []string // Types of changes (e.g., "auth", "database", "api")

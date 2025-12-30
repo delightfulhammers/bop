@@ -308,6 +308,10 @@ type TemplateData struct {
 	ChangeTypes        []string
 	ChangedPaths       []string
 
+	// Prior triage context (Issue #138)
+	// Contains formatted text about findings that have been previously addressed.
+	PriorFindings string
+
 	// Request fields
 	BaseRef   string
 	TargetRef string
@@ -333,6 +337,7 @@ func (b *EnhancedPromptBuilder) renderTemplate(
 		RelevantDocs:       strings.Join(context.RelevantDocs, "\n\n"),
 		ChangeTypes:        context.ChangeTypes,
 		ChangedPaths:       context.ChangedPaths,
+		PriorFindings:      formatPriorFindings(context.TriagedFindings),
 		BaseRef:            req.BaseRef,
 		TargetRef:          req.TargetRef,
 		Diff:               b.formatDiff(diff),
@@ -425,6 +430,50 @@ func fileTypePriority(path string) int {
 	return 3
 }
 
+// formatPriorFindings converts triaged findings into a human-readable section for the LLM prompt.
+// Returns an empty string if there are no triaged findings.
+//
+// Note: This function does not currently impose size limits on the output. Large PRs with many
+// rounds of feedback may generate substantial prior context. Future enhancements may add
+// intelligent summarization or truncation if token limits become a concern in practice.
+func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
+	if ctx == nil || !ctx.HasFindings() {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// Format acknowledged findings
+	acknowledged := ctx.AcknowledgedFindings()
+	if len(acknowledged) > 0 {
+		sb.WriteString("### Acknowledged Findings (do NOT re-raise)\n\n")
+		sb.WriteString("The following concerns have been reviewed and accepted by the author. ")
+		sb.WriteString("Do not raise similar findings:\n\n")
+		for i, f := range acknowledged {
+			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
+			sb.WriteString(fmt.Sprintf("   - %s\n", f.Description))
+			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
+		}
+	}
+
+	// Format disputed findings
+	disputed := ctx.DisputedFindings()
+	if len(disputed) > 0 {
+		sb.WriteString("### Disputed Findings (do NOT re-raise)\n\n")
+		sb.WriteString("The following concerns were disputed as false positives or not applicable. ")
+		sb.WriteString("Do not raise similar findings:\n\n")
+		for i, f := range disputed {
+			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
+			sb.WriteString(fmt.Sprintf("   - %s\n", f.Description))
+			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
+		}
+	}
+
+	return sb.String()
+}
+
 // defaultPromptTemplate returns the default template used when no provider-specific template is set.
 // IMPORTANT: Code diff appears FIRST to ensure LLM prioritizes code review over documentation.
 // LLMs exhibit primacy bias - they weight early content more heavily.
@@ -452,6 +501,15 @@ Look for: bugs, security vulnerabilities, logic errors, performance issues, and 
 {{if .CustomContext}}
 ## Additional Context
 {{.CustomContext}}
+{{end}}
+
+{{if .PriorFindings}}
+## Previously Addressed Concerns (IMPORTANT)
+
+The following findings from earlier reviews have been addressed by the author.
+DO NOT raise similar concerns - they have already been reviewed and resolved.
+
+{{.PriorFindings}}
 {{end}}
 
 ## Background Documentation (for reference only)

@@ -106,6 +106,17 @@ type Verifier interface {
 	VerifyBatch(ctx context.Context, candidates []domain.CandidateFinding) ([]domain.VerificationResult, error)
 }
 
+// TriageContextFetcher retrieves prior triage context from a PR.
+// This is used to inject previously-addressed findings into the LLM prompt
+// so the reviewer doesn't re-raise concerns that have been acknowledged or disputed.
+// (Issue #138 - reduce repeated findings by consuming prior triage context)
+type TriageContextFetcher interface {
+	// FetchTriagedFindings retrieves findings that have been acknowledged or disputed.
+	// Returns nil if there are no triaged findings or if fetching fails.
+	// Errors are logged but not returned to avoid blocking the review.
+	FetchTriagedFindings(ctx context.Context, owner, repo string, prNumber int) *domain.TriagedFindingContext
+}
+
 // GitHubPostRequest contains all data needed to post a review to GitHub.
 type GitHubPostRequest struct {
 	Owner     string
@@ -206,6 +217,9 @@ type OrchestratorDeps struct {
 
 	// Verification support (Epic #92)
 	Verifier Verifier // Optional: verifies candidate findings before reporting
+
+	// Prior triage context support (Issue #138)
+	TriageContextFetcher TriageContextFetcher // Optional: fetches prior triage context from PR
 
 	// ProviderMaxTokens allows per-provider max output token overrides.
 	// Key is provider name, value is max output tokens.
@@ -421,6 +435,27 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 
 	// Always set custom instructions from request (even if RepoDir is not configured)
 	projectContext.CustomInstructions = req.CustomInstructions
+
+	// Fetch prior triage context if posting to GitHub and fetcher is configured (Issue #138)
+	// This injects previously-addressed findings into the prompt so LLMs don't re-raise them.
+	if req.PostToGitHub && o.deps.TriageContextFetcher != nil {
+		triageCtx := o.deps.TriageContextFetcher.FetchTriagedFindings(
+			ctx, req.GitHubOwner, req.GitHubRepo, req.PRNumber,
+		)
+		if triageCtx != nil && triageCtx.HasFindings() {
+			projectContext.TriagedFindings = triageCtx
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogInfo(ctx, "loaded prior triage context", map[string]interface{}{
+					"prNumber":     req.PRNumber,
+					"acknowledged": len(triageCtx.AcknowledgedFindings()),
+					"disputed":     len(triageCtx.DisputedFindings()),
+				})
+			} else {
+				log.Printf("Loaded prior triage context: %d acknowledged, %d disputed findings\n",
+					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
+			}
+		}
+	}
 
 	// Planning Phase: Interactive clarifying questions (optional, only in TTY mode)
 	if req.Interactive && IsInteractive() && o.deps.PlanningAgent != nil {
