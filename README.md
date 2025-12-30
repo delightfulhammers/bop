@@ -426,6 +426,21 @@ sudo mv code-reviewer-mcp /usr/local/bin/
 go build -o code-reviewer-mcp ./cmd/code-reviewer-mcp
 ```
 
+### Environment Variables
+
+The MCP server requires a GitHub token. Set it in your shell environment before configuring:
+
+```bash
+# Add to ~/.bashrc, ~/.zshrc, or equivalent
+export GITHUB_TOKEN="ghp_your_token_here"
+```
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GITHUB_TOKEN` | Yes | GitHub personal access token with `repo` scope |
+
+> **Security Note:** Never commit tokens to configuration files. The examples below inherit the token from your shell environment.
+
 ### Claude Code Configuration
 
 Add to your Claude Code MCP settings (`.claude/settings.local.json` or global settings):
@@ -434,14 +449,13 @@ Add to your Claude Code MCP settings (`.claude/settings.local.json` or global se
 {
   "mcpServers": {
     "code-reviewer": {
-      "command": "/path/to/code-reviewer-mcp",
-      "env": {
-        "GITHUB_TOKEN": "ghp_your_token_here"
-      }
+      "command": "/path/to/code-reviewer-mcp"
     }
   }
 }
 ```
+
+The server inherits `GITHUB_TOKEN` from your shell environment automatically.
 
 ### Claude Desktop Configuration
 
@@ -451,20 +465,13 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 {
   "mcpServers": {
     "code-reviewer": {
-      "command": "/path/to/code-reviewer-mcp",
-      "env": {
-        "GITHUB_TOKEN": "ghp_your_token_here"
-      }
+      "command": "/path/to/code-reviewer-mcp"
     }
   }
 }
 ```
 
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITHUB_TOKEN` | Yes | GitHub personal access token with `repo` scope |
+For Claude Desktop, you may need to launch it from a terminal where `GITHUB_TOKEN` is set, or configure the token in your shell profile so GUI-launched applications inherit it.
 
 ### Available MCP Tools
 
