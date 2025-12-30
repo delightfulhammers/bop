@@ -173,15 +173,17 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	if commitSHA == "" {
 		return 0, fmt.Errorf("commit SHA cannot be empty")
 	}
-	// Validate SHA format: must be 40-character lowercase hex
+	// Validate SHA format: must be 40-character hex (case-insensitive)
 	if len(commitSHA) != 40 {
 		return 0, fmt.Errorf("invalid commit SHA: must be 40 characters, got %d", len(commitSHA))
 	}
 	for _, c := range commitSHA {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return 0, fmt.Errorf("invalid commit SHA: must be lowercase hex")
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+			return 0, fmt.Errorf("invalid commit SHA: must be hexadecimal")
 		}
 	}
+	// Normalize to lowercase for consistency
+	commitSHA = strings.ToLower(commitSHA)
 	cleanPath, err := pathutil.ValidateRelativePath(path)
 	if err != nil {
 		return 0, fmt.Errorf("invalid path: %w", err)

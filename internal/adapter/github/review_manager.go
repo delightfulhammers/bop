@@ -54,7 +54,8 @@ func (a *ReviewManagerAdapter) ListReviews(ctx context.Context, owner, repo stri
 
 	reviews := make([]triage.Review, len(summaries))
 	for i, s := range summaries {
-		// User field is always present but may have empty Login for some states
+		// User is a value type (not pointer), so Login/Type may be empty strings
+		// for system-generated reviews, but this won't cause a nil panic.
 		reviews[i] = triage.Review{
 			ID:          s.ID,
 			User:        s.User.Login,
