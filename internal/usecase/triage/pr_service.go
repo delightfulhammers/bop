@@ -10,12 +10,17 @@ import (
 
 // PRServiceDeps contains the dependencies for the PR-based triage service.
 type PRServiceDeps struct {
+	// Read operations
 	AnnotationReader    AnnotationReader
 	CommentReader       CommentReader
 	PRReader            PRReader
 	FileReader          FileReader
 	DiffReader          DiffReader
 	SuggestionExtractor SuggestionExtractor
+
+	// Write operations (optional - set to nil for read-only mode)
+	CommentWriter CommentWriter
+	ReviewManager ReviewManager
 }
 
 // PRService implements read-only triage operations for a PR.
@@ -238,4 +243,125 @@ func parseAnnotationID(id string) (checkRunID int64, index int, ok bool) {
 		return 0, 0, false
 	}
 	return cid, idx, true
+}
+
+// =============================================================================
+// Write Operations
+// =============================================================================
+
+// ReplyToFinding posts a reply to a code reviewer finding.
+// The findingID can be a fingerprint (CR_FP:xxx) or a GitHub comment ID.
+// Returns the ID of the newly created reply comment.
+func (s *PRService) ReplyToFinding(ctx context.Context, owner, repo string, prNumber int, findingID, body string) (int64, error) {
+	if s.deps.CommentWriter == nil {
+		return 0, ErrNotImplemented
+	}
+	if s.deps.CommentReader == nil {
+		return 0, fmt.Errorf("CommentReader required to look up finding: %w", ErrNotImplemented)
+	}
+
+	// Look up the finding to get its comment ID
+	finding, err := s.GetFinding(ctx, owner, repo, prNumber, findingID)
+	if err != nil {
+		return 0, fmt.Errorf("get finding: %w", err)
+	}
+
+	// SARIF annotations have CommentID=0 since they're not PR comments.
+	// For these, we need to create a new comment at the same location.
+	if finding.CommentID == 0 {
+		// For annotations, use PostComment to create a new comment at the location
+		return s.PostComment(ctx, owner, repo, prNumber, finding.Path, finding.Line, body)
+	}
+
+	// Reply to the finding's comment
+	return s.deps.CommentWriter.ReplyToComment(ctx, owner, repo, prNumber, finding.CommentID, body)
+}
+
+// PostComment creates a new review comment at a specific file and line.
+// This is used when responding to SARIF annotations - we create a new comment
+// at the same location since annotations cannot be replied to directly.
+func (s *PRService) PostComment(ctx context.Context, owner, repo string, prNumber int, file string, line int, body string) (int64, error) {
+	if s.deps.CommentWriter == nil {
+		return 0, ErrNotImplemented
+	}
+	if s.deps.PRReader == nil {
+		return 0, fmt.Errorf("PRReader required to get head SHA: %w", ErrNotImplemented)
+	}
+
+	// Get PR metadata to find head SHA (required for creating comments)
+	prMeta, err := s.deps.PRReader.GetPRMetadata(ctx, owner, repo, prNumber)
+	if err != nil {
+		return 0, fmt.Errorf("get PR metadata: %w", err)
+	}
+
+	return s.deps.CommentWriter.CreateComment(ctx, owner, repo, prNumber, prMeta.HeadSHA, file, line, body)
+}
+
+// ResolveThread marks a review thread as resolved.
+// The threadID should be the node_id of the review thread (e.g., "PRRT_kwDO...").
+func (s *PRService) ResolveThread(ctx context.Context, owner, repo, threadID string) error {
+	if s.deps.ReviewManager == nil {
+		return ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.ResolveThread(ctx, owner, repo, threadID)
+}
+
+// UnresolveThread marks a review thread as unresolved.
+// The threadID should be the node_id of the review thread (e.g., "PRRT_kwDO...").
+func (s *PRService) UnresolveThread(ctx context.Context, owner, repo, threadID string) error {
+	if s.deps.ReviewManager == nil {
+		return ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.UnresolveThread(ctx, owner, repo, threadID)
+}
+
+// DismissReview dismisses a PR review with the given message.
+// This is used to clear stale bot reviews when re-requesting review.
+func (s *PRService) DismissReview(ctx context.Context, owner, repo string, prNumber int, reviewID int64, message string) error {
+	if s.deps.ReviewManager == nil {
+		return ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.DismissReview(ctx, owner, repo, prNumber, reviewID, message)
+}
+
+// RequestReview requests review from specified users or teams.
+// This triggers a new review request notification.
+func (s *PRService) RequestReview(ctx context.Context, owner, repo string, prNumber int, reviewers []string, teamReviewers []string) error {
+	if s.deps.ReviewManager == nil {
+		return ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.RequestReviewers(ctx, owner, repo, prNumber, reviewers, teamReviewers)
+}
+
+// GetThreadHistory retrieves the reply chain for a comment thread.
+func (s *PRService) GetThreadHistory(ctx context.Context, owner, repo string, commentID int64) ([]domain.ThreadComment, error) {
+	if s.deps.CommentReader == nil {
+		return nil, ErrNotImplemented
+	}
+
+	return s.deps.CommentReader.GetThreadHistory(ctx, owner, repo, commentID)
+}
+
+// ListReviews returns all reviews for a PR.
+// This is primarily used for the dismiss stale functionality to find bot reviews.
+func (s *PRService) ListReviews(ctx context.Context, owner, repo string, prNumber int) ([]Review, error) {
+	if s.deps.ReviewManager == nil {
+		return nil, ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.ListReviews(ctx, owner, repo, prNumber)
+}
+
+// FindThreadForComment finds the review thread ID for a given comment ID.
+// Returns the thread's GraphQL node ID which can be used with ResolveThread/UnresolveThread.
+func (s *PRService) FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*ThreadInfo, error) {
+	if s.deps.ReviewManager == nil {
+		return nil, ErrNotImplemented
+	}
+
+	return s.deps.ReviewManager.FindThreadForComment(ctx, owner, repo, prNumber, commentID)
 }

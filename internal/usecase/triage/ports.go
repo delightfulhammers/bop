@@ -85,3 +85,67 @@ type SuggestionExtractor interface {
 	// ExtractFromComment extracts a suggestion from a PR comment body.
 	ExtractFromComment(finding *domain.PRFinding) (*domain.Suggestion, error)
 }
+
+// CommentWriter provides write access to PR review comments.
+// This is a port that must be implemented by the GitHub adapter layer.
+type CommentWriter interface {
+	// ReplyToComment posts a reply to an existing PR review comment.
+	// The replyTo parameter is the ID of the comment being replied to.
+	// Returns the ID of the newly created reply comment.
+	ReplyToComment(ctx context.Context, owner, repo string, prNumber int, replyTo int64, body string) (int64, error)
+
+	// CreateComment creates a new review comment at a specific file and line.
+	// This is used when responding to SARIF annotations which exist as check run
+	// annotations rather than PR comments - we create a new comment at the same location.
+	// The line parameter is the absolute line number in the file (1-based).
+	// GitHub's API maps this to the appropriate diff position internally.
+	// Comments are placed on the RIGHT side of the diff (new file version).
+	// Returns the ID of the newly created comment.
+	CreateComment(ctx context.Context, owner, repo string, prNumber int, commitSHA, path string, line int, body string) (int64, error)
+}
+
+// ReviewManager provides operations for managing PR review state.
+// This is a port that must be implemented by the GitHub adapter layer.
+type ReviewManager interface {
+	// ResolveThread marks a review thread as resolved.
+	// Requires GraphQL API as REST API doesn't support thread resolution.
+	// Returns ErrThreadNotFound if the thread doesn't exist.
+	ResolveThread(ctx context.Context, owner, repo string, threadID string) error
+
+	// UnresolveThread marks a review thread as unresolved.
+	// Requires GraphQL API as REST API doesn't support thread resolution.
+	// Returns ErrThreadNotFound if the thread doesn't exist.
+	UnresolveThread(ctx context.Context, owner, repo string, threadID string) error
+
+	// DismissReview dismisses a PR review with a reason.
+	// Returns ErrReviewNotFound if the review doesn't exist.
+	DismissReview(ctx context.Context, owner, repo string, prNumber int, reviewID int64, message string) error
+
+	// RequestReviewers requests review from specified users or teams.
+	// Returns ErrUserNotFound if any reviewer doesn't exist or can't be added.
+	RequestReviewers(ctx context.Context, owner, repo string, prNumber int, reviewers []string, teamReviewers []string) error
+
+	// ListReviews returns all reviews for a PR.
+	// Needed for dismiss stale functionality to find bot reviews.
+	ListReviews(ctx context.Context, owner, repo string, prNumber int) ([]Review, error)
+
+	// FindThreadForComment finds the review thread ID for a given comment ID.
+	// Returns the thread's GraphQL node ID (PRRT_...) which can be used with ResolveThread.
+	// Returns ErrThreadNotFound if no thread contains the comment.
+	FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*ThreadInfo, error)
+}
+
+// ThreadInfo contains information about a review thread.
+type ThreadInfo struct {
+	ID         string // GraphQL node ID (PRRT_...)
+	IsResolved bool
+}
+
+// Review represents a PR review summary for the ReviewManager port.
+type Review struct {
+	ID          int64
+	User        string
+	UserType    string // "User" or "Bot"
+	State       string // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, PENDING
+	SubmittedAt string
+}

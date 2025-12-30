@@ -591,3 +591,329 @@ func TestPRService_GetSuggestion(t *testing.T) {
 		mockAnnotation.AssertExpectations(t)
 	})
 }
+
+// =============================================================================
+// Write Operation Mocks
+// =============================================================================
+
+// MockCommentWriter implements triage.CommentWriter for testing.
+type MockCommentWriter struct {
+	mock.Mock
+}
+
+func (m *MockCommentWriter) ReplyToComment(ctx context.Context, owner, repo string, prNumber int, replyTo int64, body string) (int64, error) {
+	args := m.Called(ctx, owner, repo, prNumber, replyTo, body)
+	// Safe type assertion to avoid panic if Return not set
+	id, _ := args.Get(0).(int64)
+	return id, args.Error(1)
+}
+
+func (m *MockCommentWriter) CreateComment(ctx context.Context, owner, repo string, prNumber int, commitSHA, path string, line int, body string) (int64, error) {
+	args := m.Called(ctx, owner, repo, prNumber, commitSHA, path, line, body)
+	// Safe type assertion to avoid panic if Return not set
+	id, _ := args.Get(0).(int64)
+	return id, args.Error(1)
+}
+
+// MockReviewManager implements triage.ReviewManager for testing.
+type MockReviewManager struct {
+	mock.Mock
+}
+
+func (m *MockReviewManager) ResolveThread(ctx context.Context, owner, repo, threadID string) error {
+	args := m.Called(ctx, owner, repo, threadID)
+	return args.Error(0)
+}
+
+func (m *MockReviewManager) UnresolveThread(ctx context.Context, owner, repo, threadID string) error {
+	args := m.Called(ctx, owner, repo, threadID)
+	return args.Error(0)
+}
+
+func (m *MockReviewManager) DismissReview(ctx context.Context, owner, repo string, prNumber int, reviewID int64, message string) error {
+	args := m.Called(ctx, owner, repo, prNumber, reviewID, message)
+	return args.Error(0)
+}
+
+func (m *MockReviewManager) RequestReviewers(ctx context.Context, owner, repo string, prNumber int, reviewers []string, teamReviewers []string) error {
+	args := m.Called(ctx, owner, repo, prNumber, reviewers, teamReviewers)
+	return args.Error(0)
+}
+
+func (m *MockReviewManager) ListReviews(ctx context.Context, owner, repo string, prNumber int) ([]triage.Review, error) {
+	args := m.Called(ctx, owner, repo, prNumber)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]triage.Review), args.Error(1)
+}
+
+func (m *MockReviewManager) FindThreadForComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*triage.ThreadInfo, error) {
+	args := m.Called(ctx, owner, repo, prNumber, commentID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*triage.ThreadInfo), args.Error(1)
+}
+
+// =============================================================================
+// Write Operation Tests
+// =============================================================================
+
+func TestPRService_ReplyToFinding(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully replies to finding by comment ID", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockWriter := new(MockCommentWriter)
+
+		finding := &domain.PRFinding{
+			CommentID: 12345,
+			Path:      "main.go",
+			Body:      "Test finding",
+		}
+
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(12345)).
+			Return(finding, nil)
+		mockWriter.On("ReplyToComment", ctx, "owner", "repo", 42, int64(12345), "My reply").
+			Return(int64(99999), nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+			CommentWriter: mockWriter,
+		})
+
+		replyID, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "12345", "My reply")
+		require.NoError(t, err)
+		assert.Equal(t, int64(99999), replyID)
+
+		mockComment.AssertExpectations(t)
+		mockWriter.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when writer is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "123", "reply")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("returns ErrNotImplemented when reader is nil", func(t *testing.T) {
+		mockWriter := new(MockCommentWriter)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentWriter: mockWriter,
+		})
+
+		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "123", "reply")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("returns error when finding not found", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockWriter := new(MockCommentWriter)
+
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(999)).
+			Return(nil, triage.ErrCommentNotFound)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+			CommentWriter: mockWriter,
+		})
+
+		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "999", "reply")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "get finding")
+	})
+}
+
+func TestPRService_PostComment(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully posts comment at file and line", func(t *testing.T) {
+		mockPR := new(MockPRReader)
+		mockWriter := new(MockCommentWriter)
+
+		mockPR.On("GetPRMetadata", ctx, "owner", "repo", 42).
+			Return(&domain.PRMetadata{HeadSHA: "abc123"}, nil)
+		mockWriter.On("CreateComment", ctx, "owner", "repo", 42, "abc123", "main.go", 50, "New comment").
+			Return(int64(77777), nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			PRReader:      mockPR,
+			CommentWriter: mockWriter,
+		})
+
+		commentID, err := svc.PostComment(ctx, "owner", "repo", 42, "main.go", 50, "New comment")
+		require.NoError(t, err)
+		assert.Equal(t, int64(77777), commentID)
+
+		mockPR.AssertExpectations(t)
+		mockWriter.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when writer is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.PostComment(ctx, "owner", "repo", 42, "main.go", 50, "comment")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("returns ErrNotImplemented when PRReader is nil", func(t *testing.T) {
+		mockWriter := new(MockCommentWriter)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentWriter: mockWriter,
+		})
+
+		_, err := svc.PostComment(ctx, "owner", "repo", 42, "main.go", 50, "comment")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+}
+
+func TestPRService_ResolveThread(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully resolves thread", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		mockManager.On("ResolveThread", ctx, "owner", "repo", "PRRT_test123").
+			Return(nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		err := svc.ResolveThread(ctx, "owner", "repo", "PRRT_test123")
+		require.NoError(t, err)
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when manager is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		err := svc.ResolveThread(ctx, "owner", "repo", "PRRT_test")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+}
+
+func TestPRService_UnresolveThread(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully unresolves thread", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		mockManager.On("UnresolveThread", ctx, "owner", "repo", "PRRT_test123").
+			Return(nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		err := svc.UnresolveThread(ctx, "owner", "repo", "PRRT_test123")
+		require.NoError(t, err)
+		mockManager.AssertExpectations(t)
+	})
+}
+
+func TestPRService_DismissReview(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully dismisses review", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		mockManager.On("DismissReview", ctx, "owner", "repo", 42, int64(999), "Stale review").
+			Return(nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		err := svc.DismissReview(ctx, "owner", "repo", 42, 999, "Stale review")
+		require.NoError(t, err)
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when manager is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		err := svc.DismissReview(ctx, "owner", "repo", 42, 999, "message")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+}
+
+func TestPRService_RequestReview(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully requests review from users", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		mockManager.On("RequestReviewers", ctx, "owner", "repo", 42, []string{"user1", "user2"}, []string(nil)).
+			Return(nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		err := svc.RequestReview(ctx, "owner", "repo", 42, []string{"user1", "user2"}, nil)
+		require.NoError(t, err)
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("successfully requests review from teams", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		mockManager.On("RequestReviewers", ctx, "owner", "repo", 42, []string(nil), []string{"team-a"}).
+			Return(nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		err := svc.RequestReview(ctx, "owner", "repo", 42, nil, []string{"team-a"})
+		require.NoError(t, err)
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when manager is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		err := svc.RequestReview(ctx, "owner", "repo", 42, []string{"user1"}, nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+}
+
+func TestPRService_ListReviews(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successfully lists reviews", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		expectedReviews := []triage.Review{
+			{ID: 1, User: "bot", UserType: "Bot", State: "APPROVED", SubmittedAt: "2024-01-01T00:00:00Z"},
+			{ID: 2, User: "human", UserType: "User", State: "CHANGES_REQUESTED", SubmittedAt: "2024-01-02T00:00:00Z"},
+		}
+		mockManager.On("ListReviews", ctx, "owner", "repo", 42).
+			Return(expectedReviews, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		reviews, err := svc.ListReviews(ctx, "owner", "repo", 42)
+		require.NoError(t, err)
+		assert.Len(t, reviews, 2)
+		assert.Equal(t, "bot", reviews[0].User)
+		assert.Equal(t, "Bot", reviews[0].UserType)
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when manager is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.ListReviews(ctx, "owner", "repo", 42)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+}

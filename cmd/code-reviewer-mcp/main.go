@@ -58,14 +58,21 @@ func run() error {
 	// Initialize suggestion extractor for parsing code suggestions from findings.
 	suggestionExtractor := triage.NewSuggestionExtractor()
 
+	// Create ReviewManager adapter (wraps Client to convert types for port interface).
+	reviewManager := github.NewReviewManagerAdapter(githubClient)
+
 	// Create PR-based triage service with all dependencies.
 	prService := triage.NewPRService(triage.PRServiceDeps{
+		// Read operations
 		AnnotationReader:    githubClient,
 		CommentReader:       githubClient,
 		PRReader:            githubClient,
 		FileReader:          gitEngine,
 		DiffReader:          gitEngine,
 		SuggestionExtractor: suggestionExtractor,
+		// Write operations
+		CommentWriter: githubClient,
+		ReviewManager: reviewManager,
 	})
 
 	// Create legacy session-based service (for M3 write tools, currently unused).

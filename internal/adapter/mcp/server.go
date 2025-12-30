@@ -67,11 +67,12 @@ func (s *Server) registerTools() {
 	s.registerGetCodeContextTool()
 	s.registerGetDiffContextTool()
 
-	// M3 Write tools (session-based, for future implementation)
-	s.registerTriageFindingTool()
+	// M3 Write tools (PR-based, stateless)
+	s.registerGetThreadTool()
+	s.registerReplyToFindingTool()
 	s.registerPostCommentTool()
-	s.registerReplyToThreadTool()
-	s.registerResolveThreadTool()
+	s.registerMarkResolvedTool()
+	s.registerRequestRereviewTool()
 }
 
 // Tool input/output types for M2 PR-based tools.
@@ -222,57 +223,100 @@ type GetDiffContextOutput struct {
 	Message     string `json:"message"`
 }
 
-// Legacy M3 write tool types (kept for backward compatibility)
+// =============================================================================
+// M3 Write Tool Types (PR-based, stateless)
+// =============================================================================
 
-// TriageFindingInput is the input for the triage_finding tool.
-type TriageFindingInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID to triage"`
-	Status    string `json:"status" jsonschema:"description=New triage status,enum=accepted,enum=disputed,enum=question,enum=resolved,enum=wont_fix"`
-	Reason    string `json:"reason,omitempty" jsonschema:"description=Reason for the triage decision"`
+// ReplyToFindingInput is the input for the reply_to_finding tool.
+type ReplyToFindingInput struct {
+	Owner     string  `json:"owner" jsonschema:"description=Repository owner"`
+	Repo      string  `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int     `json:"pr_number" jsonschema:"description=Pull request number"`
+	FindingID string  `json:"finding_id" jsonschema:"description=Finding ID (fingerprint or comment ID)"`
+	Body      string  `json:"body" jsonschema:"description=Reply body (markdown supported)"`
+	Status    *string `json:"status,omitempty" jsonschema:"description=Optional status tag: acknowledged/disputed/fixed/wont_fix"`
 }
 
-// TriageFindingOutput is the output for the triage_finding tool.
-type TriageFindingOutput struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+// ReplyToFindingOutput is the output for the reply_to_finding tool.
+type ReplyToFindingOutput struct {
+	Success   bool   `json:"success"`
+	CommentID int64  `json:"comment_id"`
+	Message   string `json:"message"`
 }
 
 // PostCommentInput is the input for the post_comment tool.
 type PostCommentInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID to comment on"`
-	Body      string `json:"body" jsonschema:"description=Comment body (markdown supported)"`
+	Owner    string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo     string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber int    `json:"pr_number" jsonschema:"description=Pull request number"`
+	File     string `json:"file" jsonschema:"description=File path to comment on"`
+	Line     int    `json:"line" jsonschema:"description=Line number (1-based)"`
+	Body     string `json:"body" jsonschema:"description=Comment body (markdown supported)"`
 }
 
 // PostCommentOutput is the output for the post_comment tool.
 type PostCommentOutput struct {
 	Success   bool   `json:"success"`
-	CommentID int64  `json:"comment_id,omitempty"`
+	CommentID int64  `json:"comment_id"`
 	Message   string `json:"message"`
 }
 
-// ReplyToThreadInput is the input for the reply_to_thread tool.
-type ReplyToThreadInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID to reply to"`
-	Body      string `json:"body" jsonschema:"description=Reply body (markdown supported)"`
+// MarkResolvedInput is the input for the mark_resolved tool.
+type MarkResolvedInput struct {
+	Owner    string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo     string `json:"repo" jsonschema:"description=Repository name"`
+	ThreadID string `json:"thread_id" jsonschema:"description=Thread node ID (e.g., PRRT_kwDO...)"`
+	Resolved bool   `json:"resolved" jsonschema:"description=True to resolve, false to unresolve"`
 }
 
-// ReplyToThreadOutput is the output for the reply_to_thread tool.
-type ReplyToThreadOutput struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+// MarkResolvedOutput is the output for the mark_resolved tool.
+type MarkResolvedOutput struct {
+	Success  bool   `json:"success"`
+	Resolved bool   `json:"resolved"`
+	Message  string `json:"message"`
 }
 
-// ResolveThreadInput is the input for the resolve_thread tool.
-type ResolveThreadInput struct {
-	SessionID string `json:"session_id" jsonschema:"description=Triage session ID"`
-	FindingID string `json:"finding_id" jsonschema:"description=Finding ID whose thread to resolve"`
+// RequestRereviewInput is the input for the request_rereview tool.
+type RequestRereviewInput struct {
+	Owner         string   `json:"owner" jsonschema:"description=Repository owner"`
+	Repo          string   `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber      int      `json:"pr_number" jsonschema:"description=Pull request number"`
+	DismissStale  bool     `json:"dismiss_stale" jsonschema:"description=Dismiss stale bot reviews before requesting"`
+	Reviewers     []string `json:"reviewers,omitempty" jsonschema:"description=User logins to request review from"`
+	TeamReviewers []string `json:"team_reviewers,omitempty" jsonschema:"description=Team slugs to request review from"`
+	Message       string   `json:"message,omitempty" jsonschema:"description=Message for dismissing stale reviews"`
 }
 
-// ResolveThreadOutput is the output for the resolve_thread tool.
-type ResolveThreadOutput struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+// RequestRereviewOutput is the output for the request_rereview tool.
+type RequestRereviewOutput struct {
+	Success          bool   `json:"success"`
+	ReviewsDismissed int    `json:"reviews_dismissed"`
+	ReviewsRequested int    `json:"reviews_requested"`
+	Message          string `json:"message"`
+}
+
+// GetThreadInput is the input for the get_thread tool.
+type GetThreadInput struct {
+	Owner     string `json:"owner" jsonschema:"description=Repository owner"`
+	Repo      string `json:"repo" jsonschema:"description=Repository name"`
+	PRNumber  int    `json:"pr_number,omitempty" jsonschema:"description=PR number (required for thread_id lookup)"`
+	CommentID int64  `json:"comment_id" jsonschema:"description=Comment ID to get thread for"`
+}
+
+// GetThreadOutput is the output for the get_thread tool.
+type GetThreadOutput struct {
+	CommentID  int64                 `json:"comment_id"`
+	ThreadID   string                `json:"thread_id,omitempty"` // GraphQL node ID (PRRT_...) for use with mark_resolved
+	IsResolved bool                  `json:"is_resolved"`
+	Comments   []ThreadCommentOutput `json:"comments"`
+	Total      int                   `json:"total"`
+	Message    string                `json:"message"`
+}
+
+// ThreadCommentOutput represents a comment in a thread.
+type ThreadCommentOutput struct {
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+	IsReply   bool   `json:"is_reply"`
 }

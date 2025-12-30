@@ -189,6 +189,36 @@ When running `golangci-lint run`, fix **every error** you encounter - not just e
 
 ---
 
+## PR Triage Protocol
+
+When triaging PR review findings, **ALWAYS** fetch and address findings from ALL sources as a single logical unit:
+
+1. **LLM Review Comments** (`github-actions[bot]`) - CR_FP-marked findings from code review
+2. **SARIF/Security Findings** (`github-advanced-security[bot]`) - CodeQL/security scanner findings
+
+**These are a single logical unit. Never triage one without the other.**
+
+### Query Commands
+
+```bash
+# LLM review findings
+gh api repos/{owner}/{repo}/pulls/{pr}/comments --jq '.[] | select(.user.login == "github-actions[bot]") | {id, path, line, body: .body[:400]}'
+
+# SARIF/security findings
+gh api repos/{owner}/{repo}/pulls/{pr}/comments --jq '.[] | select(.user.login == "github-advanced-security[bot]") | {id, path, line, body: .body[:400]}'
+```
+
+### Triage Workflow
+
+1. Fetch findings from BOTH bots
+2. Categorize: Fix vs Won't Fix vs Acknowledged
+3. Apply code fixes for valid findings
+4. Reply to ALL findings (both bots) with status: **Fixed**, **Won't fix**, or **Acknowledged**
+5. Commit and push fixes
+6. Verify all findings have responses
+
+---
+
 ## When You're Stuck
 
 **Current work (Phase 3):**
