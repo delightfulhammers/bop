@@ -917,3 +917,283 @@ func TestPRService_ListReviews(t *testing.T) {
 		assert.ErrorIs(t, err, triage.ErrNotImplemented)
 	})
 }
+
+// =============================================================================
+// ListFindings Tests (coverage gap)
+// =============================================================================
+
+func TestPRService_ListFindings(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns all findings when no filter", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "high", Category: "security"},
+			{CommentID: 2, Fingerprint: "fp2", Severity: "medium", Category: "style"},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("filters by severity", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "high", Category: "security"},
+			{CommentID: 2, Fingerprint: "fp2", Severity: "medium", Category: "style"},
+			{CommentID: 3, Fingerprint: "fp3", Severity: "high", Category: "bug"},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		highSeverity := "high"
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		for _, f := range result {
+			assert.Equal(t, "high", f.Severity)
+		}
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("filters by category", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "high", Category: "security"},
+			{CommentID: 2, Fingerprint: "fp2", Severity: "medium", Category: "style"},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		securityCat := "security"
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, &securityCat)
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, "security", result[0].Category)
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("filters by both severity and category", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "high", Category: "security"},
+			{CommentID: 2, Fingerprint: "fp2", Severity: "high", Category: "style"},
+			{CommentID: 3, Fingerprint: "fp3", Severity: "medium", Category: "security"},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		highSeverity := "high"
+		securityCat := "security"
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, &securityCat)
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.Equal(t, "high", result[0].Severity)
+		assert.Equal(t, "security", result[0].Category)
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("returns error for invalid severity filter", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: new(MockCommentReader),
+		})
+
+		invalidSev := "extreme"
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, &invalidSev, nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrInvalidFilter)
+	})
+
+	t.Run("returns ErrNotImplemented when CommentReader is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("propagates errors from CommentReader", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(nil, errors.New("api error"))
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "api error")
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("returns empty slice when no findings match filters", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "low", Category: "style"},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		highSeverity := "high"
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil)
+		require.NoError(t, err)
+		assert.Empty(t, result)
+		mockComment.AssertExpectations(t)
+	})
+}
+
+// =============================================================================
+// GetThreadHistory Tests (coverage gap)
+// =============================================================================
+
+func TestPRService_GetThreadHistory(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns thread history for comment", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		expectedHistory := []domain.ThreadComment{
+			{Author: "user1", Body: "Original comment", IsReply: false},
+			{Author: "user2", Body: "Reply 1", IsReply: true},
+			{Author: "user1", Body: "Reply 2", IsReply: true},
+		}
+		mockComment.On("GetThreadHistory", ctx, "owner", "repo", int64(12345)).Return(expectedHistory, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		result, err := svc.GetThreadHistory(ctx, "owner", "repo", 12345)
+		require.NoError(t, err)
+		assert.Len(t, result, 3)
+		assert.Equal(t, "user1", result[0].Author)
+		assert.False(t, result[0].IsReply)
+		assert.True(t, result[1].IsReply)
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when CommentReader is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.GetThreadHistory(ctx, "owner", "repo", 12345)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("propagates errors from CommentReader", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockComment.On("GetThreadHistory", ctx, "owner", "repo", int64(12345)).Return(nil, errors.New("not found"))
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		_, err := svc.GetThreadHistory(ctx, "owner", "repo", 12345)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("returns empty slice for comment with no replies", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		expectedHistory := []domain.ThreadComment{
+			{Author: "user1", Body: "Solo comment", IsReply: false},
+		}
+		mockComment.On("GetThreadHistory", ctx, "owner", "repo", int64(12345)).Return(expectedHistory, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		result, err := svc.GetThreadHistory(ctx, "owner", "repo", 12345)
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		mockComment.AssertExpectations(t)
+	})
+}
+
+// =============================================================================
+// FindThreadForComment Tests (coverage gap)
+// =============================================================================
+
+func TestPRService_FindThreadForComment(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("returns thread info for comment", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		expectedThread := &triage.ThreadInfo{
+			ID:         "PRRT_kwDO123abc",
+			IsResolved: false,
+		}
+		mockManager.On("FindThreadForComment", ctx, "owner", "repo", 42, int64(12345)).Return(expectedThread, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		result, err := svc.FindThreadForComment(ctx, "owner", "repo", 42, 12345)
+		require.NoError(t, err)
+		assert.Equal(t, "PRRT_kwDO123abc", result.ID)
+		assert.False(t, result.IsResolved)
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented when ReviewManager is nil", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+
+		_, err := svc.FindThreadForComment(ctx, "owner", "repo", 42, 12345)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("propagates errors from ReviewManager", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		mockManager.On("FindThreadForComment", ctx, "owner", "repo", 42, int64(12345)).Return(nil, errors.New("comment not in review thread"))
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		_, err := svc.FindThreadForComment(ctx, "owner", "repo", 42, 12345)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "comment not in review thread")
+		mockManager.AssertExpectations(t)
+	})
+
+	t.Run("returns resolved thread info", func(t *testing.T) {
+		mockManager := new(MockReviewManager)
+		expectedThread := &triage.ThreadInfo{
+			ID:         "PRRT_kwDO456xyz",
+			IsResolved: true,
+		}
+		mockManager.On("FindThreadForComment", ctx, "owner", "repo", 42, int64(99999)).Return(expectedThread, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			ReviewManager: mockManager,
+		})
+
+		result, err := svc.FindThreadForComment(ctx, "owner", "repo", 42, 99999)
+		require.NoError(t, err)
+		assert.Equal(t, "PRRT_kwDO456xyz", result.ID)
+		assert.True(t, result.IsResolved)
+		mockManager.AssertExpectations(t)
+	})
+}
