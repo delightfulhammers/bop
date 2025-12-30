@@ -54,6 +54,42 @@ archives:
     files:
       - README.md
       - docs/GITHUB_ACTION_SETUP.md
+      - .claude/skills/triage-pr-review.md
+      - cr.yaml
+
+# Homebrew formula publishing (self-hosted in this repo)
+# Install with: brew install bkyoung/code-reviewer/code-reviewer
+brews:
+  - name: code-reviewer
+    ids:
+      - cr
+      - code-reviewer-mcp
+    repository:
+      owner: bkyoung
+      name: code-reviewer
+      branch: main
+      # No token needed - GITHUB_TOKEN has write access to this repo
+    directory: Formula
+    homepage: "https://github.com/bkyoung/code-reviewer"
+    description: "AI-powered code review tool with multi-provider LLM support"
+    license: "MIT"
+    install: |
+      bin.install "cr"
+      bin.install "code-reviewer-mcp"
+    test: |
+      system "#{bin}/cr", "version"
+    caveats: |
+      To use code-reviewer, set at least one LLM provider API key:
+        export ANTHROPIC_API_KEY="your-key"    # Claude models
+        export OPENAI_API_KEY="your-key"       # GPT models
+        export GEMINI_API_KEY="your-key"       # Gemini models
+
+      Quick start:
+        cr review branch main
+
+      For GitHub PR integration:
+        export GITHUB_TOKEN="your-token"
+        cr review branch main --github-post --pr 123
 
 checksum:
   name_template: 'checksums.txt'
