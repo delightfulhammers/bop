@@ -8,11 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"regexp"
 	"strings"
 
 	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
+	"github.com/bkyoung/code-reviewer/internal/pathutil"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
 
@@ -182,30 +182,9 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 			return 0, fmt.Errorf("invalid commit SHA: must be lowercase hex")
 		}
 	}
-	if path == "" {
-		return 0, fmt.Errorf("path cannot be empty")
-	}
-	// Normalize path to handle edge cases like "foo/./bar" or redundant slashes.
-	// Use filepath.ToSlash to ensure consistent forward-slash separators.
-	// All subsequent validation and the API request use cleanPath.
-	cleanPath := filepath.ToSlash(filepath.Clean(path))
-	// Check if path tries to escape (starts with .. after cleaning)
-	if strings.HasPrefix(cleanPath, "..") {
-		return 0, fmt.Errorf("invalid path: escapes repository root")
-	}
-	// Check for absolute paths (Unix or Windows style) - check cleanPath for consistency
-	if filepath.IsAbs(cleanPath) || strings.HasPrefix(cleanPath, "/") {
-		return 0, fmt.Errorf("invalid path: must be relative (no leading '/')")
-	}
-	// Check for Windows-style absolute paths (defensive - git repos don't use these)
-	if len(cleanPath) >= 2 && cleanPath[1] == ':' {
-		return 0, fmt.Errorf("invalid path: must be relative (no drive letter)")
-	}
-	// Double-check for any remaining ".." after normalization
-	for _, segment := range strings.Split(cleanPath, "/") {
-		if segment == ".." {
-			return 0, fmt.Errorf("invalid path: contains parent directory reference")
-		}
+	cleanPath, err := pathutil.ValidateRelativePath(path)
+	if err != nil {
+		return 0, fmt.Errorf("invalid path: %w", err)
 	}
 	if line <= 0 {
 		return 0, fmt.Errorf("line must be positive")
