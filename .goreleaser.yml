@@ -57,7 +57,7 @@ archives:
       - .claude/skills/triage-pr-review.md
       - cr.yaml
 
-# Homebrew formula publishing (self-hosted in this repo)
+# Homebrew formula publishing
 # Install with: brew install bkyoung/code-reviewer/code-reviewer
 brews:
   - name: code-reviewer
@@ -65,9 +65,9 @@ brews:
       - default
     repository:
       owner: bkyoung
-      name: code-reviewer
+      name: homebrew-code-reviewer
       branch: main
-      # No token needed - GITHUB_TOKEN has write access to this repo
+      token: "{{ .Env.HOMEBREW_GITHUB_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/bkyoung/code-reviewer"
     description: "AI-powered code review tool with multi-provider LLM support"
