@@ -17,6 +17,23 @@ The `code-reviewer` MCP server must be running and configured in Claude Code. It
 
 **Always query both sources.** SARIF annotations are authoritative for current code state; PR comments show accumulated reviewer feedback.
 
+### Important: `list_findings` Limitation
+
+`list_findings` only returns comments with `CR_FP` fingerprint markers. Bot comments without fingerprints (e.g., from `github-actions[bot]` using other review tools) will NOT appear.
+
+**To catch all bot comments**, also run:
+```bash
+gh api repos/{owner}/{repo}/pulls/{pr}/comments \
+  --jq '.[] | select(.user.login | endswith("[bot]")) | {id, path, line, body: .body[:200]}'
+```
+
+Then use `reply_to_finding` with the comment ID directly:
+```
+reply_to_finding(owner, repo, pr_number, finding_id="<comment_id>", body="...", status="fixed")
+```
+
+The `finding_id` parameter accepts both fingerprints (`CR_FP:xxx`) and raw comment IDs.
+
 ---
 
 ## Available MCP Tools
