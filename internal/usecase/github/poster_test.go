@@ -9,10 +9,23 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/adapter/github"
 	"github.com/bkyoung/code-reviewer/internal/diff"
 	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/bkyoung/code-reviewer/internal/usecase/dedup"
 	usecasegithub "github.com/bkyoung/code-reviewer/internal/usecase/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockSemanticComparer is a test double for semantic comparison.
+type mockSemanticComparer struct {
+	compareFunc func(ctx context.Context, candidates []dedup.CandidatePair) (*dedup.ComparisonResult, error)
+}
+
+func (m *mockSemanticComparer) Compare(ctx context.Context, candidates []dedup.CandidatePair) (*dedup.ComparisonResult, error) {
+	if m.compareFunc != nil {
+		return m.compareFunc(ctx, candidates)
+	}
+	return &dedup.ComparisonResult{}, nil
+}
 
 // MockReviewClient is a mock implementation of the ReviewClient interface.
 // It uses a mutex to protect shared state for thread safety in concurrent scenarios.
@@ -1654,4 +1667,270 @@ func TestReviewPoster_PostReview_NoMismatchWhenZeroComments(t *testing.T) {
 	assert.Equal(t, 0, result.CommentsPosted, "no comments expected")
 	assert.Equal(t, 0, result.CommentsVerified, "no comments verified")
 	assert.False(t, result.CommentMismatch, "no mismatch when 0 comments expected")
+}
+
+// TestReviewPoster_PostReview_NoNewFindingsWithTriagedExisting tests bug #149:
+// When re-reviewing a PR where all existing findings have been triaged (acknowledged/disputed)
+// and the LLM generates no new findings, the result should be APPROVE.
+func TestReviewPoster_PostReview_NoNewFindingsWithTriagedExisting(t *testing.T) {
+	// Scenario: Re-review where LLM finds nothing new, but there are existing triaged findings
+	// - 3 existing findings: 1 acknowledged, 2 disputed
+	// - No new findings from LLM (empty Findings slice)
+	// Expected: APPROVE (not CHANGES_REQUESTED)
+
+	fp1 := domain.FindingFingerprint("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1")
+	fp2 := domain.FindingFingerprint("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2")
+	fp3 := domain.FindingFingerprint("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3")
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Existing bot comments with fingerprints
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(fp1) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 2, Body: "<!-- CR_FINGERPRINT:" + string(fp2) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 3, Body: "<!-- CR_FINGERPRINT:" + string(fp3) + " -->\n**Severity:** critical", User: github.User{Login: "bot[bot]"}},
+				// Author replies indicating triage
+				{ID: 4, Body: "Acknowledged, will fix later", User: github.User{Login: "author"}, InReplyToID: 1},
+				{ID: 5, Body: "This is a false positive", User: github.User{Login: "author"}, InReplyToID: 2},
+				{ID: 6, Body: "Not applicable to our case", User: github.User{Login: "author"}, InReplyToID: 3},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	// Empty findings - LLM found nothing new on re-review
+	findings := []github.PositionedFinding{}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+	// Bug #149: This was returning CHANGES_REQUESTED instead of APPROVE
+	assert.Equal(t, github.EventApprove, result.Event, "empty findings with all triaged existing should APPROVE")
+	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
+	assert.Equal(t, 1, result.AcknowledgedCount, "1 acknowledged")
+	assert.Equal(t, 2, result.DisputedCount, "2 disputed")
+	assert.Equal(t, 0, result.OpenCount, "0 open")
+}
+
+// TestReviewPoster_PostReview_RegeneratedTriagedFindings tests bug #149 scenario:
+// When re-reviewing a PR where the LLM regenerates the same findings that have been
+// triaged (acknowledged/disputed), the result should be APPROVE because all
+// blocking findings have been addressed.
+func TestReviewPoster_PostReview_RegeneratedTriagedFindings(t *testing.T) {
+	// Scenario: LLM regenerates the same findings that exist in comments
+	// - 3 existing findings: 1 acknowledged, 2 disputed
+	// - LLM regenerates all 3 (same fingerprints)
+	// - They get deduplicated for posting, but should also not block
+	// Expected: APPROVE (not CHANGES_REQUESTED)
+
+	// Create findings that will match the existing comments
+	finding1 := makeFinding("file1.go", 10, "high", "Security issue 1")
+	finding2 := makeFinding("file2.go", 20, "high", "Security issue 2")
+	finding3 := makeFinding("file3.go", 30, "critical", "Critical bug")
+
+	fp1 := domain.FingerprintFromFinding(finding1)
+	fp2 := domain.FingerprintFromFinding(finding2)
+	fp3 := domain.FingerprintFromFinding(finding3)
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Existing bot comments with matching fingerprints
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(fp1) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 2, Body: "<!-- CR_FINGERPRINT:" + string(fp2) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 3, Body: "<!-- CR_FINGERPRINT:" + string(fp3) + " -->\n**Severity:** critical", User: github.User{Login: "bot[bot]"}},
+				// Author replies indicating triage
+				{ID: 4, Body: "Acknowledged, will fix later", User: github.User{Login: "author"}, InReplyToID: 1},
+				{ID: 5, Body: "This is a false positive", User: github.User{Login: "author"}, InReplyToID: 2},
+				{ID: 6, Body: "Not applicable to our case", User: github.User{Login: "author"}, InReplyToID: 3},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	// LLM regenerated the same findings (same fingerprints)
+	findings := []github.PositionedFinding{
+		{Finding: finding1, DiffPosition: diff.IntPtr(5)},
+		{Finding: finding2, DiffPosition: diff.IntPtr(15)},
+		{Finding: finding3, DiffPosition: diff.IntPtr(25)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+	// Should APPROVE because all findings are triaged (acknowledged/disputed)
+	assert.Equal(t, github.EventApprove, result.Event, "all triaged findings should APPROVE")
+	// All findings should be deduplicated (already posted)
+	assert.Equal(t, 3, result.DuplicatesSkipped, "all 3 should be skipped as duplicates")
+	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
+	assert.Equal(t, 1, result.AcknowledgedCount, "1 acknowledged")
+	assert.Equal(t, 2, result.DisputedCount, "2 disputed")
+	assert.Equal(t, 0, result.OpenCount, "0 open")
+}
+
+// TestReviewPoster_PostReview_DifferentFingerprintsSameLocationTriaged tests the scenario
+// where the LLM generates findings with DIFFERENT fingerprints than existing triaged comments.
+// This could happen if the LLM generates slightly different descriptions on re-review.
+// Without semantic dedup, these are treated as new findings and block.
+func TestReviewPoster_PostReview_DifferentFingerprintsSameLocationTriaged(t *testing.T) {
+	// Scenario: Existing triaged findings have different fingerprints than new findings
+	// This demonstrates that fingerprint mismatch = new finding = potential block
+
+	// Existing findings (already posted and triaged)
+	existingFinding := makeFinding("file1.go", 10, "high", "Original description")
+	existingFP := domain.FingerprintFromFinding(existingFinding)
+
+	// New finding from LLM - same location but different description = different fingerprint
+	newFinding := makeFinding("file1.go", 10, "high", "Slightly different description")
+	newFP := domain.FingerprintFromFinding(newFinding)
+
+	// Verify fingerprints are different
+	require.NotEqual(t, existingFP, newFP, "fingerprints should be different")
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Existing bot comment with triaged status
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(existingFP) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 2, Body: "Acknowledged", User: github.User{Login: "author"}, InReplyToID: 1},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	// LLM generates finding with different fingerprint
+	findings := []github.PositionedFinding{
+		{Finding: newFinding, DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+	// Without semantic dedup, different fingerprint = new finding = REQUEST_CHANGES
+	// This is correct behavior - semantic dedup would catch this upstream
+	assert.Equal(t, github.EventRequestChanges, result.Event, "different fingerprint is treated as new finding")
+	assert.Equal(t, 0, result.DuplicatesSkipped, "no exact fingerprint match")
+	assert.Equal(t, 1, result.CommentsPosted, "new comment posted")
+}
+
+// TestReviewPoster_PostReview_SemanticDuplicatesDontBlock tests bug #149:
+// When semantic deduplication identifies findings as duplicates of existing
+// triaged comments, those findings should NOT block the PR.
+// This test demonstrates the failure before the fix is applied.
+func TestReviewPoster_PostReview_SemanticDuplicatesDontBlock(t *testing.T) {
+	// Scenario: LLM generates findings that are semantic duplicates of existing triaged comments
+	// - Existing comment has fingerprint A (acknowledged)
+	// - New finding has fingerprint B (different)
+	// - Semantic dedup identifies B as duplicate of A
+	// - B should NOT block because A was acknowledged
+	// Expected: APPROVE (not CHANGES_REQUESTED)
+
+	// Existing finding (already posted and acknowledged)
+	existingFP := domain.FindingFingerprint("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1")
+
+	// New finding from LLM - different fingerprint, but will be marked as semantic duplicate
+	newFinding := makeFinding("file1.go", 10, "high", "A high severity security issue")
+	newFP := domain.FingerprintFromFinding(newFinding)
+
+	// Verify fingerprints are different
+	require.NotEqual(t, existingFP, newFP, "fingerprints should be different")
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Existing bot comment - different fingerprint but will be semantic match
+				{
+					ID:   1,
+					Path: "file1.go",
+					Line: diff.IntPtr(10),
+					Body: "<!-- CR_FINGERPRINT:" + string(existingFP) + " -->\n**Severity:** high | **Category:** test\n\n📍 Line 10\n\nSimilar security concern",
+					User: github.User{Login: "bot[bot]"},
+				},
+				// Author acknowledged
+				{ID: 2, Body: "Acknowledged, tracking in issue #123", User: github.User{Login: "author"}, InReplyToID: 1},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+
+	// Create a mock semantic comparer that always returns the finding as a duplicate
+	mockComparer := &mockSemanticComparer{
+		compareFunc: func(ctx context.Context, candidates []dedup.CandidatePair) (*dedup.ComparisonResult, error) {
+			// Mark all candidates as duplicates
+			var duplicates []dedup.DuplicateMatch
+			for _, c := range candidates {
+				duplicates = append(duplicates, dedup.DuplicateMatch{
+					NewFinding:          c.New,
+					ExistingFingerprint: c.Existing.Fingerprint,
+					Reason:              "Test: semantically similar",
+				})
+			}
+			return &dedup.ComparisonResult{Duplicates: duplicates}, nil
+		},
+	}
+
+	poster := usecasegithub.NewReviewPoster(
+		client,
+		usecasegithub.WithSemanticComparer(mockComparer, usecasegithub.SemanticDedupConfig{
+			LineThreshold: 10,
+			MaxCandidates: 50,
+		}),
+	)
+
+	// LLM generates finding with different fingerprint
+	findings := []github.PositionedFinding{
+		{Finding: newFinding, DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+
+	// Bug #149: This SHOULD return APPROVE because:
+	// 1. The finding was identified as a semantic duplicate
+	// 2. The original finding it duplicates was acknowledged
+	// 3. Therefore it shouldn't block
+	assert.Equal(t, github.EventApprove, result.Event, "semantic duplicate of acknowledged finding should not block")
+	assert.Equal(t, 1, result.SemanticDuplicatesSkipped, "should identify 1 semantic duplicate")
+	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
+	assert.Equal(t, 1, result.AcknowledgedCount, "should count 1 acknowledged")
 }

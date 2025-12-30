@@ -205,6 +205,7 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 	findings := req.Findings
 	var duplicatesSkipped int
 	var semanticDuplicatesSkipped int
+	var semanticDupMap SemanticDuplicateMap
 	var existingStatuses map[domain.FindingFingerprint]domain.FindingStatus
 	var statusCounts StatusCounts
 
@@ -222,8 +223,9 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 			findings, duplicatesSkipped = filterDuplicateFindings(req.Findings, comments, req.BotUsername)
 
 			// Stage 2: Semantic deduplication (LLM-based) - Issue #111
+			// Also returns a mapping from new fingerprints to existing fingerprints for status inheritance
 			if p.semanticComparer != nil && len(findings) > 0 {
-				findings, semanticDuplicatesSkipped = p.filterSemanticDuplicates(ctx, findings, comments, req.BotUsername)
+				findings, semanticDuplicatesSkipped, semanticDupMap = p.filterSemanticDuplicates(ctx, findings, comments, req.BotUsername)
 			}
 
 			// Analyze reply statuses (Issue #108)
@@ -241,11 +243,13 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 	// `findings` because even duplicated high-severity findings should still block
 	// the PR if they haven't been acknowledged/disputed. The deduplication only
 	// affects what comments are posted, not the blocking decision.
+	// However, semantic duplicates are handled specially via semanticDupMap - they
+	// inherit the status of the original finding they duplicate (fix for bug #149).
 	var event github.ReviewEvent
 	if req.OverrideEvent != "" {
 		event = req.OverrideEvent
 	} else {
-		event = determineEffectiveEvent(req.Findings, existingStatuses, req.ReviewActions)
+		event = determineEffectiveEvent(req.Findings, existingStatuses, semanticDupMap, req.ReviewActions)
 	}
 
 	// Build the summary AFTER deduplication so counts reflect what's actually posted (Issue #125).
@@ -549,6 +553,7 @@ func formatStatusSection(counts StatusCounts) string {
 func determineEffectiveEvent(
 	findings []github.PositionedFinding,
 	existingStatuses map[domain.FindingFingerprint]domain.FindingStatus,
+	semanticDupMap SemanticDuplicateMap,
 	actions github.ReviewActions,
 ) github.ReviewEvent {
 	// If no status tracking, fall back to standard behavior
@@ -560,10 +565,21 @@ func determineEffectiveEvent(
 	var effectiveFindings []github.PositionedFinding
 	for _, pf := range findings {
 		fp := domain.FingerprintFromFinding(pf.Finding)
+
+		// Check if this finding's fingerprint is directly in existingStatuses
 		status, exists := existingStatuses[fp]
 
+		// If not found directly, check if it's a semantic duplicate of an existing finding.
+		// Semantic duplicates should inherit the status of the original finding they duplicate.
+		// Fix for bug #149: without this, semantic duplicates incorrectly block the PR.
+		if !exists && semanticDupMap != nil {
+			if originalFP, isDup := semanticDupMap[fp]; isDup {
+				status, exists = existingStatuses[originalFP]
+			}
+		}
+
 		// Include finding if:
-		// - It's new (not in existingStatuses)
+		// - It's new (not in existingStatuses, and not a semantic duplicate of an existing finding)
 		// - It's in existingStatuses but status is Open
 		if !exists || status == domain.StatusOpen {
 			effectiveFindings = append(effectiveFindings, pf)
@@ -574,19 +590,24 @@ func determineEffectiveEvent(
 	return github.DetermineReviewEventWithActions(effectiveFindings, actions)
 }
 
+// SemanticDuplicateMap maps new finding fingerprints to the existing fingerprints they duplicate.
+// This allows determineEffectiveEvent to inherit the status of the original finding.
+type SemanticDuplicateMap map[domain.FindingFingerprint]domain.FindingFingerprint
+
 // filterSemanticDuplicates uses LLM-based comparison to identify findings that are
 // semantic duplicates of existing comments, even if they have different fingerprints.
-// Returns the filtered findings and count of semantic duplicates found.
+// Returns the filtered findings, count of semantic duplicates found, and a mapping
+// from new finding fingerprints to the existing fingerprints they duplicate.
 func (p *ReviewPoster) filterSemanticDuplicates(
 	ctx context.Context,
 	findings []github.PositionedFinding,
 	comments []github.PullRequestComment,
 	botUsername string,
-) ([]github.PositionedFinding, int) {
+) ([]github.PositionedFinding, int, SemanticDuplicateMap) {
 	// Convert bot comments to ExistingFinding for candidate detection
 	existingFindings := extractExistingFindings(comments, botUsername)
 	if len(existingFindings) == 0 {
-		return findings, 0
+		return findings, 0, nil
 	}
 
 	// Convert positioned findings to domain.Finding for candidate detection
@@ -605,7 +626,7 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 
 	// If no candidates, nothing to compare
 	if len(candidates) == 0 {
-		return findings, 0
+		return findings, 0, nil
 	}
 
 	// Build set of original indices that were included in candidates (not overflow).
@@ -631,15 +652,21 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 	if err != nil {
 		// Fail open: on error, treat all findings as unique
 		log.Printf("warning: semantic dedup failed: %v (treating all as unique)", err)
-		return findings, 0
+		return findings, 0, nil
 	}
 
 	// Mark original finding indices that are semantic duplicates.
 	// Only consider indices that were actually sent as candidates (not overflow).
+	// Also build a map of new fingerprints -> existing fingerprints for status inheritance.
 	duplicateOriginalIndices := make(map[int]bool)
+	semanticDupMap := make(SemanticDuplicateMap)
 	for _, dup := range result.Duplicates {
 		fp := domain.FingerprintFromFinding(dup.NewFinding)
 		log.Printf("semantic dedup: %s is duplicate of existing (reason: %s)", fp, dup.Reason)
+
+		// Record the mapping from new fingerprint to existing fingerprint
+		// This allows determineEffectiveEvent to inherit the original's status
+		semanticDupMap[fp] = dup.ExistingFingerprint
 
 		// Find which original indices correspond to this duplicate's new finding
 		for origIdx, pf := range findings {
@@ -673,7 +700,7 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 		filtered = append(filtered, pf)
 	}
 
-	return filtered, duplicatesFound
+	return filtered, duplicatesFound, semanticDupMap
 }
 
 // extractExistingFindings converts bot comments to ExistingFinding for semantic comparison.
