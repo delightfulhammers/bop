@@ -125,13 +125,10 @@ jobs:
           echo "Found markdown: $MARKDOWN_FILE"
           echo "Found SARIF: $SARIF_FILE"
 
-      - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v4
-        if: steps.skip-check.outputs.skip != 'true'
-        continue-on-error: true  # Don't fail workflow if SARIF is invalid
-        with:
-          sarif_file: ${{ steps.find-files.outputs.sarif_file }}
-          category: ai-code-review
+      # SARIF upload removed: PR comments from github-actions[bot] are the
+      # single source of truth. Uploading SARIF caused duplicate findings
+      # from github-advanced-security[bot]. SARIF files are still archived
+      # in the review artifacts below for tooling/debugging purposes.
 
       - name: Upload review artifacts
         uses: actions/upload-artifact@v4
