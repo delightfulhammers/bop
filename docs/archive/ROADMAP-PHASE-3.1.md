@@ -4,7 +4,7 @@
 
 **Target Version:** v0.5.0
 **Estimated Effort:** ~50 hours
-**Status:** In Progress (M1-M3 complete, M4 in progress)
+**Status:** ✅ COMPLETE (All milestones delivered)
 
 ---
 
@@ -30,8 +30,8 @@ Both must be queryable for complete triage.
 | Read Adapter Layer | P0 | 10h | ✅ Done (M2.5) |
 | GitHub Write Extensions | P0 | 8h | ✅ Done (M3) |
 | 12 MCP Tool Handlers | P0 | 12h | ✅ Done |
-| Triage Skill Document | P1 | 2h | Pending (M5) |
-| Integration Tests | P0 | 4h | 🚧 In Progress (M4) |
+| Triage Skill Document | P1 | 2h | ✅ Done (M5) |
+| Integration Tests | P0 | 4h | ✅ Done (M4) |
 
 ---
 
@@ -43,7 +43,7 @@ M1: Foundation        M2: Core Tools       M2.5: Adapters       M3: Write Tools 
 ├── Service skeleton  ├── Use case logic   ├── CommentReader    ├── Thread ops       ├── Integration
 ├── MCP server setup  ├── Tool registration├── Wire to server   ├── Review mgmt      ├── Skill doc
 │                     │                    │                    │                    │
-│  ✅ DONE            │  ✅ DONE           │  ✅ DONE           │  ✅ DONE           │  🚧 IN PROGRESS
+│  ✅ DONE            │  ✅ DONE           │  ✅ DONE           │  ✅ DONE           │  ✅ DONE
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -54,8 +54,8 @@ M1 (Foundation) ✅
     └── M2 (Core Tool Handlers) ✅
             └── M2.5 (Adapter Layer) ✅
                     └── M3 (Write Tools) ✅
-                            └── M4 (Testing) 🚧 ← YOU ARE HERE
-                                    └── M5 (Polish)
+                            └── M4 (Testing) ✅
+                                    └── M5 (Polish) ✅  ← PHASE 3.1 COMPLETE
 ```
 
 ---
@@ -184,9 +184,10 @@ Check run annotations (SARIF findings) **cannot be replied to directly** via Git
 
 ---
 
-## Milestone 4: Testing (4 hours) - IN PROGRESS
+## Milestone 4: Testing (4 hours) - COMPLETE
 
-**Issue:** #121
+**Issue:** #121 (closed)
+**PR:** #139
 **Goal:** Comprehensive test coverage for all components.
 
 ### Tasks
@@ -194,40 +195,42 @@ Check run annotations (SARIF findings) **cannot be replied to directly** via Git
 | Task | Effort | Status |
 |------|--------|--------|
 | 4.1 Unit tests for service layer | 1.5h | ✅ (`pr_service_test.go`, `suggestion_extractor_test.go`) |
-| 4.2 Unit tests for MCP handlers | 1h | ❌ **Missing** (`internal/adapter/mcp/` has no tests) |
-| 4.3 Integration tests (GitHub mock) | 1h | ❌ Pending |
-| 4.4 E2E workflow test | 0.5h | ❌ Pending |
+| 4.2 Unit tests for MCP handlers | 1h | ✅ (`internal/adapter/mcp/handlers_test.go`) |
+| 4.3 Integration tests (GitHub mock) | 1h | ✅ |
+| 4.4 E2E workflow test | 0.5h | ✅ |
 
-### Current Test Coverage
+### Test Coverage
 
 | Package | Tests Exist | Coverage |
 |---------|-------------|----------|
-| `internal/usecase/triage/` | ✅ | TBD |
-| `internal/adapter/mcp/` | ❌ | 0% |
-| `internal/adapter/github/` (new) | ✅ | TBD |
+| `internal/usecase/triage/` | ✅ | >80% |
+| `internal/adapter/mcp/` | ✅ | >80% |
+| `internal/adapter/github/` | ✅ | >80% |
 
 ### Acceptance Criteria
 
-- [ ] >80% code coverage on service layer
-- [ ] All MCP tool handlers have unit tests
-- [ ] Integration test passes with mock GitHub
-- [ ] E2E workflow test demonstrates full flow
-- [ ] `go test -race ./...` passes
+- [x] >80% code coverage on service layer
+- [x] All MCP tool handlers have unit tests
+- [x] Integration test passes with mock GitHub
+- [x] E2E workflow test demonstrates full flow
+- [x] `go test -race ./...` passes
 
 ---
 
-## Milestone 5: Polish & Documentation (4 hours) - PENDING
+## Milestone 5: Polish & Documentation (4 hours) - COMPLETE
 
+**Issue:** #122 (closed)
+**PR:** #140
 **Goal:** Skill document, user documentation, and edge case handling.
 
 ### Tasks
 
-| Task | Effort | Dependencies |
-|------|--------|--------------|
-| 5.1 Create triage-pr-review skill | 1.5h | M4 |
-| 5.2 Update README with MCP docs | 1h | M4 |
-| 5.3 Edge case handling | 1h | M4 |
-| 5.4 Error messages review | 0.5h | M4 |
+| Task | Effort | Status |
+|------|--------|--------|
+| 5.1 Create triage-pr-review skill | 1.5h | ✅ |
+| 5.2 Update README with MCP docs | 1h | ✅ |
+| 5.3 Edge case handling | 1h | ✅ |
+| 5.4 Error messages review | 0.5h | ✅ |
 
 ### Skill Document Outline
 
@@ -296,18 +299,18 @@ Location: `skills/triage-pr-review/SKILL.md`
 
 ### Functional
 
-- [ ] All 12 MCP tools working via Claude Code
-- [ ] Can triage findings end-to-end (list → fix → commit → update)
-- [ ] Works with both SARIF annotations and PR comments
-- [ ] Works with real GitHub PRs
-- [ ] Handles edge cases gracefully
+- [x] All 12 MCP tools working via Claude Code
+- [x] Can triage findings end-to-end (list → fix → commit → update)
+- [x] Works with both SARIF annotations and PR comments
+- [x] Works with real GitHub PRs
+- [x] Handles edge cases gracefully
 
 ### Non-Functional
 
-- [ ] Response time <2s for most operations
-- [ ] Clear error messages for all failure modes
-- [ ] >80% test coverage
-- [ ] Documentation complete
+- [x] Response time <2s for most operations
+- [x] Clear error messages for all failure modes
+- [x] >80% test coverage
+- [x] Documentation complete
 
 ---
 
@@ -318,3 +321,4 @@ Location: `skills/triage-pr-review/SKILL.md`
 | 1.0 | 2025-12-28 | Initial roadmap |
 | 1.1 | 2025-12-29 | Added M2.5 milestone (#130) for adapter layer. Updated tool count to 12 (7 read + 5 write). Clarified M2 status (handlers done, adapters pending). Added dependency chain diagram. |
 | 1.2 | 2025-12-29 | Status sync: M1-M3 marked complete. M2.5 adapter layer done. M3 write tools done. M4 in progress (service tests exist, MCP handler tests missing). Updated all checklists and task tables. |
+| 1.3 | 2025-12-30 | **Phase 3.1 Complete!** M4 (PR #139) and M5 (PR #140) merged. All milestones delivered. Updated all status indicators, acceptance criteria, and success criteria to reflect completion. |
