@@ -68,7 +68,8 @@ func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumbe
 		// Apply fingerprint filter: include if has fingerprint OR is from a trusted bot
 		// This ensures automated review feedback from known sources is captured
 		// while preventing arbitrary bots from injecting findings
-		isTrustedBot := comment.User.Type == "Bot" && trustedBots[comment.User.Login]
+		// Note: GitHub usernames are case-insensitive, so normalize to lowercase for lookup
+		isTrustedBot := comment.User.Type == "Bot" && trustedBots[strings.ToLower(comment.User.Login)]
 		if filterByFingerprint && fingerprint == "" && !isTrustedBot {
 			continue
 		}
