@@ -82,8 +82,16 @@ func Install() error {
 // Clean removes build artifacts.
 func Clean() error {
 	fmt.Println("==> Cleaning build artifacts...")
+	// Remove artifacts from root directory
 	artifacts := []string{"cr", "code-reviewer-mcp", "coverage.out", "coverage.html"}
 	for _, artifact := range artifacts {
+		if err := os.Remove(artifact); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove %s: %w", artifact, err)
+		}
+	}
+	// Also remove artifacts from bin/ directory (buildBinary outputs there if it exists)
+	binArtifacts := []string{"bin/cr", "bin/code-reviewer-mcp"}
+	for _, artifact := range binArtifacts {
 		if err := os.Remove(artifact); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove %s: %w", artifact, err)
 		}
