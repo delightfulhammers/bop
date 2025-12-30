@@ -173,9 +173,9 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	if commitSHA == "" {
 		return 0, fmt.Errorf("commit SHA cannot be empty")
 	}
-	// Validate SHA format: must be 40-character hex (case-insensitive)
-	if len(commitSHA) != 40 {
-		return 0, fmt.Errorf("invalid commit SHA: must be 40 characters, got %d", len(commitSHA))
+	// Validate SHA format: 40 chars (SHA-1) or 64 chars (SHA-256), hex only
+	if len(commitSHA) != 40 && len(commitSHA) != 64 {
+		return 0, fmt.Errorf("invalid commit SHA: must be 40 or 64 characters, got %d", len(commitSHA))
 	}
 	for _, c := range commitSHA {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {

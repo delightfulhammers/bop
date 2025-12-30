@@ -216,7 +216,7 @@ func TestClient_CreateComment(t *testing.T) {
 			line:        42,
 			body:        "Short SHA",
 			wantErr:     true,
-			errContains: "must be 40 characters",
+			errContains: "must be 40 or 64 characters",
 		},
 		{
 			name:         "SHA with uppercase accepted",
@@ -230,6 +230,19 @@ func TestClient_CreateComment(t *testing.T) {
 			statusCode:   201,
 			responseBody: `{"id": 789, "body": "Uppercase SHA should work"}`,
 			wantID:       789,
+		},
+		{
+			name:         "SHA-256 (64-char) accepted",
+			owner:        "owner",
+			repo:         "repo",
+			prNumber:     123,
+			commitSHA:    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+			path:         "main.go",
+			line:         42,
+			body:         "SHA-256 should work",
+			statusCode:   201,
+			responseBody: `{"id": 790, "body": "SHA-256 should work"}`,
+			wantID:       790,
 		},
 		{
 			name:        "SHA with invalid characters",
