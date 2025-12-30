@@ -163,7 +163,23 @@ type PostReviewResult struct {
 // It converts domain findings to GitHub review comments, determines the
 // appropriate review event based on severity, and posts the review.
 //
-// If BotUsername is set:
+// ## Two-Stage Deduplication (Issue #138)
+//
+// This function implements OUTPUT-SIDE deduplication - filtering findings AFTER
+// the LLM generates them. This is one of two complementary deduplication stages:
+//
+//  1. INPUT-SIDE (prompt injection): Prior triage context is injected into the LLM
+//     prompt via TriageContextFetcher, instructing it not to re-raise acknowledged
+//     or disputed findings. This is a best-effort prevention mechanism.
+//
+//  2. OUTPUT-SIDE (this function): Fingerprint and semantic deduplication catch any
+//     duplicates that slip through. This is the safety net ensuring we never actually
+//     post duplicate comments to GitHub.
+//
+// Both stages are necessary: input-side reduces noise and saves tokens, but LLMs
+// may still generate similar findings. Output-side guarantees no duplicates are posted.
+//
+// ## Behavior when BotUsername is set:
 //   - Existing bot comments are fetched to deduplicate findings (Issue #107)
 //   - Reply statuses are analyzed to determine acknowledged/disputed findings (Issue #108)
 //   - Acknowledged/disputed findings don't count toward blocking

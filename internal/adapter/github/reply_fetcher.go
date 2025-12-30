@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 
 	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
 )
@@ -150,7 +151,8 @@ func GroupCommentsByParent(comments []PullRequestComment, botUsername string) []
 	for i := range comments {
 		c := &comments[i]
 		// Only bot's top-level comments (InReplyToID == 0) can be parents
-		if c.User.Login == botUsername && c.InReplyToID == 0 {
+		// Use case-insensitive comparison (GitHub usernames are case-insensitive)
+		if strings.EqualFold(c.User.Login, botUsername) && c.InReplyToID == 0 {
 			parentMap[c.ID] = &CommentWithReplies{
 				Parent:  *c,
 				Replies: []PullRequestComment{},
@@ -162,7 +164,7 @@ func GroupCommentsByParent(comments []PullRequestComment, botUsername string) []
 	for i := range comments {
 		c := &comments[i]
 		// Skip top-level comments and bot's own replies
-		if c.InReplyToID == 0 || c.User.Login == botUsername {
+		if c.InReplyToID == 0 || strings.EqualFold(c.User.Login, botUsername) {
 			continue
 		}
 

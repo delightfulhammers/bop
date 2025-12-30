@@ -180,8 +180,9 @@ func run() error {
 		}
 	}
 
-	// Create GitHub poster if token is available
+	// Create GitHub poster and triage context fetcher if token is available
 	var githubPoster review.GitHubPoster
+	var triageContextFetcher review.TriageContextFetcher
 	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
 		githubClient := githubadapter.NewClient(githubToken)
 
@@ -206,6 +207,9 @@ func run() error {
 
 		reviewPoster := usecasegithub.NewReviewPoster(githubClient, posterOpts...)
 		githubPoster = &githubPosterAdapter{poster: reviewPoster}
+
+		// Create triage context fetcher for prior context injection (Issue #138)
+		triageContextFetcher = usecasegithub.NewTriageContextFetcher(githubClient, cfg.Review.BotUsername)
 	}
 
 	// Create verification agent if enabled and a suitable provider is available
@@ -219,22 +223,23 @@ func run() error {
 	providerMaxTokens := buildProviderMaxTokens(cfg.Providers)
 
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
-		Git:               gitEngine,
-		Providers:         providers,
-		Merger:            merger,
-		Markdown:          markdownWriter,
-		JSON:              jsonWriter,
-		SARIF:             sarifWriter,
-		Redactor:          redactor,
-		SeedGenerator:     determinism.GenerateSeed,
-		PromptBuilder:     promptBuilder.Build,
-		Store:             reviewStore,
-		Logger:            reviewLogger,
-		PlanningAgent:     planningAgent,
-		RepoDir:           repoDir,
-		GitHubPoster:      githubPoster,
-		Verifier:          verifier,
-		ProviderMaxTokens: providerMaxTokens,
+		Git:                  gitEngine,
+		Providers:            providers,
+		Merger:               merger,
+		Markdown:             markdownWriter,
+		JSON:                 jsonWriter,
+		SARIF:                sarifWriter,
+		Redactor:             redactor,
+		SeedGenerator:        determinism.GenerateSeed,
+		PromptBuilder:        promptBuilder.Build,
+		Store:                reviewStore,
+		Logger:               reviewLogger,
+		PlanningAgent:        planningAgent,
+		RepoDir:              repoDir,
+		GitHubPoster:         githubPoster,
+		Verifier:             verifier,
+		TriageContextFetcher: triageContextFetcher,
+		ProviderMaxTokens:    providerMaxTokens,
 	})
 
 	root := cli.NewRootCommand(cli.Dependencies{

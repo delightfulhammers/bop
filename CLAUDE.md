@@ -2,17 +2,19 @@
 
 **Project:** AI-Powered Code Review Tool
 **Status:** Phase 3 In Development
-**Version:** v0.4.2 (targeting v0.5.0)
-**Last Updated:** 2025-12-29
+**Version:** v0.5.0
+**Last Updated:** 2025-12-30
 
 ---
 
 ## Quick Start
 
 1. **First:** Read Phase 3 design docs in `docs/design/` for current scope
-2. **Build:** `go build -o cr ./cmd/cr`
-3. **Test:** `go test ./...`
+2. **Build:** `mage build` (or `mage buildAll` for both binaries)
+3. **Test:** `mage test` (or `mage testRace` for race detection)
 4. **Run:** `./cr review branch main` (reviews current branch against main)
+
+> **IMPORTANT:** Always prefer `mage` commands over raw `go` commands. Mage targets ensure consistent builds with version injection and proper flags.
 
 ---
 
@@ -63,28 +65,61 @@
 - **LLM Providers:** OpenAI, Anthropic, Gemini, Ollama
 - **Output Formats:** Markdown, JSON, SARIF
 - **Persistence:** SQLite
-- **Build:** `go build` (Mage available but optional)
+- **Build System:** Mage (preferred)
 
 ---
 
 ## Development Essentials
 
-### Build & Test
+### Mage Targets (Preferred)
+
+**Always use `mage` commands** for consistency and proper version injection.
 
 ```bash
-# Build
+# List all available targets
+mage -l
+
+# Composite targets
+mage ci          # Full CI: format, lint, test (race), build all
+mage check       # Quick pre-commit: format, vet, test
+mage all         # Everything: format, lint, test, coverage, build
+
+# Build targets
+mage build       # Build cr binary
+mage buildMCP    # Build code-reviewer-mcp binary
+mage buildAll    # Build both binaries
+mage install     # Install to $GOPATH/bin
+mage clean       # Remove build artifacts
+
+# Test targets
+mage test        # Run all tests
+mage testRace    # Run tests with race detector
+mage testCoverage # Generate coverage report
+mage testUnit    # Run unit tests only (-short)
+mage testVerbose # Run tests with verbose output
+
+# Code quality
+mage format      # Format code with gofmt
+mage lint        # Run golangci-lint
+mage lintFix     # Run golangci-lint with auto-fix
+mage vet         # Run go vet
+
+# Development helpers
+mage deps        # Download and verify dependencies
+mage tidy        # Clean up go.mod/go.sum
+mage generate    # Run go generate
+```
+
+### Fallback (Raw Go Commands)
+
+Only use these if mage is unavailable:
+
+```bash
 go build -o cr ./cmd/cr
-
-# Test all
+go build -o code-reviewer-mcp ./cmd/code-reviewer-mcp
 go test ./...
-
-# Test with race detector
 go test -race ./...
-
-# Format
 gofmt -w .
-
-# Lint (if golangci-lint installed)
 golangci-lint run
 ```
 
@@ -106,18 +141,17 @@ golangci-lint run
 1. **TDD Mandatory:** Write tests first
 2. **Clean Architecture:** Domain has no external dependencies
 3. **Functional Style:** Prefer immutability, SOLID principles
-4. **Format Before Commit:** `gofmt -w .`
-5. **All Tests Pass:** `go test ./...` must succeed
-6. **Fix All Lint Errors:** Fix ANY lint errors you encounter, even if you didn't cause them
+4. **Use Mage:** Always prefer `mage` commands over raw `go` commands
+5. **Fix All Lint Errors:** Fix ANY lint errors you encounter, even if you didn't cause them
 
 ### Definition of Done
 
 - [ ] Tests written (TDD)
-- [ ] Code formatted (`gofmt`)
-- [ ] Lint passes (`golangci-lint run`) - fix ALL errors, not just yours
-- [ ] All tests pass
-- [ ] Build succeeds
-- [ ] No race conditions (`go test -race`)
+- [ ] Code formatted (`mage format`)
+- [ ] Lint passes (`mage lint`) - fix ALL errors, not just yours
+- [ ] All tests pass (`mage test`)
+- [ ] Build succeeds (`mage buildAll`)
+- [ ] No race conditions (`mage testRace`)
 
 ---
 
@@ -173,13 +207,13 @@ security-tests/          # Security test cases
 1. **Don't** skip tests - TDD is mandatory
 2. **Don't** import domain from adapters - clean architecture violation
 3. **Don't** commit secrets - redaction exists but prevention is better
-4. **Don't** ignore race detector - `go test -race` must pass
-5. **Don't** forget to format - `gofmt -w .` before committing
+4. **Don't** use raw `go` commands - use `mage` targets instead
+5. **Don't** ignore race detector - `mage testRace` must pass
 6. **Don't** ignore lint errors - fix ALL errors you find, even pre-existing ones
 
 ### Code Hygiene (IMPORTANT)
 
-When running `golangci-lint run`, fix **every error** you encounter - not just errors in files you modified. This codebase accumulated technical debt from ignoring pre-existing issues. The only way to recover is:
+When running `mage lint`, fix **every error** you encounter - not just errors in files you modified. This codebase accumulated technical debt from ignoring pre-existing issues. The only way to recover is:
 
 1. Fix issues as you find them
 2. Eventually do a full codebase lint cleanup
