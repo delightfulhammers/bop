@@ -922,17 +922,22 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 	}
 
 	// Log review summary at INFO level
+	// Use actual posted count (post-dedup) when available, otherwise use merged findings count
+	findingsCount := len(mergedReview.Findings)
+	if githubResult != nil {
+		findingsCount = githubResult.CommentsPosted
+	}
 	if o.deps.Logger != nil {
 		o.deps.Logger.LogInfo(ctx, "review complete", map[string]interface{}{
 			"reviewers":    len(reviews),
-			"findings":     len(mergedReview.Findings),
+			"findings":     findingsCount,
 			"total_cost":   totalCost,
 			"output_dir":   req.OutputDir,
-			"posted_to_gh": req.PostToGitHub && githubResult != nil,
+			"posted_to_gh": githubResult != nil,
 		})
 	} else {
 		log.Printf("[INFO] Review complete: %d reviewers, %d findings, cost=$%.4f\n",
-			len(reviews), len(mergedReview.Findings), totalCost)
+			len(reviews), findingsCount, totalCost)
 	}
 
 	return Result{
