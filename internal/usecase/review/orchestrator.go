@@ -559,6 +559,12 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 		}
 	}
 
+	// Filter binary files once before dispatching to reviewers
+	textDiff, binaryFiles := FilterBinaryFiles(diff)
+	if len(binaryFiles) > 0 {
+		log.Printf("Filtered %d binary file(s) from review", len(binaryFiles))
+	}
+
 	var wg sync.WaitGroup
 	resultsChan := make(chan dispatchResult, len(reviewers))
 
@@ -577,12 +583,6 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			if !ok {
 				resultsChan <- dispatchResult{err: fmt.Errorf("provider %q not found for reviewer %q", reviewer.Provider, reviewer.Name)}
 				return
-			}
-
-			// Filter binary files before building prompt
-			textDiff, binaryFiles := FilterBinaryFiles(diff)
-			if len(binaryFiles) > 0 {
-				log.Printf("[%s] Filtered %d binary file(s) from review", reviewer.Name, len(binaryFiles))
 			}
 
 			// Build persona-specific prompt
