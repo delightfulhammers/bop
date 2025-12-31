@@ -101,7 +101,7 @@ func DefaultConfig() Config {
 		Provider:      "anthropic",
 		Model:         "claude-haiku-4-5",
 		MaxTokens:     64000,
-		LineThreshold: 10,
+		LineThreshold: 50, // Increased from 10 to catch more duplicates (Issue #165)
 		MaxCandidates: 50,
 	}
 }

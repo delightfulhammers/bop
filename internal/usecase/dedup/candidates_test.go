@@ -165,16 +165,16 @@ func TestFindCandidates(t *testing.T) {
 			wantOverflow:   0,
 		},
 		{
-			name: "same file outside threshold",
+			name: "same file outside threshold with different content",
 			newFindings: []domain.Finding{
-				{File: "foo.go", LineStart: 50, LineEnd: 55, Description: "new finding"},
+				{File: "foo.go", LineStart: 50, LineEnd: 55, Category: "bug", Severity: "high", Description: "new finding"},
 			},
 			existing: []ExistingFinding{
-				{File: "foo.go", LineStart: 10, LineEnd: 15, Description: "existing finding"},
+				{File: "foo.go", LineStart: 10, LineEnd: 15, Category: "security", Severity: "medium", Description: "existing finding"},
 			},
 			lineThreshold:  10,
 			maxCandidates:  50,
-			wantCandidates: 0,
+			wantCandidates: 0, // No spatial match (outside threshold) and no content match (different category/severity)
 			wantOverflow:   0,
 		},
 		{
@@ -188,6 +188,19 @@ func TestFindCandidates(t *testing.T) {
 			lineThreshold:  10,
 			maxCandidates:  50,
 			wantCandidates: 0,
+			wantOverflow:   0,
+		},
+		{
+			name: "content match catches distant findings with same category and severity",
+			newFindings: []domain.Finding{
+				{File: "foo.go", LineStart: 500, LineEnd: 510, Category: "security", Severity: "high", Description: "SQL injection risk"},
+			},
+			existing: []ExistingFinding{
+				{File: "foo.go", LineStart: 10, LineEnd: 15, Category: "security", Severity: "high", Description: "SQL injection vulnerability"},
+			},
+			lineThreshold:  10,
+			maxCandidates:  50,
+			wantCandidates: 1, // Content match: same category+severity, even though 490 lines apart
 			wantOverflow:   0,
 		},
 		{
@@ -207,19 +220,19 @@ func TestFindCandidates(t *testing.T) {
 		{
 			name: "max candidates exceeded",
 			newFindings: []domain.Finding{
-				{File: "foo.go", LineStart: 10, LineEnd: 15, Description: "new 1"},
-				{File: "foo.go", LineStart: 100, LineEnd: 105, Description: "new 2"},
-				{File: "foo.go", LineStart: 200, LineEnd: 205, Description: "new 3"},
+				{File: "foo.go", LineStart: 10, LineEnd: 15, Category: "bug", Severity: "high", Description: "new 1"},
+				{File: "foo.go", LineStart: 100, LineEnd: 105, Category: "perf", Severity: "low", Description: "new 2"},
+				{File: "foo.go", LineStart: 200, LineEnd: 205, Category: "style", Severity: "info", Description: "new 3"},
 			},
 			existing: []ExistingFinding{
-				{File: "foo.go", LineStart: 12, LineEnd: 18, Description: "existing 1"},
-				{File: "foo.go", LineStart: 102, LineEnd: 108, Description: "existing 2"},
-				{File: "foo.go", LineStart: 202, LineEnd: 208, Description: "existing 3"},
+				{File: "foo.go", LineStart: 12, LineEnd: 18, Category: "bug", Severity: "high", Description: "existing 1"},
+				{File: "foo.go", LineStart: 102, LineEnd: 108, Category: "perf", Severity: "low", Description: "existing 2"},
+				{File: "foo.go", LineStart: 202, LineEnd: 208, Category: "style", Severity: "info", Description: "existing 3"},
 			},
 			lineThreshold:  10,
 			maxCandidates:  2,
 			wantCandidates: 2,
-			wantOverflow:   1, // Third new finding goes to overflow
+			wantOverflow:   1, // Third new finding goes to overflow (each matches only its corresponding existing)
 		},
 	}
 

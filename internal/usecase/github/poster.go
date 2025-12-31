@@ -43,7 +43,7 @@ type SemanticDedupConfig struct {
 // DefaultSemanticDedupConfig returns sensible defaults for semantic deduplication.
 func DefaultSemanticDedupConfig() SemanticDedupConfig {
 	return SemanticDedupConfig{
-		LineThreshold: 10,
+		LineThreshold: 50, // Increased from 10 to catch more duplicates (Issue #165)
 		MaxCandidates: 50,
 	}
 }

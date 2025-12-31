@@ -82,6 +82,17 @@ func (c TriagedFindingContext) DisputedFindings() []TriagedFinding {
 	return result
 }
 
+// OpenFindings returns findings with StatusOpen (posted but not yet replied to).
+func (c TriagedFindingContext) OpenFindings() []TriagedFinding {
+	var result []TriagedFinding
+	for _, f := range c.Findings {
+		if f.Status == StatusOpen {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
 // FilterByReviewer returns a new TriagedFindingContext containing only
 // findings from the specified reviewer. Returns nil if no matching findings.
 // Part of Phase 3.2 - Reviewer Personas.
@@ -115,4 +126,9 @@ func StatusReasonForAcknowledged() string {
 // StatusReasonForDisputed returns a human-readable reason for disputed status.
 func StatusReasonForDisputed() string {
 	return "Author disputed as false positive or not applicable"
+}
+
+// StatusReasonForOpen returns a human-readable reason for open status.
+func StatusReasonForOpen() string {
+	return "Previously raised - awaiting author response"
 }
