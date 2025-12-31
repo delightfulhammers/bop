@@ -558,9 +558,9 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 
 	// OpenAI provider
 	if cfg, ok := providersConfig["openai"]; ok && isProviderEnabled(cfg) {
-		model := cfg.Model
+		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "gpt-4o-mini"
+			model = "gpt-5.2"
 		}
 		// Use real HTTP client if API key is provided
 		apiKey := cfg.APIKey
@@ -586,9 +586,9 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 
 	// Anthropic/Claude provider
 	if cfg, ok := providersConfig["anthropic"]; ok && isProviderEnabled(cfg) {
-		model := cfg.Model
+		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "claude-3-5-sonnet-20241022"
+			model = "claude-sonnet-4-5"
 		}
 		// Use real HTTP client if API key is provided
 		apiKey := cfg.APIKey
@@ -612,9 +612,9 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 
 	// Google Gemini provider
 	if cfg, ok := providersConfig["gemini"]; ok && isProviderEnabled(cfg) {
-		model := cfg.Model
+		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "gemini-1.5-pro"
+			model = "gemini-3-pro-preview"
 		}
 		// Use real HTTP client if API key is provided
 		apiKey := cfg.APIKey
@@ -638,7 +638,7 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 
 	// Ollama provider (local LLM)
 	if cfg, ok := providersConfig["ollama"]; ok && isProviderEnabled(cfg) {
-		model := cfg.Model
+		model := cfg.GetDefaultModel()
 		if model == "" {
 			model = "codellama"
 		}
@@ -663,7 +663,7 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 
 	// Static provider (for testing)
 	if cfg, ok := providersConfig["static"]; ok && isProviderEnabled(cfg) {
-		model := cfg.Model
+		model := cfg.GetDefaultModel()
 		if model == "" {
 			model = "static-model"
 		}
@@ -869,7 +869,7 @@ func defaultVerificationModel(provider string) string {
 	case "anthropic":
 		return "claude-haiku-4-5"
 	case "openai":
-		return "gpt-4o-mini"
+		return "gpt-5.2-mini"
 	default:
 		return ""
 	}

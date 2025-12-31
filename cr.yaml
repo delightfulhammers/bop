@@ -120,7 +120,7 @@ output:
 planning:
   enabled: false
   provider: "openai"
-  model: "gpt-4o-mini"
+  model: "gpt-5.2-mini"
   maxQuestions: 5
   timeout: "30s"
 
