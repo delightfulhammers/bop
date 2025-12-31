@@ -829,23 +829,38 @@ func TestFormatPriorFindings_NoFindings(t *testing.T) {
 }
 
 func TestFormatPriorFindings_OnlyOpenFindings(t *testing.T) {
-	// Open findings should not appear in prior findings (they haven't been addressed)
+	// Issue #165: Open findings SHOULD appear to prevent LLM from re-raising them
 	ctx := &domain.TriagedFindingContext{
 		PRNumber: 123,
 		Findings: []domain.TriagedFinding{
 			{
-				File:        "main.go",
-				LineStart:   10,
-				LineEnd:     15,
-				Category:    "security",
-				Description: "Open issue",
-				Status:      domain.StatusOpen,
+				File:         "main.go",
+				LineStart:    10,
+				LineEnd:      15,
+				Category:     "security",
+				Description:  "Open issue",
+				Status:       domain.StatusOpen,
+				StatusReason: "Previously raised - awaiting author response",
 			},
 		},
 	}
 	result := formatPriorFindings(ctx)
-	if result != "" {
-		t.Errorf("expected empty string for open-only findings, got: %q", result)
+
+	// Should contain open findings section
+	if !strings.Contains(result, "Previously Posted Findings") {
+		t.Error("expected 'Previously Posted Findings' header for open findings")
+	}
+	if !strings.Contains(result, "do NOT re-raise") {
+		t.Error("expected instruction not to re-raise")
+	}
+	if !strings.Contains(result, "main.go") {
+		t.Error("expected file name in output")
+	}
+	if !strings.Contains(result, "security") {
+		t.Error("expected category in output")
+	}
+	if !strings.Contains(result, "awaiting") {
+		t.Error("expected status reason mentioning awaiting response")
 	}
 }
 
@@ -924,6 +939,7 @@ func TestFormatPriorFindings_DisputedFindings(t *testing.T) {
 }
 
 func TestFormatPriorFindings_MixedFindings(t *testing.T) {
+	// Issue #165: All findings (acknowledged, disputed, AND open) should appear
 	ctx := &domain.TriagedFindingContext{
 		PRNumber: 123,
 		Findings: []domain.TriagedFinding{
@@ -950,33 +966,35 @@ func TestFormatPriorFindings_MixedFindings(t *testing.T) {
 				LineStart:    1,
 				LineEnd:      1,
 				Category:     "bug",
-				Description:  "Open bug - should not appear",
+				Description:  "Open bug awaiting response",
 				Status:       domain.StatusOpen,
-				StatusReason: "",
+				StatusReason: "Previously raised - awaiting author response",
 			},
 		},
 	}
 	result := formatPriorFindings(ctx)
 
-	// Should contain both sections
+	// Should contain all three sections
 	if !strings.Contains(result, "Acknowledged Findings") {
 		t.Error("expected 'Acknowledged Findings' header")
 	}
 	if !strings.Contains(result, "Disputed Findings") {
 		t.Error("expected 'Disputed Findings' header")
 	}
+	if !strings.Contains(result, "Previously Posted Findings") {
+		t.Error("expected 'Previously Posted Findings' header for open findings")
+	}
 
-	// Should contain acknowledged and disputed findings
+	// Should contain all findings
 	if !strings.Contains(result, "Acknowledged security issue") {
 		t.Error("expected acknowledged finding description")
 	}
 	if !strings.Contains(result, "Disputed performance issue") {
 		t.Error("expected disputed finding description")
 	}
-
-	// Should NOT contain open findings
-	if strings.Contains(result, "Open bug") {
-		t.Error("open findings should not appear in prior findings")
+	// Issue #165: Open findings SHOULD now appear
+	if !strings.Contains(result, "Open bug awaiting response") {
+		t.Error("expected open finding description (Issue #165)")
 	}
 }
 

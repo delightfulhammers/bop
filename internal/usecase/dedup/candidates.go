@@ -4,8 +4,13 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/domain"
 )
 
-// FindCandidates identifies new findings that spatially overlap with existing findings.
-// Two findings overlap if they are in the same file and within lineThreshold lines of each other.
+// FindCandidates identifies new findings that may be semantic duplicates of existing findings.
+// Two findings are candidates for comparison if they are in the same file AND either:
+//   - Within lineThreshold lines of each other (spatial proximity), OR
+//   - Have the same category AND severity (content match, regardless of line distance)
+//
+// The content match criterion catches cases where code shifts between review rounds
+// cause the same conceptual finding to appear at distant line numbers (Issue #165).
 //
 // Returns candidate pairs for semantic comparison, limited to maxCandidates.
 // If there are more candidates than maxCandidates, the excess are returned as overflow
@@ -37,9 +42,13 @@ func FindCandidates(
 			continue
 		}
 
-		// Check spatial proximity with each existing finding
+		// Check each existing finding for spatial OR content match
 		for _, ef := range fileExisting {
-			if linesOverlap(nf.LineStart, nf.LineEnd, ef.LineStart, ef.LineEnd, lineThreshold) {
+			// Match criteria: spatial proximity OR content match (same category+severity)
+			spatialMatch := linesOverlap(nf.LineStart, nf.LineEnd, ef.LineStart, ef.LineEnd, lineThreshold)
+			contentMatch := contentMatches(nf, ef)
+
+			if spatialMatch || contentMatch {
 				if len(candidates) >= maxCandidates {
 					// Hit the limit - remaining paired findings go to overflow
 					if !paired[i] {
@@ -59,6 +68,12 @@ func FindCandidates(
 	}
 
 	return candidates, overflow
+}
+
+// contentMatches returns true if findings have the same category AND severity.
+// This catches semantic duplicates that may have shifted to distant line numbers.
+func contentMatches(nf domain.Finding, ef ExistingFinding) bool {
+	return nf.Category == ef.Category && nf.Severity == ef.Severity
 }
 
 // linesOverlap returns true if two line ranges are within threshold lines of each other.

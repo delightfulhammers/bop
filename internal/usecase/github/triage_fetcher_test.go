@@ -54,9 +54,10 @@ func TestTriageContextFetcher_NoComments(t *testing.T) {
 	assert.Nil(t, result, "should return nil when no comments")
 }
 
-func TestTriageContextFetcher_NoTriagedFindings(t *testing.T) {
-	// Comments exist but none have triage status (all open)
+func TestTriageContextFetcher_OpenFinding(t *testing.T) {
+	// Issue #165: Open findings (no reply yet) should be included to prevent LLM from re-raising them
 	fingerprint := domain.NewFindingFingerprint("main.go", "bug", "high", "Test issue")
+	line := 10
 	client := &mockReviewClientForTriage{
 		comments: []github.PullRequestComment{
 			{
@@ -64,13 +65,22 @@ func TestTriageContextFetcher_NoTriagedFindings(t *testing.T) {
 				Path: "main.go",
 				Body: buildFindingComment("bug", "high", "Test issue", 10, 10, fingerprint),
 				User: github.User{Login: "github-actions[bot]", Type: "Bot"},
+				Line: &line,
 			},
 		},
 	}
 	fetcher := NewTriageContextFetcher(client, "github-actions[bot]")
 
 	result := fetcher.FetchTriagedFindings(context.Background(), "owner", "repo", 123)
-	assert.Nil(t, result, "should return nil when no triaged findings")
+
+	require.NotNil(t, result, "should return context with open finding")
+	require.Len(t, result.Findings, 1)
+
+	f := result.Findings[0]
+	assert.Equal(t, "main.go", f.File)
+	assert.Equal(t, domain.StatusOpen, f.Status)
+	assert.Equal(t, "bug", f.Category)
+	assert.Contains(t, f.StatusReason, "awaiting")
 }
 
 func TestTriageContextFetcher_AcknowledgedFinding(t *testing.T) {
@@ -141,7 +151,7 @@ func TestTriageContextFetcher_DisputedFinding(t *testing.T) {
 }
 
 func TestTriageContextFetcher_MixedFindings(t *testing.T) {
-	// Create findings: one acknowledged, one disputed, one open
+	// Issue #165: All findings should be included (acknowledged, disputed, AND open)
 	fp1 := domain.NewFindingFingerprint("a.go", "security", "high", "Issue 1")
 	fp2 := domain.NewFindingFingerprint("b.go", "bug", "medium", "Issue 2")
 	fp3 := domain.NewFindingFingerprint("c.go", "performance", "low", "Issue 3")
@@ -193,23 +203,28 @@ func TestTriageContextFetcher_MixedFindings(t *testing.T) {
 	result := fetcher.FetchTriagedFindings(context.Background(), "owner", "repo", 123)
 
 	require.NotNil(t, result)
-	// Should only include acknowledged and disputed (not open)
-	assert.Len(t, result.Findings, 2)
+	// Issue #165: Should include ALL findings (acknowledged, disputed, AND open)
+	assert.Len(t, result.Findings, 3)
 
-	// Check we got the right findings
-	var hasAcknowledged, hasDisputed bool
+	// Check we got all three findings with correct statuses
+	var hasAcknowledged, hasDisputed, hasOpen bool
 	for _, f := range result.Findings {
-		if f.Status == domain.StatusAcknowledged {
+		switch f.Status {
+		case domain.StatusAcknowledged:
 			hasAcknowledged = true
 			assert.Equal(t, "a.go", f.File)
-		}
-		if f.Status == domain.StatusDisputed {
+		case domain.StatusDisputed:
 			hasDisputed = true
 			assert.Equal(t, "b.go", f.File)
+		case domain.StatusOpen:
+			hasOpen = true
+			assert.Equal(t, "c.go", f.File)
+			assert.Contains(t, f.StatusReason, "awaiting")
 		}
 	}
 	assert.True(t, hasAcknowledged, "should have acknowledged finding")
 	assert.True(t, hasDisputed, "should have disputed finding")
+	assert.True(t, hasOpen, "should have open finding")
 }
 
 func TestTriageContextFetcher_MatchesBotUsername(t *testing.T) {

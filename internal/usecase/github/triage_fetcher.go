@@ -29,9 +29,13 @@ func NewTriageContextFetcher(client ReviewClient, botUsername string) *TriageCon
 	}
 }
 
-// FetchTriagedFindings retrieves findings that have been acknowledged or disputed.
-// Returns nil if there are no triaged findings, if the bot username is not set,
+// FetchTriagedFindings retrieves ALL previously posted bot findings for a PR.
+// This includes findings with any status: open, acknowledged, or disputed.
+// Returns nil if there are no findings, if the bot username is not set,
 // or if fetching fails. Errors are logged but not returned to avoid blocking the review.
+//
+// Including all findings (not just acknowledged/disputed) prevents the LLM from
+// re-raising issues that were already posted in earlier review rounds (Issue #165).
 //
 // This method satisfies the review.TriageContextFetcher interface.
 func (f *TriageContextFetcher) FetchTriagedFindings(
@@ -94,11 +98,9 @@ func (f *TriageContextFetcher) extractTriagedFindings(
 			continue // Not a structured finding comment
 		}
 
-		// Check if this finding has a triaged status
-		status, exists := statuses[fp]
-		if !exists || status == domain.StatusOpen {
-			continue // Only include acknowledged or disputed findings
-		}
+		// Get status if available (may be empty for findings with no replies)
+		// Include ALL bot findings regardless of status to prevent LLM from re-raising them
+		status := statuses[fp]
 
 		// Extract structured details
 		details := github.ExtractCommentDetails(comment.Body)
@@ -134,6 +136,10 @@ func (f *TriageContextFetcher) extractTriagedFindings(
 			tf.StatusReason = domain.StatusReasonForAcknowledged()
 		case domain.StatusDisputed:
 			tf.StatusReason = domain.StatusReasonForDisputed()
+		default:
+			// StatusOpen or empty - finding was posted but not yet replied to
+			tf.Status = domain.StatusOpen
+			tf.StatusReason = domain.StatusReasonForOpen()
 		}
 
 		findings = append(findings, tf)

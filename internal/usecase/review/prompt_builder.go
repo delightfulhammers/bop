@@ -475,6 +475,22 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		}
 	}
 
+	// Format open findings (previously posted but not yet replied to)
+	open := ctx.OpenFindings()
+	if len(open) > 0 {
+		sb.WriteString("### Previously Posted Findings (do NOT re-raise)\n\n")
+		sb.WriteString("The following concerns were already raised in earlier review rounds. ")
+		sb.WriteString("Do not raise similar findings - they are already posted and awaiting response:\n\n")
+		for i, f := range open {
+			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
+			// Indent continuation lines to maintain Markdown list structure
+			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
+			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
+			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
+		}
+	}
+
 	return sb.String()
 }
 
