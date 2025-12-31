@@ -921,6 +921,20 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 		}
 	}
 
+	// Log review summary at INFO level
+	if o.deps.Logger != nil {
+		o.deps.Logger.LogInfo(ctx, "review complete", map[string]interface{}{
+			"reviewers":    len(reviews),
+			"findings":     len(mergedReview.Findings),
+			"total_cost":   totalCost,
+			"output_dir":   req.OutputDir,
+			"posted_to_gh": req.PostToGitHub && githubResult != nil,
+		})
+	} else {
+		log.Printf("[INFO] Review complete: %d reviewers, %d findings, cost=$%.4f\n",
+			len(reviews), len(mergedReview.Findings), totalCost)
+	}
+
 	return Result{
 		MarkdownPaths: markdownPaths,
 		JSONPaths:     jsonPaths,
