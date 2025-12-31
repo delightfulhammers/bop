@@ -163,9 +163,11 @@ func (s *Server) handleListFindings(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	// Convert reply_status string to triage.ReplyStatus if provided
+	// Normalize input at boundary: trim whitespace and lowercase
 	var replyStatus *triage.ReplyStatus
 	if input.ReplyStatus != nil {
-		rs := triage.ReplyStatus(*input.ReplyStatus)
+		normalized := strings.ToLower(strings.TrimSpace(*input.ReplyStatus))
+		rs := triage.ReplyStatus(normalized)
 		replyStatus = &rs
 	}
 
@@ -872,8 +874,9 @@ func findingToOutput(f domain.PRFinding) PRFindingOutput {
 		ThreadStatus: f.ThreadStatus(),
 	}
 
-	// Format LastReplyAt as RFC3339 if present
-	if f.LastReplyAt != nil {
+	// Format LastReplyAt as RFC3339 if present and non-zero
+	// (could be zero if all replies had unparseable timestamps)
+	if f.LastReplyAt != nil && !f.LastReplyAt.IsZero() {
 		formatted := f.LastReplyAt.Format(time.RFC3339)
 		output.LastReplyAt = &formatted
 	}
