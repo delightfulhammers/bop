@@ -103,11 +103,12 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 	// Log request (if logger configured)
 	if c.logger != nil {
 		c.logger.LogRequest(ctx, llmhttp.RequestLog{
-			Provider:    "anthropic",
-			Model:       c.model,
-			Timestamp:   startTime,
-			PromptChars: len(prompt),
-			APIKey:      c.apiKey,
+			Provider:      "anthropic",
+			Model:         c.model,
+			Timestamp:     startTime,
+			PromptChars:   len(prompt),
+			APIKey:        c.apiKey,
+			PromptContent: prompt, // For trace-level logging
 		})
 	}
 
@@ -265,15 +266,16 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 	// Log response
 	if c.logger != nil {
 		c.logger.LogResponse(ctx, llmhttp.ResponseLog{
-			Provider:     "anthropic",
-			Model:        c.model,
-			Timestamp:    time.Now(),
-			Duration:     duration,
-			TokensIn:     response.TokensIn,
-			TokensOut:    response.TokensOut,
-			Cost:         cost,
-			StatusCode:   200,
-			FinishReason: response.StopReason,
+			Provider:        "anthropic",
+			Model:           c.model,
+			Timestamp:       time.Now(),
+			Duration:        duration,
+			TokensIn:        response.TokensIn,
+			TokensOut:       response.TokensOut,
+			Cost:            cost,
+			StatusCode:      200,
+			FinishReason:    response.StopReason,
+			ResponseContent: response.Text, // For trace-level logging
 		})
 	}
 

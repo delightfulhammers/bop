@@ -104,6 +104,20 @@ func buildPricingTable() map[string]map[string]ModelPricing {
 		},
 		"anthropic": {
 			// Claude 4.5 family (2025)
+			// Short aliases (commonly used in config)
+			"claude-opus-4-5": {
+				InputPer1M:  5.00,
+				OutputPer1M: 25.00,
+			},
+			"claude-sonnet-4-5": {
+				InputPer1M:  3.00,
+				OutputPer1M: 15.00,
+			},
+			"claude-haiku-4-5": {
+				InputPer1M:  1.00,
+				OutputPer1M: 5.00,
+			},
+			// Full versioned names (returned by API)
 			"claude-opus-4-5-20251101": {
 				InputPer1M:  5.00,
 				OutputPer1M: 25.00,
@@ -111,10 +125,6 @@ func buildPricingTable() map[string]map[string]ModelPricing {
 			"claude-sonnet-4-5-20250929": {
 				InputPer1M:  3.00,
 				OutputPer1M: 15.00,
-			},
-			"claude-haiku-4-5": {
-				InputPer1M:  1.00,
-				OutputPer1M: 5.00,
 			},
 			// Legacy Claude 3.5 family (still available)
 			"claude-3-5-sonnet-20241022": {

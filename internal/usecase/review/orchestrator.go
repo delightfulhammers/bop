@@ -232,6 +232,10 @@ type OrchestratorDeps struct {
 	// PersonaPromptBuilder builds prompts with persona injection.
 	// Required: used to build prompts for each reviewer.
 	PersonaPromptBuilder *PersonaPromptBuilder
+
+	// MaxConcurrentReviewers limits concurrent reviewer dispatch.
+	// 0 means unlimited (all reviewers run in parallel).
+	MaxConcurrentReviewers int
 }
 
 // ProviderRequest describes the payload the LLM provider expects.
@@ -569,10 +573,44 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 	var wg sync.WaitGroup
 	resultsChan := make(chan dispatchResult, len(reviewers))
 
+	// Create semaphore for concurrency limiting (0 = unlimited)
+	var sem chan struct{}
+	if o.deps.MaxConcurrentReviewers > 0 {
+		sem = make(chan struct{}, o.deps.MaxConcurrentReviewers)
+	}
+
+	var dispatchCancelled bool
 	for _, reviewer := range reviewers {
+		// Check for cancellation at start of each iteration
+		// This is especially important when sem is nil (unlimited concurrency)
+		if ctx.Err() != nil {
+			dispatchCancelled = true
+			break
+		}
+
+		// Acquire semaphore slot if concurrency is limited
+		// Use select to respect context cancellation while waiting
+		if sem != nil {
+			select {
+			case sem <- struct{}{}:
+				// Acquired slot
+			case <-ctx.Done():
+				// Context cancelled while waiting for slot - break to let
+				// already-spawned goroutines finish before returning
+				dispatchCancelled = true
+			}
+		}
+		if dispatchCancelled {
+			break
+		}
+
 		wg.Add(1)
 		go func(reviewer domain.Reviewer, runID string) {
 			defer func() {
+				// Release semaphore slot
+				if sem != nil {
+					<-sem
+				}
 				if r := recover(); r != nil {
 					resultsChan <- dispatchResult{err: fmt.Errorf("reviewer %s panicked: %v", reviewer.Name, r)}
 				}
@@ -718,6 +756,11 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			errMsgs = append(errMsgs, err.Error())
 		}
 		return Result{}, fmt.Errorf("%d provider(s) failed: %s", len(errs), strings.Join(errMsgs, "; "))
+	}
+
+	// Return context error if dispatch was cancelled (after allowing goroutines to finish)
+	if dispatchCancelled {
+		return Result{}, ctx.Err()
 	}
 
 	// Update run record with total cost now that all reviews are complete
@@ -883,6 +926,25 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 					result.CommentsPosted, result.CommentsSkipped, result.HTMLURL)
 			}
 		}
+	}
+
+	// Log review summary at INFO level
+	// Use actual posted count (post-dedup) when available, otherwise use merged findings count
+	findingsCount := len(mergedReview.Findings)
+	if githubResult != nil {
+		findingsCount = githubResult.CommentsPosted
+	}
+	if o.deps.Logger != nil {
+		o.deps.Logger.LogInfo(ctx, "review complete", map[string]interface{}{
+			"reviewers":    len(reviews),
+			"findings":     findingsCount,
+			"total_cost":   totalCost,
+			"output_dir":   req.OutputDir,
+			"posted_to_gh": githubResult != nil,
+		})
+	} else {
+		log.Printf("[INFO] Review complete: %d reviewers, %d findings, cost=$%.4f\n",
+			len(reviews), findingsCount, totalCost)
 	}
 
 	return Result{

@@ -92,11 +92,12 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 	// Log request (if logger configured)
 	if c.logger != nil {
 		c.logger.LogRequest(ctx, llmhttp.RequestLog{
-			Provider:    "ollama",
-			Model:       c.model,
-			Timestamp:   startTime,
-			PromptChars: len(prompt),
-			APIKey:      "", // Ollama doesn't use API keys
+			Provider:      "ollama",
+			Model:         c.model,
+			Timestamp:     startTime,
+			PromptChars:   len(prompt),
+			APIKey:        "",     // Ollama doesn't use API keys
+			PromptContent: prompt, // For trace-level logging
 		})
 	}
 
@@ -247,15 +248,16 @@ func (c *HTTPClient) Call(ctx context.Context, prompt string, options CallOption
 	// Log response
 	if c.logger != nil {
 		c.logger.LogResponse(ctx, llmhttp.ResponseLog{
-			Provider:     "ollama",
-			Model:        c.model,
-			Timestamp:    time.Now(),
-			Duration:     duration,
-			TokensIn:     response.TokensIn,
-			TokensOut:    response.TokensOut,
-			Cost:         0.0,
-			StatusCode:   200,
-			FinishReason: "complete",
+			Provider:        "ollama",
+			Model:           c.model,
+			Timestamp:       time.Now(),
+			Duration:        duration,
+			TokensIn:        response.TokensIn,
+			TokensOut:       response.TokensOut,
+			Cost:            0.0,
+			StatusCode:      200,
+			FinishReason:    "complete",
+			ResponseContent: response.Text, // For trace-level logging
 		})
 	}
 

@@ -234,9 +234,14 @@ type ObservabilityConfig struct {
 // LoggingConfig configures request/response logging.
 type LoggingConfig struct {
 	Enabled       bool   `yaml:"enabled"`
-	Level         string `yaml:"level"`         // debug, info, error
+	Level         string `yaml:"level"`         // trace, debug, info, error
 	Format        string `yaml:"format"`        // json, human
 	RedactAPIKeys bool   `yaml:"redactAPIKeys"` // Redact API keys in logs
+
+	// MaxContentBytes limits the size of logged prompt/response content at trace level.
+	// This prevents log explosion with very large prompts or responses.
+	// Default: 51200 (50KB). Set to 0 for unlimited (use with caution).
+	MaxContentBytes int `yaml:"maxContentBytes"`
 }
 
 // MetricsConfig configures performance and cost metrics tracking.
@@ -275,6 +280,13 @@ type ReviewConfig struct {
 	// it blocks even if the severity threshold would not.
 	// Example: ["security", "bug"] - security and bug findings always block
 	AlwaysBlockCategories []string `yaml:"alwaysBlockCategories"`
+
+	// MaxConcurrentReviewers limits the number of reviewers dispatched concurrently.
+	// This prevents resource exhaustion and API rate limiting in enterprise deployments
+	// with many configured reviewers.
+	// Default: 0 (unlimited - all reviewers run in parallel)
+	// Recommended: 3-5 for most deployments
+	MaxConcurrentReviewers int `yaml:"maxConcurrentReviewers"`
 }
 
 // ReviewActions maps finding severities to GitHub review actions.

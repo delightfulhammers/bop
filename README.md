@@ -228,6 +228,39 @@ See [Configuration Guide](docs/CONFIGURATION.md) for all options.
 - **JSON** — Structured data for tooling
 - **SARIF** — Standard format for security tools and GitHub Code Scanning
 
+### LLM Observability
+
+Debug LLM interactions with configurable logging:
+
+```bash
+# CLI flag
+cr review branch main --log-level trace
+
+# Or environment variable
+export CR_OBSERVABILITY_LOGGING_LEVEL=trace
+```
+
+**Log Levels:**
+| Level | Output |
+|-------|--------|
+| `error` | API errors only |
+| `info` | Response summaries (default) |
+| `debug` | Request/response metadata |
+| `trace` | Full prompts and responses (⚠️ may contain code) |
+
+**Configuration:**
+```yaml
+observability:
+  logging:
+    enabled: true
+    level: "info"           # trace, debug, info, error
+    format: "human"         # human or json
+    redactAPIKeys: true     # Redact API keys in logs
+    maxContentBytes: 51200  # Truncate trace content at 50KB
+```
+
+> **Warning:** Trace logging may expose code sent to LLMs. Use only for debugging.
+
 ---
 
 ## MCP Server

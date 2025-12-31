@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -54,6 +55,11 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	// Parse --log-level flag early, before config loading and observability setup.
+	// This uses pflag directly (which Cobra uses internally) to allow CLI override
+	// of the log level before the logger is created.
+	cliLogLevel := parseLogLevelFlag()
+
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
 		FileName:    "cr",
@@ -61,6 +67,11 @@ func run() error {
 	})
 	if err != nil {
 		return fmt.Errorf("config load failed: %w", err)
+	}
+
+	// Apply CLI log level override if provided
+	if cliLogLevel != "" {
+		cfg.Observability.Logging.Level = cliLogLevel
 	}
 
 	repoDir := cfg.Git.RepositoryDir
@@ -119,7 +130,9 @@ func run() error {
 	// Use intelligent merger for better finding aggregation
 	// Note: Pass nil for store for now - precision priors will use defaults
 	// TODO: Wire up store adapter when precision prior tracking is needed
-	merger := merge.NewIntelligentMerger(nil)
+	merger := merge.NewIntelligentMerger(nil).
+		WithReviewerWeighting(cfg.Merge.WeightByReviewer).
+		WithRespectFocus(cfg.Merge.RespectFocus)
 
 	// Wire up LLM-based summary synthesis using configured merge provider/model
 	synthProvider := createMergeSynthesisProvider(&cfg, obs)
@@ -230,24 +243,25 @@ func run() error {
 	providerMaxTokens := buildProviderMaxTokens(cfg.Providers)
 
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
-		Git:                  gitEngine,
-		Providers:            providers,
-		Merger:               merger,
-		Markdown:             markdownWriter,
-		JSON:                 jsonWriter,
-		SARIF:                sarifWriter,
-		Redactor:             redactor,
-		SeedGenerator:        determinism.GenerateSeed,
-		Store:                reviewStore,
-		ReviewerRegistry:     reviewerRegistry,
-		PersonaPromptBuilder: personaPromptBuilder,
-		Logger:               reviewLogger,
-		PlanningAgent:        planningAgent,
-		RepoDir:              repoDir,
-		GitHubPoster:         githubPoster,
-		Verifier:             verifier,
-		TriageContextFetcher: triageContextFetcher,
-		ProviderMaxTokens:    providerMaxTokens,
+		Git:                    gitEngine,
+		Providers:              providers,
+		Merger:                 merger,
+		Markdown:               markdownWriter,
+		JSON:                   jsonWriter,
+		SARIF:                  sarifWriter,
+		Redactor:               redactor,
+		SeedGenerator:          determinism.GenerateSeed,
+		Store:                  reviewStore,
+		ReviewerRegistry:       reviewerRegistry,
+		PersonaPromptBuilder:   personaPromptBuilder,
+		Logger:                 reviewLogger,
+		PlanningAgent:          planningAgent,
+		RepoDir:                repoDir,
+		GitHubPoster:           githubPoster,
+		Verifier:               verifier,
+		TriageContextFetcher:   triageContextFetcher,
+		ProviderMaxTokens:      providerMaxTokens,
+		MaxConcurrentReviewers: cfg.Review.MaxConcurrentReviewers,
 	})
 
 	root := cli.NewRootCommand(cli.Dependencies{
@@ -303,6 +317,56 @@ func defaultConfigPaths() []string {
 	return paths
 }
 
+// parseLogLevelFlag scans os.Args for --log-level flag before Cobra processes commands.
+// This is necessary because observability components (including the logger) are created before
+// the CLI command runs. By extracting this flag early, we can override the config value.
+//
+// Returns the log level string if explicitly set, or empty string to use config/env default.
+// Valid values: "trace", "debug", "info", "error"
+func parseLogLevelFlag() string {
+	// Scan args directly for --log-level to avoid partial pflag complexity
+	// This is simpler and more explicit than creating a secondary flag set
+	for i, arg := range os.Args[1:] {
+		// Handle --log-level=value format
+		if strings.HasPrefix(arg, "--log-level=") {
+			value := strings.TrimPrefix(arg, "--log-level=")
+			return validateLogLevel(value)
+		}
+		// Handle --log-level value format
+		if arg == "--log-level" && i+1 < len(os.Args[1:]) {
+			value := os.Args[i+2] // +2 because we're iterating from Args[1:]
+			return validateLogLevel(value)
+		}
+	}
+	return ""
+}
+
+// validateLogLevel checks if the log level is valid and returns it, or empty string with warning.
+// Accepts case-insensitive values and trims whitespace.
+func validateLogLevel(level string) string {
+	// Defense in depth: reject excessively long values
+	const maxLogLevelLen = 32
+	if len(level) > maxLogLevelLen {
+		log.Printf("[WARN] Log level value too long (max %d chars), using config default", maxLogLevelLen)
+		return ""
+	}
+
+	// Normalize: trim whitespace and lowercase
+	level = strings.TrimSpace(strings.ToLower(level))
+
+	validLevels := map[string]bool{
+		"trace": true,
+		"debug": true,
+		"info":  true,
+		"error": true,
+	}
+	if !validLevels[level] {
+		log.Printf("[WARN] Invalid --log-level %q, using config default. Valid values: trace, debug, info, error", level)
+		return ""
+	}
+	return level
+}
+
 // observabilityComponents holds shared observability instances
 type observabilityComponents struct {
 	logger  llmhttp.Logger
@@ -320,6 +384,10 @@ func buildObservability(cfg config.ObservabilityConfig) observabilityComponents 
 	if cfg.Logging.Enabled {
 		logLevel := llmhttp.LogLevelInfo
 		switch cfg.Logging.Level {
+		case "trace":
+			logLevel = llmhttp.LogLevelTrace
+			// Warn about trace level exposing potentially sensitive content
+			log.Println("[WARN] Trace logging enabled - prompts and responses will be logged. This may expose sensitive code in logs.")
 		case "debug":
 			logLevel = llmhttp.LogLevelDebug
 		case "error":
@@ -331,7 +399,10 @@ func buildObservability(cfg config.ObservabilityConfig) observabilityComponents 
 			logFormat = llmhttp.LogFormatJSON
 		}
 
-		logger = llmhttp.NewDefaultLogger(logLevel, logFormat, cfg.Logging.RedactAPIKeys)
+		defaultLogger := llmhttp.NewDefaultLogger(logLevel, logFormat, cfg.Logging.RedactAPIKeys)
+		// Always apply config value - 0 means unlimited, positive values set the limit
+		defaultLogger = defaultLogger.WithMaxContentBytes(cfg.Logging.MaxContentBytes)
+		logger = defaultLogger
 	}
 
 	// Create metrics tracker if enabled
@@ -812,17 +883,26 @@ func createVerifier(cfg config.Config, providers map[string]review.Provider, rep
 			if obs.logger != nil {
 				client.SetLogger(obs.logger)
 			}
+			if obs.pricing != nil {
+				client.SetPricing(obs.pricing)
+			}
 			llmClient = &geminiLLMAdapter{client: client, maxTokens: maxTokens}
 		case "anthropic":
 			client := anthropic.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
 			if obs.logger != nil {
 				client.SetLogger(obs.logger)
 			}
+			if obs.pricing != nil {
+				client.SetPricing(obs.pricing)
+			}
 			llmClient = &anthropicLLMAdapter{client: client, maxTokens: maxTokens}
 		case "openai":
 			client := openai.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
 			if obs.logger != nil {
 				client.SetLogger(obs.logger)
+			}
+			if obs.pricing != nil {
+				client.SetPricing(obs.pricing)
 			}
 			llmClient = &openaiLLMAdapter{client: client, maxTokens: maxTokens}
 		}

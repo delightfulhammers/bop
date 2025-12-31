@@ -279,6 +279,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("observability.logging.level", "info")
 	v.SetDefault("observability.logging.format", "human")
 	v.SetDefault("observability.logging.redactAPIKeys", true)
+	v.SetDefault("observability.logging.maxContentBytes", 51200) // 50KB default for trace logging
 	v.SetDefault("observability.metrics.enabled", true)
 
 	// Provider defaults (Phase 1 + Phase 2)
