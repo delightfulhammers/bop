@@ -449,15 +449,7 @@ func createPlanningProvider(cfg *config.Config, providers map[string]review.Prov
 				return nil
 			}
 			client := openai.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			return openai.NewProvider(model, client)
 
 		case "anthropic":
@@ -466,15 +458,7 @@ func createPlanningProvider(cfg *config.Config, providers map[string]review.Prov
 				return nil
 			}
 			client := anthropic.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			return anthropic.NewProvider(model, client)
 
 		case "gemini":
@@ -483,15 +467,7 @@ func createPlanningProvider(cfg *config.Config, providers map[string]review.Prov
 				return nil
 			}
 			client := gemini.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			return gemini.NewProvider(model, client)
 
 		case "ollama":
@@ -501,15 +477,7 @@ func createPlanningProvider(cfg *config.Config, providers map[string]review.Prov
 				host = "http://localhost:11434"
 			}
 			client := ollama.NewHTTPClient(host, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			return ollama.NewProvider(model, client)
 
 		default:
@@ -552,15 +520,7 @@ func createMergeSynthesisProvider(cfg *config.Config, obs observabilityComponent
 			return nil
 		}
 		client := openai.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-		if obs.logger != nil {
-			client.SetLogger(obs.logger)
-		}
-		if obs.metrics != nil {
-			client.SetMetrics(obs.metrics)
-		}
-		if obs.pricing != nil {
-			client.SetPricing(obs.pricing)
-		}
+		llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 		log.Printf("Merge synthesis using %s/%s", providerName, model)
 		return openai.NewProvider(model, client)
 
@@ -570,15 +530,7 @@ func createMergeSynthesisProvider(cfg *config.Config, obs observabilityComponent
 			return nil
 		}
 		client := anthropic.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-		if obs.logger != nil {
-			client.SetLogger(obs.logger)
-		}
-		if obs.metrics != nil {
-			client.SetMetrics(obs.metrics)
-		}
-		if obs.pricing != nil {
-			client.SetPricing(obs.pricing)
-		}
+		llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 		log.Printf("Merge synthesis using %s/%s", providerName, model)
 		return anthropic.NewProvider(model, client)
 
@@ -588,15 +540,7 @@ func createMergeSynthesisProvider(cfg *config.Config, obs observabilityComponent
 			return nil
 		}
 		client := gemini.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-		if obs.logger != nil {
-			client.SetLogger(obs.logger)
-		}
-		if obs.metrics != nil {
-			client.SetMetrics(obs.metrics)
-		}
-		if obs.pricing != nil {
-			client.SetPricing(obs.pricing)
-		}
+		llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 		log.Printf("Merge synthesis using %s/%s", providerName, model)
 		return gemini.NewProvider(model, client)
 
@@ -606,15 +550,7 @@ func createMergeSynthesisProvider(cfg *config.Config, obs observabilityComponent
 			host = "http://localhost:11434"
 		}
 		client := ollama.NewHTTPClient(host, model, providerCfg, cfg.HTTP)
-		if obs.logger != nil {
-			client.SetLogger(obs.logger)
-		}
-		if obs.metrics != nil {
-			client.SetMetrics(obs.metrics)
-		}
-		if obs.pricing != nil {
-			client.SetPricing(obs.pricing)
-		}
+		llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 		log.Printf("Merge synthesis using %s/%s", providerName, model)
 		return ollama.NewProvider(model, client)
 
@@ -641,16 +577,7 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 			providers["openai"] = openai.NewProvider(model, openai.NewStaticClient())
 		} else {
 			client := openai.NewHTTPClient(apiKey, model, cfg, httpConfig)
-			// Wire up observability
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			providers["openai"] = openai.NewProvider(model, client)
 		}
 	}
@@ -667,16 +594,7 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 			log.Println("Anthropic: No API key provided, skipping provider")
 		} else {
 			client := anthropic.NewHTTPClient(apiKey, model, cfg, httpConfig)
-			// Wire up observability
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			providers["anthropic"] = anthropic.NewProvider(model, client)
 		}
 	}
@@ -693,16 +611,7 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 			log.Println("Gemini: No API key provided, skipping provider")
 		} else {
 			client := gemini.NewHTTPClient(apiKey, model, cfg, httpConfig)
-			// Wire up observability
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.metrics != nil {
-				client.SetMetrics(obs.metrics)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			providers["gemini"] = gemini.NewProvider(model, client)
 		}
 	}
@@ -719,16 +628,7 @@ func buildProviders(providersConfig map[string]config.ProviderConfig, httpConfig
 			host = "http://localhost:11434"
 		}
 		client := ollama.NewHTTPClient(host, model, cfg, httpConfig)
-		// Wire up observability
-		if obs.logger != nil {
-			client.SetLogger(obs.logger)
-		}
-		if obs.metrics != nil {
-			client.SetMetrics(obs.metrics)
-		}
-		if obs.pricing != nil {
-			client.SetPricing(obs.pricing)
-		}
+		llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 		providers["ollama"] = ollama.NewProvider(model, client)
 	}
 
@@ -880,30 +780,15 @@ func createVerifier(cfg config.Config, providers map[string]review.Provider, rep
 		switch name {
 		case "gemini":
 			client := gemini.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			llmClient = &geminiLLMAdapter{client: client, maxTokens: maxTokens}
 		case "anthropic":
 			client := anthropic.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			llmClient = &anthropicLLMAdapter{client: client, maxTokens: maxTokens}
 		case "openai":
 			client := openai.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-			if obs.logger != nil {
-				client.SetLogger(obs.logger)
-			}
-			if obs.pricing != nil {
-				client.SetPricing(obs.pricing)
-			}
+			llmhttp.WireObservability(client, obs.logger, obs.metrics, obs.pricing)
 			llmClient = &openaiLLMAdapter{client: client, maxTokens: maxTokens}
 		}
 
