@@ -284,12 +284,10 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		NewFindings:           len(findings),
 	}
 
-	// Log deduplication breakdown (Issue #127)
-	if dedupStats.FingerprintDuplicates > 0 || dedupStats.SemanticDuplicates > 0 {
-		log.Printf("deduplication: %d findings → %d new (%d fingerprint, %d semantic duplicates)",
-			dedupStats.TotalFindings, dedupStats.NewFindings,
-			dedupStats.FingerprintDuplicates, dedupStats.SemanticDuplicates)
-	}
+	// Log deduplication breakdown (Issue #127) - always log so users know dedup was checked
+	log.Printf("deduplication: %d findings → %d new (%d fingerprint, %d semantic duplicates)",
+		dedupStats.TotalFindings, dedupStats.NewFindings,
+		dedupStats.FingerprintDuplicates, dedupStats.SemanticDuplicates)
 
 	// Build cost stats for summary
 	costStats := CostStats{
@@ -596,18 +594,25 @@ type DedupStats struct {
 }
 
 // formatDedupSection creates a markdown section showing deduplication statistics.
-// Returns an empty string if no duplicates were found.
+// Shows stats when there are findings (even if 0 duplicates) so users know dedup was checked.
+// Returns empty string only when there are no findings at all.
 func formatDedupSection(stats DedupStats) string {
-	totalDuplicates := stats.FingerprintDuplicates + stats.SemanticDuplicates
-	if totalDuplicates == 0 {
+	// Don't show section if there are no findings to report on
+	if stats.TotalFindings == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
 	sb.WriteString("\n\n---\n\n")
 	sb.WriteString("### Deduplication\n\n")
-	sb.WriteString(fmt.Sprintf("🔄 **%d new** | %d fingerprint matches | %d semantic duplicates skipped\n",
-		stats.NewFindings, stats.FingerprintDuplicates, stats.SemanticDuplicates))
+
+	totalDuplicates := stats.FingerprintDuplicates + stats.SemanticDuplicates
+	if totalDuplicates == 0 {
+		sb.WriteString(fmt.Sprintf("🔄 **%d findings** | 0 duplicates\n", stats.NewFindings))
+	} else {
+		sb.WriteString(fmt.Sprintf("🔄 **%d new** | %d fingerprint | %d semantic duplicates skipped\n",
+			stats.NewFindings, stats.FingerprintDuplicates, stats.SemanticDuplicates))
+	}
 
 	return sb.String()
 }

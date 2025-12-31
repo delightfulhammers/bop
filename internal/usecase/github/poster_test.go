@@ -1449,7 +1449,7 @@ func TestReviewPoster_PostReview_SummaryIncludesStatusSection(t *testing.T) {
 
 func TestReviewPoster_PostReview_SummaryOmitsStatusSectionWhenEmpty(t *testing.T) {
 	// When there are no existing comments, the summary should NOT include
-	// the status breakdown section.
+	// the status breakdown section. Dedup section is now always shown when there are findings.
 	client := &MockReviewClient{
 		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
 			return []github.PullRequestComment{}, nil // No existing comments
@@ -1457,7 +1457,11 @@ func TestReviewPoster_PostReview_SummaryOmitsStatusSectionWhenEmpty(t *testing.T
 		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
 			// Summary should NOT include status section
 			assert.NotContains(t, input.Summary, "### Existing Finding Status")
-			assert.Equal(t, "Clean review", input.Summary)
+			// Summary should start with the review summary
+			assert.Contains(t, input.Summary, "Clean review")
+			// Summary SHOULD include dedup section when there are findings (Issue #126)
+			assert.Contains(t, input.Summary, "### Deduplication")
+			assert.Contains(t, input.Summary, "1 findings")
 			return &github.CreateReviewResponse{ID: 123}, nil
 		},
 	}
