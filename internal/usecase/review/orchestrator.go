@@ -142,14 +142,24 @@ type GitHubPostRequest struct {
 	// If set, previous reviews from this user are dismissed AFTER the new
 	// review posts successfully. This ensures the PR always has review signal.
 	BotUsername string
+
+	// Cost is the total cost of this review in USD (for cost tracking in summary).
+	Cost float64
 }
 
 // GitHubPostResult contains the result of posting a review.
 type GitHubPostResult struct {
-	ReviewID        int64
-	CommentsPosted  int
-	CommentsSkipped int
-	HTMLURL         string
+	ReviewID                  int64
+	CommentsPosted            int
+	CommentsSkipped           int
+	DuplicatesSkipped         int
+	SemanticDuplicatesSkipped int
+	HTMLURL                   string
+
+	// Cost tracking
+	CurrentCost    float64
+	PriorCost      float64
+	CumulativeCost float64
 }
 
 // StorePrecisionPrior represents precision tracking for a provider/category combination.
@@ -899,6 +909,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			ActionOnNonBlocking:   req.ActionOnNonBlocking,
 			AlwaysBlockCategories: req.AlwaysBlockCategories,
 			BotUsername:           req.BotUsername,
+			Cost:                  mergedReview.Cost,
 		})
 		if err != nil {
 			// Log warning but don't fail the review
@@ -916,14 +927,18 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			githubResult = result
 			if o.deps.Logger != nil {
 				o.deps.Logger.LogInfo(ctx, "posted review to GitHub", map[string]interface{}{
-					"reviewID":        result.ReviewID,
-					"commentsPosted":  result.CommentsPosted,
-					"commentsSkipped": result.CommentsSkipped,
-					"url":             result.HTMLURL,
+					"reviewID":              result.ReviewID,
+					"newComments":           result.CommentsPosted,
+					"notInDiff":             result.CommentsSkipped,
+					"fingerprintDuplicates": result.DuplicatesSkipped,
+					"semanticDuplicates":    result.SemanticDuplicatesSkipped,
+					"url":                   result.HTMLURL,
 				})
 			} else {
-				log.Printf("Posted review to GitHub: %d comments (%d skipped) - %s\n",
-					result.CommentsPosted, result.CommentsSkipped, result.HTMLURL)
+				log.Printf("Posted review to GitHub: %d new comments (%d not in diff, %d fingerprint dups, %d semantic dups) - %s\n",
+					result.CommentsPosted, result.CommentsSkipped,
+					result.DuplicatesSkipped, result.SemanticDuplicatesSkipped,
+					result.HTMLURL)
 			}
 		}
 	}

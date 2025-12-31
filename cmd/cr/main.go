@@ -712,6 +712,7 @@ func (a *githubPosterAdapter) PostReview(ctx context.Context, req review.GitHubP
 		Diff:          &req.Diff, // Pass diff for post-dedup summary generation
 		ReviewActions: reviewActions,
 		BotUsername:   req.BotUsername,
+		Cost:          req.Cost,
 	}
 
 	// Post the review
@@ -721,10 +722,15 @@ func (a *githubPosterAdapter) PostReview(ctx context.Context, req review.GitHubP
 	}
 
 	return &review.GitHubPostResult{
-		ReviewID:        result.ReviewID,
-		CommentsPosted:  result.CommentsPosted,
-		CommentsSkipped: result.CommentsSkipped,
-		HTMLURL:         result.HTMLURL,
+		ReviewID:                  result.ReviewID,
+		CommentsPosted:            result.CommentsPosted,
+		CommentsSkipped:           result.CommentsSkipped,
+		DuplicatesSkipped:         result.DuplicatesSkipped,
+		SemanticDuplicatesSkipped: result.SemanticDuplicatesSkipped,
+		HTMLURL:                   result.HTMLURL,
+		CurrentCost:               result.CurrentCost,
+		PriorCost:                 result.PriorCost,
+		CumulativeCost:            result.CumulativeCost,
 	}, nil
 }
 
