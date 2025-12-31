@@ -581,8 +581,15 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 
 	for _, reviewer := range reviewers {
 		// Acquire semaphore slot if concurrency is limited
+		// Use select to respect context cancellation while waiting
 		if sem != nil {
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+				// Acquired slot
+			case <-ctx.Done():
+				// Context cancelled while waiting for slot
+				return Result{}, ctx.Err()
+			}
 		}
 
 		wg.Add(1)

@@ -108,14 +108,27 @@ func (l *DefaultLogger) WithMaxContentBytes(maxBytes int) *DefaultLogger {
 }
 
 // truncateContent limits content size for logging to prevent log explosion.
-// Ensures truncation occurs at valid UTF-8 character boundaries.
+// Ensures truncation occurs at valid UTF-8 character boundaries in O(1) time.
 func (l *DefaultLogger) truncateContent(content string) string {
 	if l.maxContentBytes <= 0 || len(content) <= l.maxContentBytes {
 		return content
 	}
-	// Find a valid UTF-8 truncation point
+	// Find a valid UTF-8 boundary by examining only the trailing bytes.
+	// UTF-8 chars are max 4 bytes, so we back up at most 3 bytes.
+	// This is O(1) - we only check the last few bytes, not the whole string.
 	truncated := content[:l.maxContentBytes]
-	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+	for i := 0; i < utf8.UTFMax-1 && len(truncated) > 0; i++ {
+		b := truncated[len(truncated)-1]
+		if b < 0x80 {
+			// ASCII byte (0x00-0x7F) - valid boundary
+			break
+		}
+		if b >= 0xC0 {
+			// Start byte of multi-byte sequence (0xC0+) - incomplete, remove it
+			truncated = truncated[:len(truncated)-1]
+			break
+		}
+		// Continuation byte (0x80-0xBF) - back up
 		truncated = truncated[:len(truncated)-1]
 	}
 	return truncated + "\n... [TRUNCATED - exceeded " + fmt.Sprintf("%d", l.maxContentBytes) + " bytes]"
