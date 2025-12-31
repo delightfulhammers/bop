@@ -44,9 +44,6 @@ inputs:
   config-file:
     description: 'Path to cr.yaml config file (auto-detects .github/cr.yaml or cr.yaml if not specified)'
     required: false
-  extra-args:
-    description: 'Additional arguments to pass to cr'
-    required: false
   log-level:
     description: 'Log level (trace, debug, info, error)'
     required: false
@@ -77,17 +74,36 @@ runs:
   steps:
     - name: Validate inputs
       shell: bash
+      env:
+        INPUT_ANTHROPIC_KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_OPENAI_KEY: ${{ inputs.openai-api-key }}
+        INPUT_GEMINI_KEY: ${{ inputs.gemini-api-key }}
+        INPUT_POST_REVIEW: ${{ inputs.post-review }}
+        EVENT_NAME: ${{ github.event_name }}
       run: |
-        if [ -z "${{ inputs.anthropic-api-key }}" ] && [ -z "${{ inputs.openai-api-key }}" ] && [ -z "${{ inputs.gemini-api-key }}" ]; then
+        set -euo pipefail
+
+        # Check at least one API key is provided
+        if [ -z "$INPUT_ANTHROPIC_KEY" ] && [ -z "$INPUT_OPENAI_KEY" ] && [ -z "$INPUT_GEMINI_KEY" ]; then
           echo "::error::At least one API key must be provided (anthropic-api-key, openai-api-key, or gemini-api-key)"
           exit 1
         fi
 
+        # Warn if post-review is enabled on non-PR events
+        if [ "$INPUT_POST_REVIEW" = "true" ] && [ "$EVENT_NAME" != "pull_request" ]; then
+          echo "::warning::post-review is enabled but this is not a pull_request event. PR comments will not be posted."
+        fi
+
     - name: Install code-reviewer
       shell: bash
+      env:
+        ACTION_REF: ${{ github.action_ref }}
+        GH_TOKEN: ${{ github.token }}
       run: |
-        # Get the version from the action ref (tag)
-        VERSION="${{ github.action_ref }}"
+        set -euo pipefail
+
+        # Determine version from action ref
+        VERSION="$ACTION_REF"
         if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
           VERSION="latest"
         fi
@@ -102,20 +118,71 @@ runs:
           aarch64|arm64) ARCH="arm64" ;;
         esac
 
-        # Download from GitHub releases
-        # Archive format: code-reviewer_VERSION_OS_ARCH.tar.gz
+        # Set up install directory (avoid /usr/local/bin for portability)
+        INSTALL_DIR="${RUNNER_TEMP}/cr-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        # Resolve version and build download URL
         if [ "$VERSION" = "latest" ]; then
-          # For latest, we need to query the API to get the version number
-          LATEST_VERSION=$(curl -sL https://api.github.com/repos/bkyoung/code-reviewer/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-          DOWNLOAD_URL="https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_${LATEST_VERSION#v}_${OS}_${ARCH}.tar.gz"
-        else
-          DOWNLOAD_URL="https://github.com/bkyoung/code-reviewer/releases/download/${VERSION}/code-reviewer_${VERSION#v}_${OS}_${ARCH}.tar.gz"
+          # Query API with authentication to avoid rate limits
+          LATEST_VERSION=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/bkyoung/code-reviewer/releases/latest | \
+            jq -r '.tag_name')
+          if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
+            echo "::error::Failed to determine latest version"
+            exit 1
+          fi
+          VERSION="$LATEST_VERSION"
         fi
 
+        VERSION_NUM="${VERSION#v}"
+        ARCHIVE_NAME="code-reviewer_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
+        DOWNLOAD_URL="https://github.com/bkyoung/code-reviewer/releases/download/${VERSION}/${ARCHIVE_NAME}"
+        CHECKSUM_URL="https://github.com/bkyoung/code-reviewer/releases/download/${VERSION}/checksums.txt"
+
         echo "Downloading from: $DOWNLOAD_URL"
-        curl -sL "$DOWNLOAD_URL" | tar xz -C /usr/local/bin cr
-        chmod +x /usr/local/bin/cr
-        cr version
+
+        # Download archive and checksums
+        TEMP_DIR=$(mktemp -d)
+        curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_DIR/$ARCHIVE_NAME"
+        curl -fsSL "$CHECKSUM_URL" -o "$TEMP_DIR/checksums.txt"
+
+        # Verify checksum
+        cd "$TEMP_DIR"
+        EXPECTED_CHECKSUM=$(grep "$ARCHIVE_NAME" checksums.txt | awk '{print $1}')
+        if [ -z "$EXPECTED_CHECKSUM" ]; then
+          echo "::error::Checksum not found for $ARCHIVE_NAME"
+          exit 1
+        fi
+
+        if command -v sha256sum &> /dev/null; then
+          ACTUAL_CHECKSUM=$(sha256sum "$ARCHIVE_NAME" | awk '{print $1}')
+        else
+          # macOS uses shasum
+          ACTUAL_CHECKSUM=$(shasum -a 256 "$ARCHIVE_NAME" | awk '{print $1}')
+        fi
+
+        if [ "$EXPECTED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]; then
+          echo "::error::Checksum verification failed!"
+          echo "Expected: $EXPECTED_CHECKSUM"
+          echo "Actual:   $ACTUAL_CHECKSUM"
+          exit 1
+        fi
+
+        echo "Checksum verified successfully"
+
+        # Extract binary
+        tar xzf "$ARCHIVE_NAME" -C "$INSTALL_DIR" cr
+        chmod +x "$INSTALL_DIR/cr"
+
+        # Add to PATH for subsequent steps
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+        # Verify installation
+        "$INSTALL_DIR/cr" version
+
+        # Cleanup
+        rm -rf "$TEMP_DIR"
 
     - name: Run code review
       id: review
@@ -125,72 +192,91 @@ runs:
         OPENAI_API_KEY: ${{ inputs.openai-api-key }}
         GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
         GITHUB_TOKEN: ${{ github.token }}
+        # Pass all inputs as environment variables to avoid shell injection
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_LOG_LEVEL: ${{ inputs.log-level }}
+        INPUT_POST_REVIEW: ${{ inputs.post-review }}
+        INPUT_REVIEWERS: ${{ inputs.reviewers }}
+        INPUT_CONFIG_FILE: ${{ inputs.config-file }}
+        INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        INPUT_BLOCK_THRESHOLD: ${{ inputs.block-threshold }}
+        # GitHub context
+        GH_HEAD_REF: ${{ github.head_ref }}
+        GH_REPO_OWNER: ${{ github.repository_owner }}
+        GH_REPO_NAME: ${{ github.event.repository.name }}
+        GH_PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        GH_WORKSPACE: ${{ github.workspace }}
+        GH_EVENT_NAME: ${{ github.event_name }}
       run: |
-        # Build command arguments
-        ARGS="review branch ${{ github.head_ref }}"
-        ARGS="$ARGS --base ${{ inputs.base-branch }}"
-        ARGS="$ARGS --log-level ${{ inputs.log-level }}"
+        set -euo pipefail
+
+        # Validate PR context for review
+        if [ -z "$GH_HEAD_REF" ]; then
+          echo "::error::github.head_ref is not available. This action must run on pull_request events."
+          exit 1
+        fi
+
+        # Build command using array to avoid injection
+        CMD=(cr review branch "$GH_HEAD_REF")
+        CMD+=(--base "$INPUT_BASE_BRANCH")
+        CMD+=(--log-level "$INPUT_LOG_LEVEL")
 
         # Output directory
-        OUTPUT_DIR="${{ runner.temp }}/review-output"
+        OUTPUT_DIR="${RUNNER_TEMP}/review-output"
         mkdir -p "$OUTPUT_DIR"
-        ARGS="$ARGS --output $OUTPUT_DIR"
+        CMD+=(--output "$OUTPUT_DIR")
 
-        # GitHub PR posting
-        if [ "${{ inputs.post-review }}" = "true" ]; then
-          ARGS="$ARGS --post-github-review"
-          ARGS="$ARGS --github-owner ${{ github.repository_owner }}"
-          ARGS="$ARGS --github-repo ${{ github.event.repository.name }}"
-          ARGS="$ARGS --pr-number ${{ github.event.pull_request.number }}"
-          ARGS="$ARGS --commit-sha ${{ github.event.pull_request.head.sha }}"
+        # GitHub PR posting (only on PR events)
+        if [ "$INPUT_POST_REVIEW" = "true" ] && [ "$GH_EVENT_NAME" = "pull_request" ]; then
+          CMD+=(--post-github-review)
+          CMD+=(--github-owner "$GH_REPO_OWNER")
+          CMD+=(--github-repo "$GH_REPO_NAME")
+          CMD+=(--pr-number "$GH_PR_NUMBER")
+          CMD+=(--commit-sha "$GH_COMMIT_SHA")
         fi
 
         # Optional reviewers
-        if [ -n "${{ inputs.reviewers }}" ]; then
-          ARGS="$ARGS --reviewers ${{ inputs.reviewers }}"
+        if [ -n "$INPUT_REVIEWERS" ]; then
+          CMD+=(--reviewers "$INPUT_REVIEWERS")
         fi
 
         # Config file: explicit input > .github/cr.yaml > cr.yaml > defaults
         CONFIG_FILE=""
-        if [ -n "${{ inputs.config-file }}" ]; then
-          CONFIG_FILE="${{ github.workspace }}/${{ inputs.config-file }}"
-        elif [ -f "${{ github.workspace }}/.github/cr.yaml" ]; then
-          CONFIG_FILE="${{ github.workspace }}/.github/cr.yaml"
+        if [ -n "$INPUT_CONFIG_FILE" ]; then
+          CONFIG_FILE="${GH_WORKSPACE}/${INPUT_CONFIG_FILE}"
+        elif [ -f "${GH_WORKSPACE}/.github/cr.yaml" ]; then
+          CONFIG_FILE="${GH_WORKSPACE}/.github/cr.yaml"
           echo "::notice::Using config file: .github/cr.yaml"
-        elif [ -f "${{ github.workspace }}/cr.yaml" ]; then
-          CONFIG_FILE="${{ github.workspace }}/cr.yaml"
+        elif [ -f "${GH_WORKSPACE}/cr.yaml" ]; then
+          CONFIG_FILE="${GH_WORKSPACE}/cr.yaml"
           echo "::notice::Using config file: cr.yaml"
         fi
 
         if [ -n "$CONFIG_FILE" ]; then
-          ARGS="$ARGS --config $CONFIG_FILE"
-        fi
-
-        # Extra args
-        if [ -n "${{ inputs.extra-args }}" ]; then
-          ARGS="$ARGS ${{ inputs.extra-args }}"
+          CMD+=(--config "$CONFIG_FILE")
         fi
 
         echo "::group::Running code review"
-        echo "Command: cr $ARGS"
+        echo "Command: ${CMD[*]}"
 
         # Run review, capture exit code
         set +e
-        cr $ARGS
+        "${CMD[@]}"
         CR_EXIT_CODE=$?
         set -e
         echo "::endgroup::"
 
-        # Parse results
+        # Parse results using jq (available on GitHub runners)
         TOTAL=0 CRITICAL=0 HIGH=0 MEDIUM=0 LOW=0
 
         JSON_FILE=$(find "$OUTPUT_DIR" -name "*.json" -type f 2>/dev/null | head -1)
         if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
-          TOTAL=$(grep -o '"total_findings":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
-          CRITICAL=$(grep -o '"critical":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
-          HIGH=$(grep -o '"high":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
-          MEDIUM=$(grep -o '"medium":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
-          LOW=$(grep -o '"low":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+          TOTAL=$(jq -r '.total_findings // 0' "$JSON_FILE" 2>/dev/null || echo "0")
+          CRITICAL=$(jq -r '.severity_counts.critical // 0' "$JSON_FILE" 2>/dev/null || echo "0")
+          HIGH=$(jq -r '.severity_counts.high // 0' "$JSON_FILE" 2>/dev/null || echo "0")
+          MEDIUM=$(jq -r '.severity_counts.medium // 0' "$JSON_FILE" 2>/dev/null || echo "0")
+          LOW=$(jq -r '.severity_counts.low // 0' "$JSON_FILE" 2>/dev/null || echo "0")
         fi
 
         echo "findings-count=$TOTAL" >> "$GITHUB_OUTPUT"
@@ -201,13 +287,14 @@ runs:
 
         echo "::notice::Review complete: $TOTAL findings ($CRITICAL critical, $HIGH high, $MEDIUM medium, $LOW low)"
 
-        # Write summary
+        # Write summary (with safe truncation)
         MD_FILE=$(find "$OUTPUT_DIR" -name "*_merged_*.md" -type f 2>/dev/null | head -1)
         if [ -n "$MD_FILE" ] && [ -f "$MD_FILE" ]; then
-          head -c 65000 "$MD_FILE" >> "$GITHUB_STEP_SUMMARY"
+          # Truncate to 64000 chars (leaving buffer for GitHub's 65535 limit)
+          head -c 64000 "$MD_FILE" >> "$GITHUB_STEP_SUMMARY"
           {
             echo "summary<<EOF"
-            head -c 65000 "$MD_FILE"
+            head -c 64000 "$MD_FILE"
             echo ""
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
@@ -215,8 +302,8 @@ runs:
 
         # Check threshold
         SHOULD_FAIL=0
-        if [ "${{ inputs.fail-on-findings }}" = "true" ]; then
-          case "${{ inputs.block-threshold }}" in
+        if [ "$INPUT_FAIL_ON_FINDINGS" = "true" ]; then
+          case "$INPUT_BLOCK_THRESHOLD" in
             critical)
               [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=1 ;;
             high)
@@ -228,7 +315,7 @@ runs:
           esac
 
           if [ "$SHOULD_FAIL" -eq 1 ]; then
-            echo "::error::Findings exceed block threshold (${{ inputs.block-threshold }})"
+            echo "::error::Findings exceed block threshold ($INPUT_BLOCK_THRESHOLD)"
             exit 1
           fi
         fi

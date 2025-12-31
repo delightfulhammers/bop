@@ -36,7 +36,6 @@ jobs:
 | `post-review` | Post review comments to PR | No | `true` |
 | `fail-on-findings` | Fail if findings exceed block-threshold | No | `false` |
 | `config-file` | Path to cr.yaml config file | No | |
-| `extra-args` | Additional arguments to pass to cr | No | |
 | `log-level` | Log level (`trace`, `debug`, `info`, `error`) | No | `info` |
 
 \* At least one API key is required.
