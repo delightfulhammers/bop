@@ -937,7 +937,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			CommentReader: mockComment,
 		})
 
-		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil)
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, nil)
 		require.NoError(t, err)
 		assert.Len(t, result, 2)
 		mockComment.AssertExpectations(t)
@@ -957,7 +957,7 @@ func TestPRService_ListFindings(t *testing.T) {
 		})
 
 		highSeverity := "high"
-		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil)
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil, nil)
 		require.NoError(t, err)
 		assert.Len(t, result, 2)
 		for _, f := range result {
@@ -979,7 +979,7 @@ func TestPRService_ListFindings(t *testing.T) {
 		})
 
 		securityCat := "security"
-		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, &securityCat)
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, &securityCat, nil)
 		require.NoError(t, err)
 		assert.Len(t, result, 1)
 		assert.Equal(t, "security", result[0].Category)
@@ -1001,7 +1001,7 @@ func TestPRService_ListFindings(t *testing.T) {
 
 		highSeverity := "high"
 		securityCat := "security"
-		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, &securityCat)
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, &securityCat, nil)
 		require.NoError(t, err)
 		assert.Len(t, result, 1)
 		assert.Equal(t, "high", result[0].Severity)
@@ -1015,7 +1015,7 @@ func TestPRService_ListFindings(t *testing.T) {
 		})
 
 		invalidSev := "extreme"
-		_, err := svc.ListFindings(ctx, "owner", "repo", 42, &invalidSev, nil)
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, &invalidSev, nil, nil)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, triage.ErrInvalidFilter)
 	})
@@ -1023,7 +1023,7 @@ func TestPRService_ListFindings(t *testing.T) {
 	t.Run("returns ErrNotImplemented when CommentReader is nil", func(t *testing.T) {
 		svc := triage.NewPRService(triage.PRServiceDeps{})
 
-		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil)
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, nil)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, triage.ErrNotImplemented)
 	})
@@ -1036,7 +1036,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			CommentReader: mockComment,
 		})
 
-		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil)
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "api error")
 		mockComment.AssertExpectations(t)
@@ -1054,10 +1054,84 @@ func TestPRService_ListFindings(t *testing.T) {
 		})
 
 		highSeverity := "high"
-		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil)
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil, nil)
 		require.NoError(t, err)
 		assert.Empty(t, result)
 		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("filters by reply status - replied", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", HasReply: true, ReplyCount: 2},
+			{CommentID: 2, Fingerprint: "fp2", HasReply: false, ReplyCount: 0},
+			{CommentID: 3, Fingerprint: "fp3", HasReply: true, ReplyCount: 1},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		replied := triage.ReplyStatusReplied
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, &replied)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		for _, f := range result {
+			assert.True(t, f.HasReply)
+		}
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("filters by reply status - unreplied", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", HasReply: true, ReplyCount: 2},
+			{CommentID: 2, Fingerprint: "fp2", HasReply: false, ReplyCount: 0},
+			{CommentID: 3, Fingerprint: "fp3", HasReply: true, ReplyCount: 1},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		unreplied := triage.ReplyStatusUnreplied
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, &unreplied)
+		require.NoError(t, err)
+		assert.Len(t, result, 1)
+		assert.False(t, result[0].HasReply)
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("filters by reply status - all returns everything", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", HasReply: true},
+			{CommentID: 2, Fingerprint: "fp2", HasReply: false},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		all := triage.ReplyStatusAll
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, &all)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("returns error for invalid reply status filter", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: new(MockCommentReader),
+		})
+
+		invalid := triage.ReplyStatus("invalid")
+		_, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, &invalid)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrInvalidFilter)
 	})
 }
 

@@ -162,7 +162,14 @@ func (s *Server) handleListFindings(ctx context.Context, req *mcp.CallToolReques
 		return notImplementedResult("M2"), ListFindingsOutput{}, nil
 	}
 
-	findings, err := s.deps.PRService.ListFindings(ctx, input.Owner, input.Repo, input.PRNumber, input.Severity, input.Category)
+	// Convert reply_status string to triage.ReplyStatus if provided
+	var replyStatus *triage.ReplyStatus
+	if input.ReplyStatus != nil {
+		rs := triage.ReplyStatus(*input.ReplyStatus)
+		replyStatus = &rs
+	}
+
+	findings, err := s.deps.PRService.ListFindings(ctx, input.Owner, input.Repo, input.PRNumber, input.Severity, input.Category, replyStatus)
 	if err != nil {
 		if errors.Is(err, triage.ErrNotImplemented) {
 			return notImplementedResult("M2 - CommentReader"), ListFindingsOutput{}, nil
@@ -181,15 +188,23 @@ func (s *Server) handleListFindings(ctx context.Context, req *mcp.CallToolReques
 	output := ListFindingsOutput{
 		Findings: make([]PRFindingOutput, len(findings)),
 		Total:    len(findings),
+		Summary:  computeFindingsSummary(findings),
 	}
 
 	for i, f := range findings {
 		output.Findings[i] = findingToOutput(f)
 	}
 
+	// Build informative message with triage progress
+	msg := fmt.Sprintf("Found %d findings", len(findings))
+	if output.Summary != nil && output.Summary.Total > 0 {
+		msg = fmt.Sprintf("Found %d findings (%d replied, %d unreplied, %.0f%% triaged)",
+			output.Summary.Total, output.Summary.Replied, output.Summary.Unreplied, output.Summary.TriagePercent)
+	}
+
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
-			&mcp.TextContent{Text: fmt.Sprintf("Found %d findings", len(findings))},
+			&mcp.TextContent{Text: msg},
 		},
 	}, output, nil
 }
@@ -806,8 +821,42 @@ func annotationToOutput(ann domain.Annotation) AnnotationOutput {
 	}
 }
 
+// computeFindingsSummary calculates triage progress statistics from findings.
+func computeFindingsSummary(findings []domain.PRFinding) *FindingsSummary {
+	if len(findings) == 0 {
+		return nil
+	}
+
+	summary := &FindingsSummary{
+		Total:      len(findings),
+		BySeverity: make(map[string]int),
+	}
+
+	for _, f := range findings {
+		if f.HasReply {
+			summary.Replied++
+		} else {
+			summary.Unreplied++
+		}
+
+		// Track by severity (use "unknown" for empty)
+		sev := f.Severity
+		if sev == "" {
+			sev = "unknown"
+		}
+		summary.BySeverity[sev]++
+	}
+
+	// Calculate triage percentage (replied / total * 100)
+	if summary.Total > 0 {
+		summary.TriagePercent = float64(summary.Replied) / float64(summary.Total) * 100
+	}
+
+	return summary
+}
+
 func findingToOutput(f domain.PRFinding) PRFindingOutput {
-	return PRFindingOutput{
+	output := PRFindingOutput{
 		CommentID:    f.CommentID,
 		Fingerprint:  f.Fingerprint,
 		Path:         f.Path,
@@ -818,6 +867,16 @@ func findingToOutput(f domain.PRFinding) PRFindingOutput {
 		Author:       f.Author,
 		IsResolved:   f.IsResolved,
 		ReplyCount:   f.ReplyCount,
+		HasReply:     f.HasReply,
+		LastReplyBy:  f.LastReplyBy,
 		ThreadStatus: f.ThreadStatus(),
 	}
+
+	// Format LastReplyAt as RFC3339 if present
+	if f.LastReplyAt != nil {
+		formatted := f.LastReplyAt.Format(time.RFC3339)
+		output.LastReplyAt = &formatted
+	}
+
+	return output
 }

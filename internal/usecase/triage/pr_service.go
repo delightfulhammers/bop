@@ -90,8 +90,8 @@ func (s *PRService) GetAnnotation(ctx context.Context, owner, repo string, check
 }
 
 // ListFindings returns all PR comments that are code reviewer findings.
-// Optionally filters by severity and/or category.
-func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumber int, severity, category *string) ([]domain.PRFinding, error) {
+// Optionally filters by severity, category, and/or reply status.
+func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumber int, severity, category *string, replyStatus *ReplyStatus) ([]domain.PRFinding, error) {
 	if s.deps.CommentReader == nil {
 		return nil, ErrNotImplemented
 	}
@@ -99,6 +99,11 @@ func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumb
 	// Validate severity filter if provided
 	if severity != nil && !isValidSeverity(*severity) {
 		return nil, fmt.Errorf("%w: severity %q (valid: %v)", ErrInvalidFilter, *severity, ValidSeverities)
+	}
+
+	// Validate reply status filter if provided
+	if replyStatus != nil && !isValidReplyStatus(*replyStatus) {
+		return nil, fmt.Errorf("%w: reply_status %q (valid: %v)", ErrInvalidFilter, *replyStatus, ValidReplyStatuses)
 	}
 
 	// Get all comments with fingerprints (code reviewer findings)
@@ -114,6 +119,9 @@ func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumb
 			continue
 		}
 		if category != nil && f.Category != *category {
+			continue
+		}
+		if !matchesReplyStatus(f, replyStatus) {
 			continue
 		}
 		filtered = append(filtered, f)
@@ -225,6 +233,32 @@ func isValidSeverity(s string) bool {
 		}
 	}
 	return false
+}
+
+// isValidReplyStatus checks if a reply status is a valid value.
+func isValidReplyStatus(rs ReplyStatus) bool {
+	for _, valid := range ValidReplyStatuses {
+		if rs == valid {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesReplyStatus checks if a finding matches the given reply status filter.
+// If filter is nil or "all", all findings match.
+func matchesReplyStatus(f domain.PRFinding, filter *ReplyStatus) bool {
+	if filter == nil || *filter == ReplyStatusAll {
+		return true
+	}
+	switch *filter {
+	case ReplyStatusReplied:
+		return f.HasReply
+	case ReplyStatusUnreplied:
+		return !f.HasReply
+	default:
+		return true
+	}
 }
 
 // parseAnnotationID parses an annotation ID in the format "checkRunID:index".

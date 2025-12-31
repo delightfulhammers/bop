@@ -224,6 +224,16 @@ type PRFinding struct {
 	// ReplyCount is the number of replies in the thread.
 	ReplyCount int `json:"replyCount"`
 
+	// HasReply indicates whether this finding has any replies.
+	// This is a convenience field computed from ReplyCount > 0.
+	HasReply bool `json:"hasReply"`
+
+	// LastReplyAt is the timestamp of the most recent reply (if any).
+	LastReplyAt *time.Time `json:"lastReplyAt,omitempty"`
+
+	// LastReplyBy is the username of the most recent replier (if any).
+	LastReplyBy string `json:"lastReplyBy,omitempty"`
+
 	// Severity is extracted from the comment body (if present).
 	Severity string `json:"severity,omitempty"`
 

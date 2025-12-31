@@ -42,6 +42,23 @@ var ErrInvalidFilter = errors.New("invalid filter value")
 // Used by ListFindings to validate the severity parameter.
 var ValidSeverities = []string{"critical", "high", "medium", "low"}
 
+// ReplyStatus represents the possible reply states for filtering findings.
+type ReplyStatus string
+
+const (
+	// ReplyStatusAll matches all findings regardless of reply state.
+	ReplyStatusAll ReplyStatus = "all"
+
+	// ReplyStatusReplied matches findings that have at least one reply.
+	ReplyStatusReplied ReplyStatus = "replied"
+
+	// ReplyStatusUnreplied matches findings that have no replies.
+	ReplyStatusUnreplied ReplyStatus = "unreplied"
+)
+
+// ValidReplyStatuses contains all valid reply status filter values.
+var ValidReplyStatuses = []ReplyStatus{ReplyStatusAll, ReplyStatusReplied, ReplyStatusUnreplied}
+
 // Write operation errors.
 
 // ErrThreadNotFound is returned when a review thread doesn't exist.
