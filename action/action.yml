@@ -275,9 +275,20 @@ runs:
         if [ -n "$INPUT_CONFIG_FILE" ]; then
           CONFIG_FILE="${GH_WORKSPACE}/${INPUT_CONFIG_FILE}"
           # Validate config file is within workspace (prevent path traversal)
-          # Use Python for portability (available on all GitHub runners including macOS)
+          # Use Python for portability and proper path comparison
           RESOLVED_CONFIG=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$CONFIG_FILE" 2>/dev/null || echo "")
-          if [ -z "$RESOLVED_CONFIG" ] || [[ "$RESOLVED_CONFIG" != "${GH_WORKSPACE}"* ]]; then
+          # Use Python's commonpath for safe path-segment comparison (prevents /repo vs /repo-malicious)
+          IS_WITHIN=$(python3 -c "
+import os,sys
+workspace = sys.argv[1]
+resolved = sys.argv[2]
+try:
+    common = os.path.commonpath([workspace, resolved])
+    print('yes' if common == workspace else 'no')
+except ValueError:
+    print('no')
+" "$GH_WORKSPACE" "$RESOLVED_CONFIG" 2>/dev/null || echo "no")
+          if [ -z "$RESOLVED_CONFIG" ] || [ "$IS_WITHIN" != "yes" ]; then
             echo "::error::Config file must be within the workspace directory"
             exit 1
           fi
