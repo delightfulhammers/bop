@@ -3,6 +3,7 @@ package review_test
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1348,11 +1349,7 @@ func TestReviewBranchReviewerDispatchMissingProvider(t *testing.T) {
 		t.Fatal("expected error for missing provider, got nil")
 	}
 
-	if !containsString(err.Error(), "nonexistent-provider") {
+	if !strings.Contains(err.Error(), "nonexistent-provider") {
 		t.Errorf("expected error to mention missing provider, got: %v", err)
 	}
-}
-
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsString(s[1:], substr) || s[:len(substr)] == substr)
 }
