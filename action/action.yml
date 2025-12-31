@@ -102,20 +102,39 @@ runs:
       run: |
         set -euo pipefail
 
+        # Check jq availability (required for JSON parsing)
+        if ! command -v jq &> /dev/null; then
+          echo "::error::jq is required but not installed. Please ensure jq is available on your runner."
+          exit 1
+        fi
+
         # Determine version from action ref
         VERSION="$ACTION_REF"
-        if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+        # Handle: empty, main branch, or commit SHA (40 hex chars)
+        if [ -z "$VERSION" ] || [ "$VERSION" = "main" ] || [[ "$VERSION" =~ ^[0-9a-f]{40}$ ]]; then
           VERSION="latest"
         fi
 
         echo "Installing code-reviewer ${VERSION}..."
 
-        # Detect OS and architecture
+        # Detect OS and architecture with validation
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
         ARCH=$(uname -m)
         case "$ARCH" in
           x86_64) ARCH="amd64" ;;
           aarch64|arm64) ARCH="arm64" ;;
+          *)
+            echo "::error::Unsupported architecture: $ARCH. Supported: x86_64, aarch64, arm64"
+            exit 1
+            ;;
+        esac
+
+        case "$OS" in
+          linux|darwin) ;;
+          *)
+            echo "::error::Unsupported OS: $OS. Supported: linux, darwin"
+            exit 1
+            ;;
         esac
 
         # Set up install directory (avoid /usr/local/bin for portability)
@@ -124,12 +143,16 @@ runs:
 
         # Resolve version and build download URL
         if [ "$VERSION" = "latest" ]; then
-          # Query API with authentication to avoid rate limits
-          LATEST_VERSION=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+          # Query API - use auth if token available (may be empty on fork PRs)
+          CURL_OPTS=(-fsSL)
+          if [ -n "$GH_TOKEN" ]; then
+            CURL_OPTS+=(-H "Authorization: Bearer $GH_TOKEN")
+          fi
+          LATEST_VERSION=$(curl "${CURL_OPTS[@]}" \
             https://api.github.com/repos/bkyoung/code-reviewer/releases/latest | \
             jq -r '.tag_name')
           if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
-            echo "::error::Failed to determine latest version"
+            echo "::error::Failed to determine latest version. Consider pinning to a specific version (e.g., @v0.6.2)"
             exit 1
           fi
           VERSION="$LATEST_VERSION"
@@ -142,8 +165,8 @@ runs:
 
         echo "Downloading from: $DOWNLOAD_URL"
 
-        # Download archive and checksums
-        TEMP_DIR=$(mktemp -d)
+        # Download archive and checksums (use RUNNER_TEMP for cleanup)
+        TEMP_DIR=$(mktemp -d -p "${RUNNER_TEMP}")
         curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_DIR/$ARCHIVE_NAME"
         curl -fsSL "$CHECKSUM_URL" -o "$TEMP_DIR/checksums.txt"
 
@@ -211,9 +234,13 @@ runs:
       run: |
         set -euo pipefail
 
-        # Validate PR context for review
+        # Validate PR context for review - check event type first, then head_ref
+        if [ "$GH_EVENT_NAME" != "pull_request" ]; then
+          echo "::error::This action must run on pull_request events (got: $GH_EVENT_NAME)"
+          exit 1
+        fi
         if [ -z "$GH_HEAD_REF" ]; then
-          echo "::error::github.head_ref is not available. This action must run on pull_request events."
+          echo "::error::github.head_ref is not available. The PR branch may have been deleted."
           exit 1
         fi
 
@@ -245,6 +272,12 @@ runs:
         CONFIG_FILE=""
         if [ -n "$INPUT_CONFIG_FILE" ]; then
           CONFIG_FILE="${GH_WORKSPACE}/${INPUT_CONFIG_FILE}"
+          # Validate config file is within workspace (prevent path traversal)
+          RESOLVED_CONFIG=$(realpath "$CONFIG_FILE" 2>/dev/null || echo "")
+          if [ -z "$RESOLVED_CONFIG" ] || [[ "$RESOLVED_CONFIG" != "${GH_WORKSPACE}"* ]]; then
+            echo "::error::Config file must be within the workspace directory"
+            exit 1
+          fi
         elif [ -f "${GH_WORKSPACE}/.github/cr.yaml" ]; then
           CONFIG_FILE="${GH_WORKSPACE}/.github/cr.yaml"
           echo "::notice::Using config file: .github/cr.yaml"
@@ -272,11 +305,18 @@ runs:
 
         JSON_FILE=$(find "$OUTPUT_DIR" -name "*.json" -type f 2>/dev/null | head -1)
         if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
-          TOTAL=$(jq -r '.total_findings // 0' "$JSON_FILE" 2>/dev/null || echo "0")
-          CRITICAL=$(jq -r '.severity_counts.critical // 0' "$JSON_FILE" 2>/dev/null || echo "0")
-          HIGH=$(jq -r '.severity_counts.high // 0' "$JSON_FILE" 2>/dev/null || echo "0")
-          MEDIUM=$(jq -r '.severity_counts.medium // 0' "$JSON_FILE" 2>/dev/null || echo "0")
-          LOW=$(jq -r '.severity_counts.low // 0' "$JSON_FILE" 2>/dev/null || echo "0")
+          # Validate JSON is parseable before extracting values
+          if jq empty "$JSON_FILE" 2>/dev/null; then
+            TOTAL=$(jq -r '.total_findings // 0' "$JSON_FILE")
+            CRITICAL=$(jq -r '.severity_counts.critical // 0' "$JSON_FILE")
+            HIGH=$(jq -r '.severity_counts.high // 0' "$JSON_FILE")
+            MEDIUM=$(jq -r '.severity_counts.medium // 0' "$JSON_FILE")
+            LOW=$(jq -r '.severity_counts.low // 0' "$JSON_FILE")
+          else
+            echo "::warning::Failed to parse results JSON - counts may be inaccurate"
+          fi
+        else
+          echo "::warning::No JSON output found - review may have failed"
         fi
 
         echo "findings-count=$TOTAL" >> "$GITHUB_OUTPUT"
@@ -292,11 +332,13 @@ runs:
         if [ -n "$MD_FILE" ] && [ -f "$MD_FILE" ]; then
           # Truncate to 64000 chars (leaving buffer for GitHub's 65535 limit)
           head -c 64000 "$MD_FILE" >> "$GITHUB_STEP_SUMMARY"
+          # Use unique delimiter to prevent injection (unlikely to appear in markdown)
+          DELIM="__CR_SUMMARY_END_$(date +%s)__"
           {
-            echo "summary<<EOF"
+            echo "summary<<${DELIM}"
             head -c 64000 "$MD_FILE"
             echo ""
-            echo "EOF"
+            echo "${DELIM}"
           } >> "$GITHUB_OUTPUT"
         fi
 
