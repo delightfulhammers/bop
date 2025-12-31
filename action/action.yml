@@ -172,7 +172,7 @@ runs:
 
         # Verify checksum
         cd "$TEMP_DIR"
-        EXPECTED_CHECKSUM=$(grep "$ARCHIVE_NAME" checksums.txt | awk '{print $1}')
+        EXPECTED_CHECKSUM=$(grep -F "$ARCHIVE_NAME" checksums.txt | awk '{print $1}' || true)
         if [ -z "$EXPECTED_CHECKSUM" ]; then
           echo "::error::Checksum not found for $ARCHIVE_NAME"
           exit 1
@@ -234,9 +234,11 @@ runs:
       run: |
         set -euo pipefail
 
-        # Validate PR context for review - check event type first, then head_ref
-        if [ "$GH_EVENT_NAME" != "pull_request" ] && [ "$GH_EVENT_NAME" != "pull_request_target" ]; then
-          echo "::error::This action must run on pull_request or pull_request_target events (got: $GH_EVENT_NAME)"
+        # Validate PR context for review - only pull_request supported
+        # NOTE: pull_request_target is intentionally NOT supported due to security concerns:
+        # it runs in base repo context with secrets, which is dangerous with untrusted PR code
+        if [ "$GH_EVENT_NAME" != "pull_request" ]; then
+          echo "::error::This action only supports pull_request events (got: $GH_EVENT_NAME). pull_request_target is not supported for security reasons."
           exit 1
         fi
         if [ -z "$GH_HEAD_REF" ]; then
@@ -273,7 +275,8 @@ runs:
         if [ -n "$INPUT_CONFIG_FILE" ]; then
           CONFIG_FILE="${GH_WORKSPACE}/${INPUT_CONFIG_FILE}"
           # Validate config file is within workspace (prevent path traversal)
-          RESOLVED_CONFIG=$(realpath "$CONFIG_FILE" 2>/dev/null || echo "")
+          # Use Python for portability (available on all GitHub runners including macOS)
+          RESOLVED_CONFIG=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$CONFIG_FILE" 2>/dev/null || echo "")
           if [ -z "$RESOLVED_CONFIG" ] || [[ "$RESOLVED_CONFIG" != "${GH_WORKSPACE}"* ]]; then
             echo "::error::Config file must be within the workspace directory"
             exit 1
