@@ -283,7 +283,7 @@ This tool sends code to third-party LLM APIs. Before using on private repositori
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 
-**Current Version:** v0.5.0
+**Current Version:** v0.6.0
 
 ---
 

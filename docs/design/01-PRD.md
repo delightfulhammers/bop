@@ -1,9 +1,9 @@
 # Product Requirements Document: Code-Reviewer Phase 3
 
-**Version:** 0.1 (Draft)  
-**Date:** 2025-12-28  
-**Author:** Brandon Young  
-**Status:** In Development
+**Version:** 0.2
+**Date:** 2025-12-31
+**Author:** Brandon Young
+**Status:** Phase 3.1 & 3.2 Complete
 
 ---
 
@@ -19,11 +19,11 @@ Code-reviewer v0.4.2 provides high-quality, automated code reviews using the LLM
 
 ### Phase Summary
 
-| Phase | Name | Focus | Priority |
-|-------|------|-------|----------|
-| **3.1** | Triage Automation | MCP server, CLI, skill for triage workflow | P0 |
-| **3.2** | Reviewer Personas | Specialized reviewers with distinct prompts | P0 |
-| **3.3** | Dynamic Model Selection | Right-size models to change characteristics | P1 |
+| Phase | Name | Focus | Priority | Status |
+|-------|------|-------|----------|--------|
+| **3.1** | Triage Automation | MCP server, CLI, skill for triage workflow | P0 | ✅ Complete |
+| **3.2** | Reviewer Personas | Specialized reviewers with distinct prompts | P0 | ✅ Complete |
+| **3.3** | Dynamic Model Selection | Right-size models to change characteristics | P1 | Planned |
 
 ---
 

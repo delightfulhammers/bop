@@ -1,9 +1,9 @@
 # Code Reviewer - Claude Context
 
 **Project:** AI-Powered Code Review Tool
-**Status:** Phase 3 In Development
-**Version:** v0.5.0
-**Last Updated:** 2025-12-30
+**Status:** Phase 3.1 & 3.2 Complete
+**Version:** v0.6.0
+**Last Updated:** 2025-12-31
 
 ---
 
@@ -26,16 +26,18 @@
 |-------|--------|-------------|
 | Phase 1: Foundation | ✅ Complete | Multi-provider LLM, local CLI, basic GitHub workflow |
 | Phase 2: GitHub Native | ✅ Complete | First-class reviewer with inline annotations |
-| **Phase 3: Production** | 🚧 In Progress | Triage automation, reviewer personas, model selection |
+| Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
+| Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
+| Phase 3.3: Model Selection | Planned | Right-size models to change characteristics |
 | Phase 4: Enterprise | Planned | Multi-platform, org-wide learning |
 
 ### Phase 3 Focus Areas
 
-| Sub-Phase | Focus | Priority |
-|-----------|-------|----------|
-| **3.1 Triage Automation** | MCP server, CLI, skill for triage workflow | P0 |
-| **3.2 Reviewer Personas** | Specialized reviewers with distinct prompts | P0 |
-| **3.3 Dynamic Model Selection** | Right-size models to change characteristics | P1 |
+| Sub-Phase | Focus | Priority | Status |
+|-----------|-------|----------|--------|
+| **3.1 Triage Automation** | MCP server, CLI, skill for triage workflow | P0 | ✅ Complete |
+| **3.2 Reviewer Personas** | Specialized reviewers with distinct prompts | P0 | ✅ Complete |
+| **3.3 Dynamic Model Selection** | Right-size models to change characteristics | P1 | Planned |
 
 ### Phase 3.1 Deliverables (Triage MCP Server)
 
@@ -47,14 +49,24 @@
 | Claude Code skill update | ✅ Complete |
 | `cr triage` CLI (P2) | 🚧 Planned |
 
+### Phase 3.2 Deliverables (Reviewer Personas)
+
+| Component | Status |
+|-----------|--------|
+| `internal/domain/reviewer.go` | ✅ Complete |
+| `internal/usecase/review/reviewer_registry.go` | ✅ Complete |
+| `internal/usecase/review/persona_prompt_builder.go` | ✅ Complete |
+| Orchestrator integration | ✅ Complete |
+| Merger weight support | ✅ Complete |
+| Output formatters (MD/JSON/SARIF) | ✅ Complete |
+| CLI `--reviewers` flag | ✅ Complete |
+
 ### Key Documents
 
 - **Phase 3 PRD:** `docs/design/01-PRD.md`
 - **Phase 3 Architecture:** `docs/design/02-ARCHITECTURE.md`
-- **MCP Server TDD:** `docs/design/03-TDD-TRIAGE-MCP-SERVER.md`
-- **Phase 3.1 Roadmap:** `docs/design/04-ROADMAP-PHASE-3.1.md`
 - **Security:** `docs/SECURITY.md`
-- **Archived Docs:** `docs/archive/` (historical reference)
+- **Archived Docs:** `docs/archive/` (roadmaps, TDDs, historical reference)
 
 ---
 
