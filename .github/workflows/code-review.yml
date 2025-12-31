@@ -71,6 +71,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
+          # Observability settings from repository variables
+          CR_OBSERVABILITY_LOGGING_LEVEL: ${{ vars.CR_OBSERVABILITY_LOGGING_LEVEL }}
+          CR_OBSERVABILITY_LOGGING_FORMAT: ${{ vars.CR_OBSERVABILITY_LOGGING_FORMAT }}
         run: |
           # Compare PR branch against base branch
           # github.head_ref = source branch (e.g., feature/foo)

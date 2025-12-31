@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Logger provides structured logging for LLM API calls and generic application logging.
@@ -107,11 +108,17 @@ func (l *DefaultLogger) WithMaxContentBytes(maxBytes int) *DefaultLogger {
 }
 
 // truncateContent limits content size for logging to prevent log explosion.
+// Ensures truncation occurs at valid UTF-8 character boundaries.
 func (l *DefaultLogger) truncateContent(content string) string {
 	if l.maxContentBytes <= 0 || len(content) <= l.maxContentBytes {
 		return content
 	}
-	return content[:l.maxContentBytes] + "\n... [TRUNCATED - exceeded " + fmt.Sprintf("%d", l.maxContentBytes) + " bytes]"
+	// Find a valid UTF-8 truncation point
+	truncated := content[:l.maxContentBytes]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return truncated + "\n... [TRUNCATED - exceeded " + fmt.Sprintf("%d", l.maxContentBytes) + " bytes]"
 }
 
 // SetRedaction enables or disables API key redaction.
@@ -143,7 +150,11 @@ func (l *DefaultLogger) LogRequest(ctx context.Context, req RequestLog) {
 			logEntry["level"] = "trace"
 			logEntry["prompt_content"] = l.truncateContent(req.PromptContent)
 		}
-		if jsonBytes, err := json.Marshal(logEntry); err == nil {
+		if jsonBytes, err := json.Marshal(logEntry); err != nil {
+			// Fallback to human-readable on marshal failure
+			log.Printf("[DEBUG] %s/%s: Request sent (prompt=%d chars) [JSON marshal failed: %v]",
+				req.Provider, req.Model, req.PromptChars, err)
+		} else {
 			log.Println(string(jsonBytes))
 		}
 	} else {
@@ -185,7 +196,12 @@ func (l *DefaultLogger) LogResponse(ctx context.Context, resp ResponseLog) {
 			logEntry["level"] = "trace"
 			logEntry["response_content"] = l.truncateContent(resp.ResponseContent)
 		}
-		if jsonBytes, err := json.Marshal(logEntry); err == nil {
+		if jsonBytes, err := json.Marshal(logEntry); err != nil {
+			// Fallback to human-readable on marshal failure
+			log.Printf("[INFO] %s/%s: Response received (duration=%.1fs, tokens=%d/%d, cost=$%.4f) [JSON marshal failed: %v]",
+				resp.Provider, resp.Model, resp.Duration.Seconds(),
+				resp.TokensIn, resp.TokensOut, resp.Cost, err)
+		} else {
 			log.Println(string(jsonBytes))
 		}
 	} else {
@@ -231,7 +247,11 @@ func (l *DefaultLogger) LogError(ctx context.Context, err ErrorLog) {
 			"status_code": err.StatusCode,
 			"retryable":   err.Retryable,
 		}
-		if jsonBytes, marshalErr := json.Marshal(logEntry); marshalErr == nil {
+		if jsonBytes, marshalErr := json.Marshal(logEntry); marshalErr != nil {
+			// Fallback to human-readable on marshal failure
+			log.Printf("[ERROR] %s/%s: API call failed (status=%d, %s): %s [JSON marshal failed: %v]",
+				err.Provider, err.Model, err.StatusCode, retryableStr, errorMsg, marshalErr)
+		} else {
 			log.Println(string(jsonBytes))
 		}
 	} else {

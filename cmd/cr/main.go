@@ -342,7 +342,11 @@ func parseLogLevelFlag() string {
 }
 
 // validateLogLevel checks if the log level is valid and returns it, or empty string with warning.
+// Accepts case-insensitive values and trims whitespace.
 func validateLogLevel(level string) string {
+	// Normalize: trim whitespace and lowercase
+	level = strings.TrimSpace(strings.ToLower(level))
+
 	validLevels := map[string]bool{
 		"trace": true,
 		"debug": true,
