@@ -30,20 +30,23 @@ That's it. You'll get a detailed review in `./reviews/`.
 
 ## Installation
 
-**Homebrew (macOS — recommended):**
+**Quick install (Linux/macOS):**
 ```bash
-brew install bkyoung/code-reviewer/code-reviewer
+curl -sSfL https://raw.githubusercontent.com/bkyoung/code-reviewer/main/install.sh | sh
 ```
 
-**From releases:**
+Options:
 ```bash
-# macOS ARM64
-curl -L https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_darwin_arm64.tar.gz | tar xz
-sudo mv cr /usr/local/bin/
+# Install specific version
+curl -sSfL .../install.sh | sh -s -- --version v0.6.2
 
-# Linux AMD64
-curl -L https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_linux_amd64.tar.gz | tar xz
-sudo mv cr /usr/local/bin/
+# Install to custom directory
+curl -sSfL .../install.sh | sh -s -- --dir /usr/local/bin
+```
+
+**Homebrew (macOS):**
+```bash
+brew install bkyoung/code-reviewer/code-reviewer
 ```
 
 **From source:**
@@ -59,7 +62,7 @@ Add automated reviews to every PR:
 name: Code Review
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   review:
@@ -72,16 +75,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Code Review
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cr review branch ${{ github.event.pull_request.base.ref }} \
-            --post-github-review \
-            --github-owner ${{ github.repository_owner }} \
-            --github-repo ${{ github.event.repository.name }} \
-            --pr-number ${{ github.event.pull_request.number }}
+      - uses: bkyoung/code-reviewer/action@v0.6.2
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          # Or use multiple providers:
+          # anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # gemini-api-key: ${{ secrets.GEMINI_API_KEY }}
 ```
 
 See [GitHub Actions Setup](docs/GITHUB_ACTION_SETUP.md) for complete configuration.
@@ -316,7 +315,7 @@ This tool sends code to third-party LLM APIs. Before using on private repositori
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 
-**Current Version:** v0.6.0
+**Current Version:** v0.6.2
 
 ---
 
