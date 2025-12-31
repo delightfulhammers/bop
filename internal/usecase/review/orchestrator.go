@@ -581,6 +581,13 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 
 	var dispatchCancelled bool
 	for _, reviewer := range reviewers {
+		// Check for cancellation at start of each iteration
+		// This is especially important when sem is nil (unlimited concurrency)
+		if ctx.Err() != nil {
+			dispatchCancelled = true
+			break
+		}
+
 		// Acquire semaphore slot if concurrency is limited
 		// Use select to respect context cancellation while waiting
 		if sem != nil {
