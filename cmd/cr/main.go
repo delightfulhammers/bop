@@ -400,9 +400,8 @@ func buildObservability(cfg config.ObservabilityConfig) observabilityComponents 
 		}
 
 		defaultLogger := llmhttp.NewDefaultLogger(logLevel, logFormat, cfg.Logging.RedactAPIKeys)
-		if cfg.Logging.MaxContentBytes > 0 {
-			defaultLogger = defaultLogger.WithMaxContentBytes(cfg.Logging.MaxContentBytes)
-		}
+		// Always apply config value - 0 means unlimited, positive values set the limit
+		defaultLogger = defaultLogger.WithMaxContentBytes(cfg.Logging.MaxContentBytes)
 		logger = defaultLogger
 	}
 
@@ -884,17 +883,26 @@ func createVerifier(cfg config.Config, providers map[string]review.Provider, rep
 			if obs.logger != nil {
 				client.SetLogger(obs.logger)
 			}
+			if obs.pricing != nil {
+				client.SetPricing(obs.pricing)
+			}
 			llmClient = &geminiLLMAdapter{client: client, maxTokens: maxTokens}
 		case "anthropic":
 			client := anthropic.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
 			if obs.logger != nil {
 				client.SetLogger(obs.logger)
 			}
+			if obs.pricing != nil {
+				client.SetPricing(obs.pricing)
+			}
 			llmClient = &anthropicLLMAdapter{client: client, maxTokens: maxTokens}
 		case "openai":
 			client := openai.NewHTTPClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
 			if obs.logger != nil {
 				client.SetLogger(obs.logger)
+			}
+			if obs.pricing != nil {
+				client.SetPricing(obs.pricing)
 			}
 			llmClient = &openaiLLMAdapter{client: client, maxTokens: maxTokens}
 		}
