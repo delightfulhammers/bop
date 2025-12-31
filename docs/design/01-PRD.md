@@ -1,17 +1,17 @@
 # Product Requirements Document: Code-Reviewer Phase 3
 
-**Version:** 0.2
+**Version:** 0.3
 **Date:** 2025-12-31
 **Author:** Brandon Young
-**Status:** Phase 3.1 & 3.2 Complete
+**Status:** Phase 3.1 & 3.2 Complete (v0.6.0-v0.6.2)
 
 ---
 
 ## 1. Executive Summary
 
-Code-reviewer v0.4.2 provides high-quality, automated code reviews using the LLM-as-judge pattern. The discovery pipeline is mature: diffs are analyzed by multiple LLM providers in parallel, findings are merged into consensus reviews, and results are posted to GitHub PRs with inline comments and review statuses.
+Code-reviewer provides high-quality, automated code reviews using the LLM-as-judge pattern. The discovery pipeline is mature: diffs are analyzed by multiple LLM providers in parallel, findings are merged into consensus reviews, and results are posted to GitHub PRs with inline comments and review statuses.
 
-**Phase 3 focuses on two strategic gaps:**
+**Phase 3 focused on two strategic gaps:**
 
 1. **Resolution Pipeline** — Findings are surfaced but acting on them is manual and friction-heavy. We need tools that enable efficient triage and resolution of review feedback.
 
@@ -19,11 +19,18 @@ Code-reviewer v0.4.2 provides high-quality, automated code reviews using the LLM
 
 ### Phase Summary
 
-| Phase | Name | Focus | Priority | Status |
-|-------|------|-------|----------|--------|
-| **3.1** | Triage Automation | MCP server, CLI, skill for triage workflow | P0 | ✅ Complete |
-| **3.2** | Reviewer Personas | Specialized reviewers with distinct prompts | P0 | ✅ Complete |
-| **3.3** | Dynamic Model Selection | Right-size models to change characteristics | P1 | Planned |
+| Phase | Name | Focus | Priority | Status | Release |
+|-------|------|-------|----------|--------|---------|
+| **3.1** | Triage Automation | MCP server, skill for triage workflow | P0 | ✅ Complete | v0.5.0 |
+| **3.2** | Reviewer Personas | Specialized reviewers with distinct prompts | P0 | ✅ Complete | v0.6.0 |
+| **—** | GitHub Action | CI/CD integration for automated reviews | P0 | ✅ Complete | v0.6.2 |
+| **3.3** | Dynamic Model Selection | Right-size models to change characteristics | P1 | Deferred | — |
+
+### v0.6.x Releases
+
+- **v0.6.0** — Reviewer personas with weighted findings, focus/ignore areas, CLI selection
+- **v0.6.1** — Observability improvements, concurrency limiting, verbose logging
+- **v0.6.2** — Official GitHub Action, semantic deduplication improvements
 
 ---
 
@@ -373,3 +380,5 @@ Generate prompts dynamically based on what changed in the diff.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 0.1 | 2025-12-28 | Brandon | Initial draft |
+| 0.2 | 2025-12-31 | Brandon | Phase 3.1 & 3.2 complete |
+| 0.3 | 2025-12-31 | Brandon | Added v0.6.x release summary, GitHub Action, deferred Phase 3.3 |

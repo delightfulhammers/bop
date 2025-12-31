@@ -1,9 +1,9 @@
 # Architecture Document: Code-Reviewer Phase 3
 
-**Version:** 0.1 (Draft)  
-**Date:** 2025-12-28  
-**Author:** Brandon Young  
-**Status:** In Development
+**Version:** 0.2
+**Date:** 2025-12-31
+**Author:** Brandon Young
+**Status:** Phase 3.1 & 3.2 Complete (v0.6.2)
 
 ---
 
@@ -21,7 +21,7 @@ This document describes the architectural changes required for Phase 3 of code-r
 
 ---
 
-## 2. Current Architecture (v0.4.2)
+## 2. Current Architecture (v0.6.2)
 
 ```mermaid
 graph TB
@@ -76,14 +76,15 @@ graph TB
 
 ## 3. Phase 3 Architecture
 
-### 3.1 New Components Overview
+### 3.1 Components Overview
 
 ```mermaid
 graph TB
     subgraph Entry["Entry Points"]
-        CLI["cmd/cr/<br/>(existing)"]
+        CLI["cmd/cr/<br/>(CLI)"]
         MCP_Server["cmd/code-reviewer-mcp/<br/>(MCP server)"]
         MCP_Clients["MCP Clients<br/>Claude Desktop/Code"]
+        Action["action/<br/>(GitHub Action)"]
     end
 
     subgraph Adapters["internal/adapter/"]
@@ -960,3 +961,4 @@ reviewers:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 0.1 | 2025-12-28 | Brandon | Initial draft |
+| 0.2 | 2025-12-31 | Brandon | Phase 3.1 & 3.2 complete, added GitHub Action entry point |

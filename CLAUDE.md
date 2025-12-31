@@ -1,8 +1,8 @@
 # Code Reviewer - Claude Context
 
 **Project:** AI-Powered Code Review Tool
-**Status:** Phase 3.1 & 3.2 Complete
-**Version:** v0.6.0
+**Status:** Phase 3.1 & 3.2 Complete, v0.6.x Stable
+**Version:** v0.6.2
 **Last Updated:** 2025-12-31
 
 ---
@@ -15,6 +15,14 @@
 4. **Run:** `./cr review branch main` (reviews current branch against main)
 
 > **IMPORTANT:** Always prefer `mage` commands over raw `go` commands. Mage targets ensure consistent builds with version injection and proper flags.
+
+### GitHub Action (CI/CD)
+
+```yaml
+- uses: bkyoung/code-reviewer/action@v0.6.2
+  with:
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
 
 ---
 
@@ -141,6 +149,9 @@ golangci-lint run
 # Review current branch against main
 ./cr review branch main
 
+# Review with specific personas
+./cr review branch main --reviewers security,architecture
+
 # Review with output directory
 ./cr review branch main --output ./review-output
 
@@ -187,6 +198,7 @@ Use these skills for targeted context instead of reading docs manually:
 cmd/
   cr/                    # CLI entry point
   code-reviewer-mcp/     # MCP server for triage workflow
+action/                  # GitHub Action (composite action)
 internal/
   adapter/               # External integrations
     cli/                 # Command-line interface
@@ -203,11 +215,12 @@ internal/
   domain/                # Core domain types (no dependencies)
   redaction/             # Secret redaction
   usecase/               # Business logic
+    dedup/               # Semantic deduplication
     merge/               # Multi-provider merge
     review/              # Review orchestration
     triage/              # Triage workflow service
 docs/
-  design/                # Active design docs (Phase 3)
+  design/                # Active design docs
   archive/               # Historical docs
 security-tests/          # Security test cases
 ```
@@ -261,19 +274,17 @@ See `/skill triage-pr-review` for detailed workflow.
 
 ## When You're Stuck
 
-**Current work (Phase 3):**
+**Design documents:**
 - PRD: `docs/design/01-PRD.md`
 - Architecture: `docs/design/02-ARCHITECTURE.md`
-- MCP Server TDD: `docs/design/03-TDD-TRIAGE-MCP-SERVER.md`
-- Roadmap: `docs/design/04-ROADMAP-PHASE-3.1.md`
 
 **Reference documentation:**
 - Security: `docs/SECURITY.md`
-- GitHub Setup: `docs/GITHUB_ACTION_SETUP.md`
+- GitHub Action Setup: `docs/GITHUB_ACTION_SETUP.md`
+- Configuration: `docs/CONFIGURATION.md`
 
 **Historical context:**
-- Archived docs: `docs/archive/` (old architecture, phase docs, checklists)
-- Session summaries: `docs/session-summaries/`
+- Archived docs: `docs/archive/` (TDDs, roadmaps, old designs)
 
 ---
 
