@@ -1,0 +1,240 @@
+name: 'AI Code Reviewer'
+description: 'AI-powered code review using multiple LLM providers (Anthropic, OpenAI, Gemini)'
+author: 'bkyoung'
+branding:
+  icon: 'code'
+  color: 'purple'
+
+inputs:
+  # Provider API Keys (at least one required)
+  anthropic-api-key:
+    description: 'Anthropic API key'
+    required: false
+  openai-api-key:
+    description: 'OpenAI API key'
+    required: false
+  gemini-api-key:
+    description: 'Google Gemini API key'
+    required: false
+
+  # Review behavior
+  base-branch:
+    description: 'Base branch to compare against'
+    required: false
+    default: 'main'
+  reviewers:
+    description: 'Comma-separated list of reviewers to use (e.g., security,architecture)'
+    required: false
+  block-threshold:
+    description: 'Severity threshold for blocking (critical, high, medium, low, none)'
+    required: false
+    default: 'none'
+
+  # Output options
+  post-review:
+    description: 'Post review comments to PR'
+    required: false
+    default: 'true'
+  fail-on-findings:
+    description: 'Fail the action if findings exist above block-threshold'
+    required: false
+    default: 'false'
+
+  # Advanced
+  config-file:
+    description: 'Path to cr.yaml config file (auto-detects .github/cr.yaml or cr.yaml if not specified)'
+    required: false
+  extra-args:
+    description: 'Additional arguments to pass to cr'
+    required: false
+  log-level:
+    description: 'Log level (trace, debug, info, error)'
+    required: false
+    default: 'info'
+
+outputs:
+  findings-count:
+    description: 'Total number of findings'
+    value: ${{ steps.review.outputs.findings-count }}
+  critical-count:
+    description: 'Number of critical severity findings'
+    value: ${{ steps.review.outputs.critical-count }}
+  high-count:
+    description: 'Number of high severity findings'
+    value: ${{ steps.review.outputs.high-count }}
+  medium-count:
+    description: 'Number of medium severity findings'
+    value: ${{ steps.review.outputs.medium-count }}
+  low-count:
+    description: 'Number of low severity findings'
+    value: ${{ steps.review.outputs.low-count }}
+  summary:
+    description: 'Markdown summary of the review'
+    value: ${{ steps.review.outputs.summary }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.anthropic-api-key }}" ] && [ -z "${{ inputs.openai-api-key }}" ] && [ -z "${{ inputs.gemini-api-key }}" ]; then
+          echo "::error::At least one API key must be provided (anthropic-api-key, openai-api-key, or gemini-api-key)"
+          exit 1
+        fi
+
+    - name: Install code-reviewer
+      shell: bash
+      run: |
+        # Get the version from the action ref (tag)
+        VERSION="${{ github.action_ref }}"
+        if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+          VERSION="latest"
+        fi
+
+        echo "Installing code-reviewer ${VERSION}..."
+
+        # Detect OS and architecture
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64) ARCH="amd64" ;;
+          aarch64|arm64) ARCH="arm64" ;;
+        esac
+
+        # Download from GitHub releases
+        # Archive format: code-reviewer_VERSION_OS_ARCH.tar.gz
+        if [ "$VERSION" = "latest" ]; then
+          # For latest, we need to query the API to get the version number
+          LATEST_VERSION=$(curl -sL https://api.github.com/repos/bkyoung/code-reviewer/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+          DOWNLOAD_URL="https://github.com/bkyoung/code-reviewer/releases/latest/download/code-reviewer_${LATEST_VERSION#v}_${OS}_${ARCH}.tar.gz"
+        else
+          DOWNLOAD_URL="https://github.com/bkyoung/code-reviewer/releases/download/${VERSION}/code-reviewer_${VERSION#v}_${OS}_${ARCH}.tar.gz"
+        fi
+
+        echo "Downloading from: $DOWNLOAD_URL"
+        curl -sL "$DOWNLOAD_URL" | tar xz -C /usr/local/bin cr
+        chmod +x /usr/local/bin/cr
+        cr version
+
+    - name: Run code review
+      id: review
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GEMINI_API_KEY: ${{ inputs.gemini-api-key }}
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        # Build command arguments
+        ARGS="review branch ${{ github.head_ref }}"
+        ARGS="$ARGS --base ${{ inputs.base-branch }}"
+        ARGS="$ARGS --log-level ${{ inputs.log-level }}"
+
+        # Output directory
+        OUTPUT_DIR="${{ runner.temp }}/review-output"
+        mkdir -p "$OUTPUT_DIR"
+        ARGS="$ARGS --output $OUTPUT_DIR"
+
+        # GitHub PR posting
+        if [ "${{ inputs.post-review }}" = "true" ]; then
+          ARGS="$ARGS --post-github-review"
+          ARGS="$ARGS --github-owner ${{ github.repository_owner }}"
+          ARGS="$ARGS --github-repo ${{ github.event.repository.name }}"
+          ARGS="$ARGS --pr-number ${{ github.event.pull_request.number }}"
+          ARGS="$ARGS --commit-sha ${{ github.event.pull_request.head.sha }}"
+        fi
+
+        # Optional reviewers
+        if [ -n "${{ inputs.reviewers }}" ]; then
+          ARGS="$ARGS --reviewers ${{ inputs.reviewers }}"
+        fi
+
+        # Config file: explicit input > .github/cr.yaml > cr.yaml > defaults
+        CONFIG_FILE=""
+        if [ -n "${{ inputs.config-file }}" ]; then
+          CONFIG_FILE="${{ github.workspace }}/${{ inputs.config-file }}"
+        elif [ -f "${{ github.workspace }}/.github/cr.yaml" ]; then
+          CONFIG_FILE="${{ github.workspace }}/.github/cr.yaml"
+          echo "::notice::Using config file: .github/cr.yaml"
+        elif [ -f "${{ github.workspace }}/cr.yaml" ]; then
+          CONFIG_FILE="${{ github.workspace }}/cr.yaml"
+          echo "::notice::Using config file: cr.yaml"
+        fi
+
+        if [ -n "$CONFIG_FILE" ]; then
+          ARGS="$ARGS --config $CONFIG_FILE"
+        fi
+
+        # Extra args
+        if [ -n "${{ inputs.extra-args }}" ]; then
+          ARGS="$ARGS ${{ inputs.extra-args }}"
+        fi
+
+        echo "::group::Running code review"
+        echo "Command: cr $ARGS"
+
+        # Run review, capture exit code
+        set +e
+        cr $ARGS
+        CR_EXIT_CODE=$?
+        set -e
+        echo "::endgroup::"
+
+        # Parse results
+        TOTAL=0 CRITICAL=0 HIGH=0 MEDIUM=0 LOW=0
+
+        JSON_FILE=$(find "$OUTPUT_DIR" -name "*.json" -type f 2>/dev/null | head -1)
+        if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
+          TOTAL=$(grep -o '"total_findings":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+          CRITICAL=$(grep -o '"critical":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+          HIGH=$(grep -o '"high":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+          MEDIUM=$(grep -o '"medium":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+          LOW=$(grep -o '"low":[0-9]*' "$JSON_FILE" 2>/dev/null | grep -o '[0-9]*' || echo "0")
+        fi
+
+        echo "findings-count=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "critical-count=$CRITICAL" >> "$GITHUB_OUTPUT"
+        echo "high-count=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "medium-count=$MEDIUM" >> "$GITHUB_OUTPUT"
+        echo "low-count=$LOW" >> "$GITHUB_OUTPUT"
+
+        echo "::notice::Review complete: $TOTAL findings ($CRITICAL critical, $HIGH high, $MEDIUM medium, $LOW low)"
+
+        # Write summary
+        MD_FILE=$(find "$OUTPUT_DIR" -name "*_merged_*.md" -type f 2>/dev/null | head -1)
+        if [ -n "$MD_FILE" ] && [ -f "$MD_FILE" ]; then
+          head -c 65000 "$MD_FILE" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "summary<<EOF"
+            head -c 65000 "$MD_FILE"
+            echo ""
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        fi
+
+        # Check threshold
+        SHOULD_FAIL=0
+        if [ "${{ inputs.fail-on-findings }}" = "true" ]; then
+          case "${{ inputs.block-threshold }}" in
+            critical)
+              [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=1 ;;
+            high)
+              [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && SHOULD_FAIL=1 ;;
+            medium)
+              [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=1 ;;
+            low)
+              [ "$TOTAL" -gt 0 ] && SHOULD_FAIL=1 ;;
+          esac
+
+          if [ "$SHOULD_FAIL" -eq 1 ]; then
+            echo "::error::Findings exceed block threshold (${{ inputs.block-threshold }})"
+            exit 1
+          fi
+        fi
+
+        # Propagate cr exit code
+        if [ "$CR_EXIT_CODE" -ne 0 ]; then
+          echo "::error::Code review failed with exit code $CR_EXIT_CODE"
+          exit "$CR_EXIT_CODE"
+        fi
