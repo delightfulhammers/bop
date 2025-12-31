@@ -8,10 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
-
-	"github.com/spf13/pflag"
 
 	"github.com/bkyoung/code-reviewer/internal/adapter/cli"
 	dedupadapter "github.com/bkyoung/code-reviewer/internal/adapter/dedup"
@@ -318,44 +317,43 @@ func defaultConfigPaths() []string {
 	return paths
 }
 
-// parseLogLevelFlag parses the --log-level flag early, before Cobra processes the full command.
+// parseLogLevelFlag scans os.Args for --log-level flag before Cobra processes commands.
 // This is necessary because observability components (including the logger) are created before
-// the CLI command runs. By parsing this flag early with pflag, we can override the config value.
+// the CLI command runs. By extracting this flag early, we can override the config value.
 //
 // Returns the log level string if explicitly set, or empty string to use config/env default.
 // Valid values: "trace", "debug", "info", "error"
 func parseLogLevelFlag() string {
-	// Create a separate flag set for early parsing
-	// This avoids conflicts with Cobra's own flag parsing
-	fs := pflag.NewFlagSet("early", pflag.ContinueOnError)
-
-	// Define the log-level flag
-	logLevel := fs.String("log-level", "", "Log level: trace, debug, info, error")
-
-	// Also define flags that might appear before --log-level to avoid parse errors
-	// We only care about --log-level, but need to handle other flags gracefully
-	fs.Bool("version", false, "")
-	fs.BoolP("help", "h", false, "")
-
-	// Parse known flags, ignoring unknown ones (which will be handled by Cobra later)
-	fs.ParseErrorsAllowlist.UnknownFlags = true
-	_ = fs.Parse(os.Args[1:])
-
-	// Validate the log level if provided
-	if *logLevel != "" {
-		validLevels := map[string]bool{
-			"trace": true,
-			"debug": true,
-			"info":  true,
-			"error": true,
+	// Scan args directly for --log-level to avoid partial pflag complexity
+	// This is simpler and more explicit than creating a secondary flag set
+	for i, arg := range os.Args[1:] {
+		// Handle --log-level=value format
+		if strings.HasPrefix(arg, "--log-level=") {
+			value := strings.TrimPrefix(arg, "--log-level=")
+			return validateLogLevel(value)
 		}
-		if !validLevels[*logLevel] {
-			log.Printf("[WARN] Invalid --log-level %q, using config default. Valid values: trace, debug, info, error", *logLevel)
-			return ""
+		// Handle --log-level value format
+		if arg == "--log-level" && i+1 < len(os.Args[1:]) {
+			value := os.Args[i+2] // +2 because we're iterating from Args[1:]
+			return validateLogLevel(value)
 		}
 	}
+	return ""
+}
 
-	return *logLevel
+// validateLogLevel checks if the log level is valid and returns it, or empty string with warning.
+func validateLogLevel(level string) string {
+	validLevels := map[string]bool{
+		"trace": true,
+		"debug": true,
+		"info":  true,
+		"error": true,
+	}
+	if !validLevels[level] {
+		log.Printf("[WARN] Invalid --log-level %q, using config default. Valid values: trace, debug, info, error", level)
+		return ""
+	}
+	return level
 }
 
 // observabilityComponents holds shared observability instances

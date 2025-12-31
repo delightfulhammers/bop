@@ -129,17 +129,22 @@ func (l *DefaultLogger) LogRequest(ctx context.Context, req RequestLog) {
 	redacted := l.RedactAPIKey(req.APIKey)
 
 	if l.format == LogFormatJSON {
-		// JSON format for machine parsing
+		// JSON format for machine parsing - use struct marshaling for safety
+		logEntry := map[string]interface{}{
+			"level":        "debug",
+			"type":         "request",
+			"provider":     req.Provider,
+			"model":        req.Model,
+			"timestamp":    req.Timestamp.Format(time.RFC3339),
+			"prompt_chars": req.PromptChars,
+			"api_key":      redacted,
+		}
 		if l.level == LogLevelTrace && req.PromptContent != "" {
-			// Trace level: include prompt content (truncated if needed)
-			truncatedPrompt := l.truncateContent(req.PromptContent)
-			log.Printf(`{"level":"trace","type":"request","provider":"%s","model":"%s","timestamp":"%s","prompt_chars":%d,"api_key":"%s","prompt_content":%s}`,
-				req.Provider, req.Model, req.Timestamp.Format(time.RFC3339),
-				req.PromptChars, redacted, jsonEscapeString(truncatedPrompt))
-		} else {
-			log.Printf(`{"level":"debug","type":"request","provider":"%s","model":"%s","timestamp":"%s","prompt_chars":%d,"api_key":"%s"}`,
-				req.Provider, req.Model, req.Timestamp.Format(time.RFC3339),
-				req.PromptChars, redacted)
+			logEntry["level"] = "trace"
+			logEntry["prompt_content"] = l.truncateContent(req.PromptContent)
+		}
+		if jsonBytes, err := json.Marshal(logEntry); err == nil {
+			log.Println(string(jsonBytes))
 		}
 	} else {
 		// Human-readable format
@@ -162,19 +167,26 @@ func (l *DefaultLogger) LogResponse(ctx context.Context, resp ResponseLog) {
 	}
 
 	if l.format == LogFormatJSON {
-		// JSON format for machine parsing
+		// JSON format for machine parsing - use struct marshaling for safety
+		logEntry := map[string]interface{}{
+			"level":         "info",
+			"type":          "response",
+			"provider":      resp.Provider,
+			"model":         resp.Model,
+			"timestamp":     resp.Timestamp.Format(time.RFC3339),
+			"duration_ms":   resp.Duration.Milliseconds(),
+			"tokens_in":     resp.TokensIn,
+			"tokens_out":    resp.TokensOut,
+			"cost":          resp.Cost,
+			"status_code":   resp.StatusCode,
+			"finish_reason": resp.FinishReason,
+		}
 		if l.level == LogLevelTrace && resp.ResponseContent != "" {
-			// Trace level: include response content (truncated if needed)
-			truncatedResponse := l.truncateContent(resp.ResponseContent)
-			log.Printf(`{"level":"trace","type":"response","provider":"%s","model":"%s","timestamp":"%s","duration_ms":%d,"tokens_in":%d,"tokens_out":%d,"cost":%.6f,"status_code":%d,"finish_reason":"%s","response_content":%s}`,
-				resp.Provider, resp.Model, resp.Timestamp.Format(time.RFC3339),
-				resp.Duration.Milliseconds(), resp.TokensIn, resp.TokensOut,
-				resp.Cost, resp.StatusCode, resp.FinishReason, jsonEscapeString(truncatedResponse))
-		} else {
-			log.Printf(`{"level":"info","type":"response","provider":"%s","model":"%s","timestamp":"%s","duration_ms":%d,"tokens_in":%d,"tokens_out":%d,"cost":%.6f,"status_code":%d,"finish_reason":"%s"}`,
-				resp.Provider, resp.Model, resp.Timestamp.Format(time.RFC3339),
-				resp.Duration.Milliseconds(), resp.TokensIn, resp.TokensOut,
-				resp.Cost, resp.StatusCode, resp.FinishReason)
+			logEntry["level"] = "trace"
+			logEntry["response_content"] = l.truncateContent(resp.ResponseContent)
+		}
+		if jsonBytes, err := json.Marshal(logEntry); err == nil {
+			log.Println(string(jsonBytes))
 		}
 	} else {
 		// Human-readable format
@@ -189,15 +201,6 @@ func (l *DefaultLogger) LogResponse(ctx context.Context, resp ResponseLog) {
 				resp.Provider, resp.Model, truncatedResponse)
 		}
 	}
-}
-
-// jsonEscapeString properly escapes a string for JSON output.
-func jsonEscapeString(s string) string {
-	b, err := json.Marshal(s)
-	if err != nil {
-		return `""`
-	}
-	return string(b)
 }
 
 // LogError logs an API error.
@@ -215,11 +218,22 @@ func (l *DefaultLogger) LogError(ctx context.Context, err ErrorLog) {
 	}
 
 	if l.format == LogFormatJSON {
-		// JSON format for machine parsing
-		log.Printf(`{"level":"error","type":"error","provider":"%s","model":"%s","timestamp":"%s","duration_ms":%d,"error":"%s","error_type":%d,"status_code":%d,"retryable":%t}`,
-			err.Provider, err.Model, err.Timestamp.Format(time.RFC3339),
-			err.Duration.Milliseconds(), errorMsg, err.ErrorType,
-			err.StatusCode, err.Retryable)
+		// JSON format for machine parsing - use struct marshaling for safety
+		logEntry := map[string]interface{}{
+			"level":       "error",
+			"type":        "error",
+			"provider":    err.Provider,
+			"model":       err.Model,
+			"timestamp":   err.Timestamp.Format(time.RFC3339),
+			"duration_ms": err.Duration.Milliseconds(),
+			"error":       errorMsg,
+			"error_type":  err.ErrorType,
+			"status_code": err.StatusCode,
+			"retryable":   err.Retryable,
+		}
+		if jsonBytes, marshalErr := json.Marshal(logEntry); marshalErr == nil {
+			log.Println(string(jsonBytes))
+		}
 	} else {
 		// Human-readable format
 		log.Printf("[ERROR] %s/%s: API call failed (status=%d, %s): %s",
