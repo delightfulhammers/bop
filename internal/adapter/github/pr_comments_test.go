@@ -563,6 +563,73 @@ func TestCommentToFinding_NilLine(t *testing.T) {
 	assert.Equal(t, 0, finding.Line)
 }
 
+func TestCommentToFinding_WithReviewer(t *testing.T) {
+	tests := []struct {
+		name         string
+		body         string
+		wantReviewer string
+	}{
+		{
+			name:         "extracts reviewer from new format",
+			body:         "**Severity: high**\nDescription\n\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security -->",
+			wantReviewer: "security",
+		},
+		{
+			name:         "extracts reviewer with hyphen",
+			body:         "**Severity: medium**\nText\n\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security-expert -->",
+			wantReviewer: "security-expert",
+		},
+		{
+			name:         "no reviewer in legacy format",
+			body:         "**Severity: low**\nText\n\n<!-- CR_FINGERPRINT:abc123def456abc123def456abc12345 -->",
+			wantReviewer: "",
+		},
+		{
+			name:         "no reviewer marker",
+			body:         "**Severity: high**\nPlain comment with fingerprint\n\n<!-- CR_FP:abc123def456abc123def456abc12345 -->",
+			wantReviewer: "",
+		},
+		{
+			name:         "empty body",
+			body:         "",
+			wantReviewer: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			comment := PullRequestComment{
+				ID:        1001,
+				Body:      tt.body,
+				Path:      "main.go",
+				Line:      intPtr(10),
+				User:      User{Login: "bot"},
+				CreatedAt: "2024-01-15T10:00:00Z",
+			}
+
+			finding := commentToFinding(comment, "abc123", 0)
+
+			assert.Equal(t, tt.wantReviewer, finding.Reviewer)
+		})
+	}
+}
+
+func TestAPICommentToFinding_WithReviewer(t *testing.T) {
+	comment := commentAPIResponse{
+		ID:             1001,
+		Body:           "**Severity: high**\nDescription\n\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:architecture -->",
+		Path:           "main.go",
+		Line:           intPtr(10),
+		User:           User{Login: "bot"},
+		CreatedAt:      "2024-01-15T10:00:00Z",
+		PullRequestURL: "https://api.github.com/repos/owner/repo/pulls/123",
+	}
+
+	finding := apiCommentToFinding(comment, "abc123", 0)
+
+	assert.Equal(t, "architecture", finding.Reviewer)
+}
+
 func TestResolveFindingID(t *testing.T) {
 	tests := []struct {
 		id                string

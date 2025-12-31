@@ -411,8 +411,8 @@ func TestFormatFindingCommentWithFingerprint(t *testing.T) {
 	assert.Contains(t, comment, "SQL injection vulnerability")
 	assert.Contains(t, comment, "Use parameterized queries")
 
-	// Should contain the fingerprint in an HTML comment
-	assert.Contains(t, comment, "<!-- CR_FINGERPRINT:")
+	// Should contain the fingerprint in an HTML comment (new compact format)
+	assert.Contains(t, comment, "<!-- CR_FP:")
 	assert.Contains(t, comment, string(fingerprint))
 	assert.Contains(t, comment, "-->")
 }

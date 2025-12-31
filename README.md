@@ -124,21 +124,77 @@ Create `~/.config/cr/cr.yaml`:
 providers:
   openai:
     enabled: true
-    model: "gpt-4o-mini"
+    defaultModel: "gpt-4o-mini"
     apiKey: "${OPENAI_API_KEY}"
 
   anthropic:
     enabled: true
-    model: "claude-sonnet-4-5"
+    defaultModel: "claude-sonnet-4-5"
     apiKey: "${ANTHROPIC_API_KEY}"
 
 output:
   directory: "./reviews"
 ```
 
+This minimal config gives you multi-provider consensus reviews. Each enabled provider reviews your code, and findings are merged by agreement.
+
 ### Multi-Provider Consensus
 
 When multiple providers are enabled, findings are merged by agreement. A finding reported by 2 of 3 providers is weighted higher than one reported by only 1.
+
+### Reviewer Personas (Optional)
+
+For more control, define specialized reviewers with distinct personas and focuses:
+
+```yaml
+providers:
+  anthropic:
+    enabled: true
+    defaultModel: "claude-sonnet-4-5"  # Default for reviewers using this provider
+    apiKey: "${ANTHROPIC_API_KEY}"
+
+  openai:
+    enabled: true
+    defaultModel: "gpt-4o"
+    apiKey: "${OPENAI_API_KEY}"
+
+# Reviewers section is OPTIONAL - if omitted, provider-based dispatch is used
+reviewers:
+  security:
+    provider: "anthropic"
+    # model is optional - uses provider's defaultModel if not specified
+    weight: 1.5  # Higher weight = more influence in consensus
+    persona: |
+      You are a senior security engineer focused on identifying
+      vulnerabilities, authentication issues, and injection attacks.
+    focus: [security, authentication, authorization]
+    ignore: [style, documentation]
+
+  architecture:
+    provider: "openai"
+    model: "o1-preview"  # Override the provider's default
+    weight: 1.0
+    persona: |
+      You are a software architect focused on maintainability,
+      design patterns, and code organization.
+    focus: [maintainability, architecture, complexity]
+
+defaultReviewers:
+  - security
+  - architecture
+```
+
+Use `--reviewers` to run specific reviewers:
+
+```bash
+# Run only security review
+cr review branch main --reviewers security
+
+# Run multiple reviewers
+cr review branch main --reviewers security,architecture
+```
+
+Built-in personas are available in `templates/reviewers/` for common review focuses.
 
 ### Supported Providers
 
@@ -162,8 +218,10 @@ See [Configuration Guide](docs/CONFIGURATION.md) for all options.
 
 ### Review Quality
 - **Agent verification** — Secondary LLM validates findings to reduce false positives
+- **Reviewer personas** — Specialized reviewers with distinct focuses (security, architecture, performance)
 - **Confidence thresholds** — Configure minimum confidence per severity level
 - **Secret redaction** — Automatically strips secrets before sending to LLMs
+- **Finding attribution** — Each finding shows which reviewer identified it
 
 ### Output Formats
 - **Markdown** — Human-readable review files
@@ -223,7 +281,7 @@ This tool sends code to third-party LLM APIs. Before using on private repositori
 | Phase 1: Foundation | ✅ Complete | Multi-provider LLM, local CLI |
 | Phase 2: GitHub Native | ✅ Complete | First-class reviewer with inline annotations |
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
-| Phase 3.2: Personas | 📋 Planned | Specialized reviewer roles |
+| Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 
 **Current Version:** v0.5.0
 

@@ -129,8 +129,15 @@ func run() error {
 		merger.WithSynthesisProvider(synthAdapter)
 	}
 
-	// Use enhanced prompt builder for richer context
-	promptBuilder := review.NewEnhancedPromptBuilder()
+	// Phase 3.2: Create ReviewerRegistry from config
+	reviewerRegistry, err := review.NewReviewerRegistry(&cfg)
+	if err != nil {
+		log.Fatalf("Failed to create reviewer registry: %v\nPlease configure reviewers in your code-reviewer.yaml", err)
+	}
+
+	// Use enhanced prompt builder for richer context, wrapped with persona support
+	basePromptBuilder := review.NewEnhancedPromptBuilder()
+	personaPromptBuilder := review.NewPersonaPromptBuilder(basePromptBuilder)
 
 	// Instantiate redaction engine if enabled
 	var redactor review.Redactor
@@ -231,8 +238,9 @@ func run() error {
 		SARIF:                sarifWriter,
 		Redactor:             redactor,
 		SeedGenerator:        determinism.GenerateSeed,
-		PromptBuilder:        promptBuilder.Build,
 		Store:                reviewStore,
+		ReviewerRegistry:     reviewerRegistry,
+		PersonaPromptBuilder: personaPromptBuilder,
 		Logger:               reviewLogger,
 		PlanningAgent:        planningAgent,
 		RepoDir:              repoDir,

@@ -9,10 +9,16 @@ import (
 
 // fingerprintMarkerStart is the HTML comment prefix for embedding fingerprints.
 // This marker is invisible in rendered markdown but can be extracted for reply matching.
-const fingerprintMarkerStart = "<!-- CR_FINGERPRINT:"
+const fingerprintMarkerStart = "<!-- CR_FP:"
 
-// fingerprintMarkerEnd closes the HTML comment containing the fingerprint.
+// reviewerMarkerPrefix is the prefix for embedding reviewer name in the same HTML comment.
+const reviewerMarkerPrefix = " CR_REVIEWER:"
+
+// fingerprintMarkerEnd closes the HTML comment containing the fingerprint and reviewer.
 const fingerprintMarkerEnd = " -->"
+
+// legacyFingerprintMarker is the old format for backward compatibility when parsing.
+const legacyFingerprintMarker = "<!-- CR_FINGERPRINT:"
 
 // ReviewActions configures the GitHub review action for each finding severity level.
 // This mirrors config.ReviewActions but lives in the adapter layer to avoid coupling.
@@ -118,18 +124,28 @@ func FormatFindingComment(f domain.Finding) string {
 }
 
 // FormatFindingCommentWithFingerprint formats a finding as a GitHub comment with embedded fingerprint.
-// The fingerprint is stored in an HTML comment that is invisible when rendered but can be
-// extracted to link replies back to the original finding.
+// The fingerprint and optional reviewer name are stored in an HTML comment that is invisible
+// when rendered but can be extracted to link replies back to the original finding.
+//
+// Format: <!-- CR_FP:abc123 CR_REVIEWER:security -->
+// If no reviewer is set, only the fingerprint is included: <!-- CR_FP:abc123 -->
 func FormatFindingCommentWithFingerprint(f domain.Finding, fingerprint domain.FindingFingerprint) string {
 	var sb strings.Builder
 
 	// Start with the standard format
 	sb.WriteString(FormatFindingComment(f))
 
-	// Add fingerprint in hidden HTML comment
+	// Add fingerprint (and optional reviewer) in hidden HTML comment
 	sb.WriteString("\n")
 	sb.WriteString(fingerprintMarkerStart)
 	sb.WriteString(string(fingerprint))
+
+	// Include reviewer name if present (Phase 3.2)
+	if f.ReviewerName != "" {
+		sb.WriteString(reviewerMarkerPrefix)
+		sb.WriteString(f.ReviewerName)
+	}
+
 	sb.WriteString(fingerprintMarkerEnd)
 
 	return sb.String()
@@ -142,16 +158,28 @@ const fingerprintLength = 32
 // Returns the fingerprint and true if found and valid, or empty and false if not present or invalid.
 // This is used to link reply comments back to their original findings.
 //
+// Supports both new format (<!-- CR_FP:abc123 CR_REVIEWER:security -->)
+// and legacy format (<!-- CR_FINGERPRINT:abc123 -->) for backward compatibility.
+//
 // The function validates that the extracted fingerprint matches the expected format
 // (32-character hexadecimal string) to prevent injection of arbitrary strings.
 func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool) {
+	// Try new format first
 	startIdx := strings.Index(body, fingerprintMarkerStart)
+	markerLen := len(fingerprintMarkerStart)
+
+	// Fall back to legacy format if new format not found
+	if startIdx == -1 {
+		startIdx = strings.Index(body, legacyFingerprintMarker)
+		markerLen = len(legacyFingerprintMarker)
+	}
+
 	if startIdx == -1 {
 		return "", false
 	}
 
 	// Find the content start (after the marker)
-	contentStart := startIdx + len(fingerprintMarkerStart)
+	contentStart := startIdx + markerLen
 
 	// Find the end marker
 	remaining := body[contentStart:]
@@ -160,9 +188,17 @@ func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool
 		return "", false
 	}
 
+	// Extract content between markers (may include reviewer tag)
+	content := remaining[:endIdx]
+
+	// If there's a reviewer tag, fingerprint is before it
+	if reviewerIdx := strings.Index(content, reviewerMarkerPrefix); reviewerIdx != -1 {
+		content = content[:reviewerIdx]
+	}
+
 	// Extract, trim, and normalize case (fingerprints are stored lowercase internally,
 	// but might be edited to uppercase accidentally in GitHub comments)
-	fp := strings.ToLower(strings.TrimSpace(remaining[:endIdx]))
+	fp := strings.ToLower(strings.TrimSpace(content))
 	if fp == "" {
 		return "", false
 	}
@@ -173,6 +209,41 @@ func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool
 	}
 
 	return domain.FindingFingerprint(fp), true
+}
+
+// ExtractReviewerFromComment extracts the reviewer name from a GitHub comment body.
+// Returns the reviewer name and true if found, or empty and false if not present.
+// This is used for Phase 3.2 triage context to filter findings by reviewer.
+func ExtractReviewerFromComment(body string) (string, bool) {
+	// Find the fingerprint marker first (reviewer is always after fingerprint)
+	startIdx := strings.Index(body, fingerprintMarkerStart)
+	if startIdx == -1 {
+		return "", false
+	}
+
+	contentStart := startIdx + len(fingerprintMarkerStart)
+	remaining := body[contentStart:]
+
+	// Find the reviewer marker
+	reviewerIdx := strings.Index(remaining, reviewerMarkerPrefix)
+	if reviewerIdx == -1 {
+		return "", false
+	}
+
+	// Find where the reviewer name ends (at the end marker)
+	reviewerStart := reviewerIdx + len(reviewerMarkerPrefix)
+	afterReviewer := remaining[reviewerStart:]
+	endIdx := strings.Index(afterReviewer, fingerprintMarkerEnd)
+	if endIdx == -1 {
+		return "", false
+	}
+
+	reviewer := strings.TrimSpace(afterReviewer[:endIdx])
+	if reviewer == "" {
+		return "", false
+	}
+
+	return reviewer, true
 }
 
 // isValidFingerprint checks if a string is a valid fingerprint format.
@@ -428,6 +499,10 @@ func ExtractCommentDetails(body string) *ExtractedCommentDetails {
 		if idx := strings.Index(body[descStart:], "\n**Suggestion:**"); idx != -1 {
 			descEnd = descStart + idx
 		} else if idx := strings.Index(body[descStart:], fingerprintMarkerStart); idx != -1 {
+			// New format: <!-- CR_FP:
+			descEnd = descStart + idx
+		} else if idx := strings.Index(body[descStart:], legacyFingerprintMarker); idx != -1 {
+			// Legacy format: <!-- CR_FINGERPRINT:
 			descEnd = descStart + idx
 		}
 		details.Description = strings.TrimSpace(body[descStart:descEnd])

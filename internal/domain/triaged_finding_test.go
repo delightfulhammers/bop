@@ -80,3 +80,90 @@ func TestStatusReasons(t *testing.T) {
 		assert.Contains(t, reason, "disputed")
 	})
 }
+
+func TestTriagedFindingContext_FilterByReviewer(t *testing.T) {
+	t.Run("returns nil for nil context", func(t *testing.T) {
+		var ctx *domain.TriagedFindingContext
+		result := ctx.FilterByReviewer("security")
+		assert.Nil(t, result)
+	})
+
+	t.Run("returns nil for empty findings", func(t *testing.T) {
+		ctx := &domain.TriagedFindingContext{
+			PRNumber: 123,
+			Findings: []domain.TriagedFinding{},
+		}
+		result := ctx.FilterByReviewer("security")
+		assert.Nil(t, result)
+	})
+
+	t.Run("returns nil when no matching reviewer", func(t *testing.T) {
+		ctx := &domain.TriagedFindingContext{
+			PRNumber: 123,
+			Findings: []domain.TriagedFinding{
+				{File: "a.go", ReviewerName: "maintainability"},
+				{File: "b.go", ReviewerName: "performance"},
+			},
+		}
+		result := ctx.FilterByReviewer("security")
+		assert.Nil(t, result)
+	})
+
+	t.Run("filters findings by reviewer name", func(t *testing.T) {
+		ctx := &domain.TriagedFindingContext{
+			PRNumber: 123,
+			Findings: []domain.TriagedFinding{
+				{File: "a.go", ReviewerName: "security", Category: "authentication"},
+				{File: "b.go", ReviewerName: "maintainability", Category: "complexity"},
+				{File: "c.go", ReviewerName: "security", Category: "sql_injection"},
+				{File: "d.go", ReviewerName: "performance", Category: "n_plus_one"},
+			},
+		}
+
+		result := ctx.FilterByReviewer("security")
+
+		assert.NotNil(t, result)
+		assert.Equal(t, 123, result.PRNumber)
+		assert.Len(t, result.Findings, 2)
+		assert.Equal(t, "a.go", result.Findings[0].File)
+		assert.Equal(t, "authentication", result.Findings[0].Category)
+		assert.Equal(t, "c.go", result.Findings[1].File)
+		assert.Equal(t, "sql_injection", result.Findings[1].Category)
+	})
+
+	t.Run("preserves all finding fields", func(t *testing.T) {
+		ctx := &domain.TriagedFindingContext{
+			PRNumber: 456,
+			Findings: []domain.TriagedFinding{
+				{
+					File:         "auth.go",
+					LineStart:    10,
+					LineEnd:      20,
+					Category:     "security",
+					Severity:     "high",
+					Description:  "SQL injection vulnerability",
+					Status:       domain.StatusAcknowledged,
+					StatusReason: "Fixed in later commit",
+					Fingerprint:  "abc123",
+					ReviewerName: "security",
+				},
+			},
+		}
+
+		result := ctx.FilterByReviewer("security")
+
+		assert.NotNil(t, result)
+		assert.Len(t, result.Findings, 1)
+		f := result.Findings[0]
+		assert.Equal(t, "auth.go", f.File)
+		assert.Equal(t, 10, f.LineStart)
+		assert.Equal(t, 20, f.LineEnd)
+		assert.Equal(t, "security", f.Category)
+		assert.Equal(t, "high", f.Severity)
+		assert.Equal(t, "SQL injection vulnerability", f.Description)
+		assert.Equal(t, domain.StatusAcknowledged, f.Status)
+		assert.Equal(t, "Fixed in later commit", f.StatusReason)
+		assert.Equal(t, domain.FindingFingerprint("abc123"), f.Fingerprint)
+		assert.Equal(t, "security", f.ReviewerName)
+	})
+}

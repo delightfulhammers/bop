@@ -102,14 +102,44 @@ func (w *Writer) convertToSARIF(artifact review.SARIFArtifact) map[string]interf
 			}
 		}
 
-		// Add suggestion as a property (fixes requires artifactChanges which we don't have)
+		// Add suggestion and reviewer attribution as properties
+		props := make(map[string]interface{})
 		if finding.Suggestion != "" {
-			result["properties"] = map[string]interface{}{
-				"suggestion": finding.Suggestion,
-			}
+			props["suggestion"] = finding.Suggestion
+		}
+		if finding.ReviewerName != "" {
+			props["reviewerName"] = finding.ReviewerName
+			props["reviewerWeight"] = finding.ReviewerWeight
+		}
+		if len(props) > 0 {
+			result["properties"] = props
 		}
 
 		results = append(results, result)
+	}
+
+	// Build tool with extensions for reviewers
+	tool := map[string]interface{}{
+		"driver": map[string]interface{}{
+			"name":            artifact.ProviderName,
+			"informationUri":  "https://github.com/bkyoung/code-reviewer",
+			"version":         "1.0.0",
+			"semanticVersion": "1.0.0",
+			"rules": []map[string]interface{}{
+				{
+					"id":               "code-review",
+					"name":             "CodeReview",
+					"shortDescription": map[string]interface{}{"text": "AI-powered code review findings"},
+					"fullDescription":  map[string]interface{}{"text": "Findings from multi-LLM code review analysis"},
+				},
+			},
+		},
+	}
+
+	// Add reviewer extensions if findings have reviewer attribution
+	extensions := buildReviewerExtensions(artifact.Review.Findings)
+	if len(extensions) > 0 {
+		tool["extensions"] = extensions
 	}
 
 	return map[string]interface{}{
@@ -117,27 +147,36 @@ func (w *Writer) convertToSARIF(artifact review.SARIFArtifact) map[string]interf
 		"$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
 		"runs": []map[string]interface{}{
 			{
-				"tool": map[string]interface{}{
-					"driver": map[string]interface{}{
-						"name":            artifact.ProviderName,
-						"informationUri":  "https://github.com/bkyoung/code-reviewer",
-						"version":         "1.0.0",
-						"semanticVersion": "1.0.0",
-						"rules": []map[string]interface{}{
-							{
-								"id":               "code-review",
-								"name":             "CodeReview",
-								"shortDescription": map[string]interface{}{"text": "AI-powered code review findings"},
-								"fullDescription":  map[string]interface{}{"text": "Findings from multi-LLM code review analysis"},
-							},
-						},
-					},
-				},
+				"tool":       tool,
 				"results":    results,
 				"properties": buildProperties(artifact.Review),
 			},
 		},
 	}
+}
+
+// buildReviewerExtensions creates SARIF tool extensions for each reviewer.
+func buildReviewerExtensions(findings []domain.Finding) []map[string]interface{} {
+	seen := make(map[string]bool)
+	var extensions []map[string]interface{}
+
+	for _, f := range findings {
+		if f.ReviewerName == "" || seen[f.ReviewerName] {
+			continue
+		}
+		seen[f.ReviewerName] = true
+
+		extensions = append(extensions, map[string]interface{}{
+			"name":    f.ReviewerName,
+			"version": "1.0.0",
+			"properties": map[string]interface{}{
+				"weight": f.ReviewerWeight,
+				"role":   "reviewer-persona",
+			},
+		})
+	}
+
+	return extensions
 }
 
 // buildProperties creates the properties map for SARIF run, validating cost.

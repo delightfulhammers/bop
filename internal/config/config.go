@@ -22,9 +22,22 @@ type Config struct {
 	Verification  VerificationConfig        `yaml:"verification"`
 	Deduplication DeduplicationConfig       `yaml:"deduplication"`
 	SizeGuards    SizeGuardsConfig          `yaml:"sizeGuards"`
+
+	// Phase 3.2: Reviewer Personas
+	// Reviewers configures the reviewer personas for code review.
+	// Each reviewer represents a specialized perspective (e.g., security expert, maintainability focused).
+	// Map key is the reviewer name (e.g., "security", "performance").
+	Reviewers map[string]ReviewerConfig `yaml:"reviewers"`
+
+	// DefaultReviewers lists which reviewers to use by default when not overridden by CLI flags.
+	// Each entry must correspond to a key in the Reviewers map.
+	// Example: ["security", "maintainability", "performance"]
+	DefaultReviewers []string `yaml:"defaultReviewers"`
 }
 
 // ProviderConfig configures a single LLM provider.
+// Providers define connection credentials and optionally a default model.
+// When reviewers are configured, they reference providers by name and can override the model.
 type ProviderConfig struct {
 	// Enabled controls whether this provider is used for reviews.
 	// This is a tri-state field with the following semantics:
@@ -34,9 +47,19 @@ type ProviderConfig struct {
 	//     Use this for keyless providers like Ollama that don't require authentication.
 	//   - false: Provider is explicitly disabled, even if APIKey is present.
 	//     Use this to temporarily disable a provider without removing credentials.
-	Enabled *bool  `yaml:"enabled,omitempty"`
-	Model   string `yaml:"model"`
-	APIKey  string `yaml:"apiKey"`
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// DefaultModel is the model to use when no reviewer-specific model is specified.
+	// This is the recommended field for new configurations.
+	// Example: "gpt-4o", "claude-sonnet-4-5", "gemini-2.5-pro"
+	DefaultModel string `yaml:"defaultModel,omitempty"`
+
+	// Model is deprecated but still supported for backward compatibility.
+	// New configurations should use defaultModel instead.
+	// If both are set, defaultModel takes precedence.
+	Model string `yaml:"model,omitempty"`
+
+	APIKey string `yaml:"apiKey"`
 
 	// MaxOutputTokens overrides the default max output tokens for this provider.
 	// Use this for models with different output limits (e.g., older models with 8K,
@@ -48,6 +71,89 @@ type ProviderConfig struct {
 	MaxRetries     *int    `yaml:"maxRetries,omitempty"`
 	InitialBackoff *string `yaml:"initialBackoff,omitempty"`
 	MaxBackoff     *string `yaml:"maxBackoff,omitempty"`
+}
+
+// GetDefaultModel returns the effective default model for this provider.
+// Prefers DefaultModel if set, falls back to Model for backward compatibility.
+func (c ProviderConfig) GetDefaultModel() string {
+	if c.DefaultModel != "" {
+		return c.DefaultModel
+	}
+	return c.Model
+}
+
+// ReviewerConfig configures a single reviewer persona (Phase 3.2).
+// Reviewers represent specialized code review perspectives (e.g., security expert,
+// maintainability focused, performance analyst). Each reviewer uses a specific
+// LLM provider and can have custom persona prompts, focus areas, and weighting.
+type ReviewerConfig struct {
+	// Enabled controls whether this reviewer participates in reviews.
+	// This is a tri-state field with the following semantics:
+	//   - nil (not set in config): Reviewer is enabled.
+	//     This is the default - all configured reviewers are active unless explicitly disabled.
+	//   - true: Reviewer is explicitly enabled.
+	//   - false: Reviewer is explicitly disabled.
+	//     Use this to temporarily disable a reviewer without removing its configuration.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// Provider is the LLM provider to use for this reviewer.
+	// Must reference a provider name defined in the providers section.
+	// Valid values: "openai", "anthropic", "gemini", "ollama"
+	// Required field.
+	Provider string `yaml:"provider"`
+
+	// Model is the specific model to use from the provider.
+	// Examples: "gpt-4o", "claude-opus-4", "gemini-2.5-pro"
+	// Optional: if not set, uses the provider's defaultModel.
+	Model string `yaml:"model,omitempty"`
+
+	// APIKey is the API key for the provider.
+	// Supports environment variable expansion: ${VAR} or $VAR
+	// Optional - can also be set via CR_<PROVIDER>_API_KEY environment variable.
+	APIKey string `yaml:"apiKey,omitempty"`
+
+	// Weight controls how much this reviewer's findings influence the final merged review.
+	// Higher weights give more influence. Default: 1.0
+	// Example: A security expert might have weight 2.0 for security findings.
+	Weight float64 `yaml:"weight,omitempty"`
+
+	// Persona is a custom system prompt that defines this reviewer's expertise and perspective.
+	// This is prepended to the standard review prompt to guide the LLM's behavior.
+	// Example: "You are a security expert specializing in OWASP vulnerabilities..."
+	// Optional - uses default neutral persona if not set.
+	Persona string `yaml:"persona,omitempty"`
+
+	// Focus lists the finding categories this reviewer should prioritize.
+	// When set, the reviewer's persona is augmented to emphasize these areas.
+	// Examples: ["security", "authentication"], ["performance", "scalability"]
+	// Optional - reviews all categories equally if not set.
+	Focus []string `yaml:"focus,omitempty"`
+
+	// Ignore lists finding categories this reviewer should skip.
+	// When set, the reviewer is instructed not to report findings in these categories.
+	// Examples: ["style", "documentation"], ["test_coverage"]
+	// Optional - reviews all categories if not set.
+	Ignore []string `yaml:"ignore,omitempty"`
+
+	// MaxOutputTokens overrides the default max output tokens for this reviewer.
+	// Use this for models with different output limits.
+	// Default: 64000 (works for Claude 4.5, GPT-4o, Gemini 2.5).
+	MaxOutputTokens *int `yaml:"maxOutputTokens,omitempty"`
+
+	// HTTP overrides (optional, use global HTTP config if not set)
+	Timeout        *string `yaml:"timeout,omitempty"`
+	MaxRetries     *int    `yaml:"maxRetries,omitempty"`
+	InitialBackoff *string `yaml:"initialBackoff,omitempty"`
+	MaxBackoff     *string `yaml:"maxBackoff,omitempty"`
+}
+
+// IsEnabled returns whether this reviewer is enabled.
+// Defaults to true if not explicitly set.
+func (c ReviewerConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true // Default enabled
+	}
+	return *c.Enabled
 }
 
 // HTTPConfig holds global HTTP client settings.
@@ -65,6 +171,16 @@ type MergeConfig struct {
 	Model    string             `yaml:"model"`
 	Strategy string             `yaml:"strategy"`
 	Weights  map[string]float64 `yaml:"weights"`
+
+	// Phase 3.2: Reviewer Personas
+	// WeightByReviewer applies per-reviewer weights to finding scores.
+	// When true, agreement score is weighted by reviewer weight instead of simple count.
+	WeightByReviewer bool `yaml:"weightByReviewer"`
+
+	// RespectFocus prevents penalizing low agreement for focused reviewers.
+	// When true, findings from specialized reviewers (with non-empty ReviewerName)
+	// are not penalized for lack of agreement from other reviewers.
+	RespectFocus bool `yaml:"respectFocus"`
 }
 
 // PlanningConfig configures the interactive planning agent.
@@ -270,6 +386,10 @@ func merge(base, overlay Config) Config {
 	result.SizeGuards = chooseSizeGuards(base.SizeGuards, overlay.SizeGuards)
 	result.Providers = mergeProviders(base.Providers, overlay.Providers)
 
+	// Phase 3.2: Merge reviewer personas
+	result.Reviewers = mergeReviewers(base.Reviewers, overlay.Reviewers)
+	result.DefaultReviewers = mergeDefaultReviewers(base.DefaultReviewers, overlay.DefaultReviewers)
+
 	return result
 }
 
@@ -285,6 +405,31 @@ func mergeProviders(base, overlay map[string]ProviderConfig) map[string]Provider
 		result[key] = value
 	}
 	return result
+}
+
+// mergeReviewers merges two reviewer maps, with overlay taking precedence.
+// This follows the same pattern as mergeProviders.
+func mergeReviewers(base, overlay map[string]ReviewerConfig) map[string]ReviewerConfig {
+	if len(base) == 0 && len(overlay) == 0 {
+		return nil
+	}
+	result := make(map[string]ReviewerConfig, len(base)+len(overlay))
+	for key, value := range base {
+		result[key] = value
+	}
+	for key, value := range overlay {
+		result[key] = value
+	}
+	return result
+}
+
+// mergeDefaultReviewers merges default reviewer lists, with overlay taking precedence.
+// Unlike categories (which union), default reviewers are replaced entirely by overlay.
+func mergeDefaultReviewers(base, overlay []string) []string {
+	if len(overlay) > 0 {
+		return overlay
+	}
+	return base
 }
 
 func chooseOutput(base, overlay OutputConfig) OutputConfig {

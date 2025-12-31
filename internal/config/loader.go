@@ -111,6 +111,32 @@ func expandEnvVars(cfg Config) Config {
 		cfg.Providers[name] = provider
 	}
 
+	// Phase 3.2: Expand reviewer config fields
+	for name, reviewer := range cfg.Reviewers {
+		reviewer.APIKey = expandEnvString(reviewer.APIKey)
+		reviewer.Provider = expandEnvString(reviewer.Provider)
+		reviewer.Model = expandEnvString(reviewer.Model)
+		reviewer.Persona = expandEnvString(reviewer.Persona)
+		reviewer.Focus = expandEnvStringSlice(reviewer.Focus)
+		reviewer.Ignore = expandEnvStringSlice(reviewer.Ignore)
+
+		// Expand reviewer-specific HTTP overrides
+		if reviewer.Timeout != nil {
+			timeout := expandEnvString(*reviewer.Timeout)
+			reviewer.Timeout = &timeout
+		}
+		if reviewer.InitialBackoff != nil {
+			backoff := expandEnvString(*reviewer.InitialBackoff)
+			reviewer.InitialBackoff = &backoff
+		}
+		if reviewer.MaxBackoff != nil {
+			backoff := expandEnvString(*reviewer.MaxBackoff)
+			reviewer.MaxBackoff = &backoff
+		}
+
+		cfg.Reviewers[name] = reviewer
+	}
+
 	// Expand HTTP config
 	cfg.HTTP.Timeout = expandEnvString(cfg.HTTP.Timeout)
 	cfg.HTTP.InitialBackoff = expandEnvString(cfg.HTTP.InitialBackoff)

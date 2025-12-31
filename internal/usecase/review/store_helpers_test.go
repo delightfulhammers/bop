@@ -284,17 +284,31 @@ func TestIDGenerationMatchesStorePackage(t *testing.T) {
 
 // Helper to create a test orchestrator with minimal deps
 func createTestOrchestrator(store review.Store) *review.Orchestrator {
+	// Create a minimal reviewer registry for testing
+	testReviewer := domain.Reviewer{
+		Name:     "default",
+		Provider: "test-provider",
+		Model:    "test-model",
+		Weight:   1.0,
+		Enabled:  true,
+	}
+	registry := &mockReviewerRegistry{
+		reviewers:        map[string]domain.Reviewer{"default": testReviewer},
+		defaultReviewers: []string{"default"},
+	}
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
 	return review.NewOrchestrator(review.OrchestratorDeps{
-		Git:           &mockGitEngine{},
-		Providers:     map[string]review.Provider{},
-		Merger:        &mockMerger{},
-		Markdown:      &mockMarkdownWriter{},
-		JSON:          &mockJSONWriter{},
-		SARIF:         &mockSARIFWriter{},
-		SeedGenerator: func(baseRef, targetRef string) uint64 { return 12345 },
-		PromptBuilder: func(ctx review.ProjectContext, diff domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{}, nil
-		},
-		Store: store,
+		Git:                  &mockGitEngine{},
+		Providers:            map[string]review.Provider{},
+		Merger:               &mockMerger{},
+		Markdown:             &mockMarkdownWriter{},
+		JSON:                 &mockJSONWriter{},
+		SARIF:                &mockSARIFWriter{},
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 12345 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
+		Store:                store,
 	})
 }

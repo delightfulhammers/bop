@@ -229,6 +229,10 @@ type PRFinding struct {
 
 	// Category is extracted from the comment body (if present).
 	Category string `json:"category,omitempty"`
+
+	// Reviewer is the persona name extracted from the comment body (if present).
+	// This is set from the CR_REVIEWER marker in Phase 3.2 findings.
+	Reviewer string `json:"reviewer,omitempty"`
 }
 
 // ThreadStatus returns the discussion status of this finding.

@@ -159,26 +159,20 @@ func TestReviewBranchWithSingleProvider(t *testing.T) {
 	jsonWriterMock := &mockJSONWriter{}
 	sarifWriterMock := &mockSARIFWriter{}
 
+	registry, personaBuilder := createTestReviewerDeps("stub-openai")
+
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"stub-openai": providerMock,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		SeedGenerator: func(baseRef, targetRef string) uint64 { return 42 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			if d.ToCommitHash != diff.ToCommitHash {
-				t.Fatalf("unexpected diff passed to prompt builder: %+v", d)
-			}
-			return review.ProviderRequest{
-				Prompt:  "prompt",
-				Seed:    42,
-				MaxSize: 16384,
-			}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
@@ -259,20 +253,21 @@ func TestReviewBranchWithMultipleProviders(t *testing.T) {
 	jsonWriterMock := &mockJSONWriter{}
 	sarifWriterMock := &mockSARIFWriter{}
 
+	registry, personaBuilder := createMultiProviderTestDeps([]string{"provider1", "provider2"})
+
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"provider1": provider1,
 			"provider2": provider2,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		SeedGenerator: func(_, _ string) uint64 { return 42 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{Prompt: "prompt", Seed: 42, MaxSize: 16384}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		SeedGenerator:        func(_, _ string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
@@ -331,17 +326,17 @@ func TestReviewBranchWithMultipleProviders(t *testing.T) {
 func TestCurrentBranchDelegatesToGitEngine(t *testing.T) {
 	ctx := context.Background()
 	gitMock := &mockGitEngine{branch: "main"}
+	registry, personaBuilder := createTestReviewerDeps("mock")
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
-		Git:           gitMock,
-		Providers:     map[string]review.Provider{"mock": &mockProvider{}},
-		Merger:        &mockMerger{},
-		Markdown:      &mockMarkdownWriter{},
-		JSON:          &mockJSONWriter{},
-		SARIF:         &mockSARIFWriter{},
-		SeedGenerator: func(_, _ string) uint64 { return 0 },
-		PromptBuilder: func(review.ProjectContext, domain.Diff, review.BranchRequest, string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{}, nil
-		},
+		Git:                  gitMock,
+		Providers:            map[string]review.Provider{"mock": &mockProvider{}},
+		Merger:               &mockMerger{},
+		Markdown:             &mockMarkdownWriter{},
+		JSON:                 &mockJSONWriter{},
+		SARIF:                &mockSARIFWriter{},
+		SeedGenerator:        func(_, _ string) uint64 { return 0 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	branch, err := orchestrator.CurrentBranch(ctx)
@@ -403,24 +398,21 @@ func TestReviewBranch_StoreIntegration_SavesRunAndReviews(t *testing.T) {
 	mergerMock := &mockMerger{}
 	storeMock := &mockStore{}
 
+	registry, personaBuilder := createTestReviewerDeps("test-provider")
+
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"test-provider": providerMock,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		Store:         storeMock,
-		SeedGenerator: func(baseRef, targetRef string) uint64 { return 12345 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{
-				Prompt:  "test prompt",
-				Seed:    12345,
-				MaxSize: 16384,
-			}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		Store:                storeMock,
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 12345 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
@@ -536,20 +528,20 @@ func TestReviewBranch_StoreDisabled_ContinuesWithoutStore(t *testing.T) {
 	mergerMock := &mockMerger{}
 
 	// Store is nil - simulating disabled store
+	registry, personaBuilder := createTestReviewerDeps("test-provider")
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"test-provider": providerMock,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		Store:         nil, // Disabled
-		SeedGenerator: func(baseRef, targetRef string) uint64 { return 42 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{Prompt: "test", Seed: 42, MaxSize: 16384}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		Store:                nil, // Disabled
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
@@ -610,20 +602,20 @@ func TestReviewBranch_StoreErrors_ContinueGracefully(t *testing.T) {
 		saveFindingsErr: &testError{msg: "database write failed"},
 	}
 
+	registry, personaBuilder := createTestReviewerDeps("test-provider")
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"test-provider": providerMock,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		Store:         storeMock,
-		SeedGenerator: func(baseRef, targetRef string) uint64 { return 42 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{Prompt: "test", Seed: 42, MaxSize: 16384}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		Store:                storeMock,
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
@@ -693,21 +685,21 @@ func TestReviewBranch_CostTracking(t *testing.T) {
 	mergerMock := &mockMerger{}
 	storeMock := &mockStore{}
 
+	registry, personaBuilder := createMultiProviderTestDeps([]string{"provider1", "provider2"})
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"provider1": provider1,
 			"provider2": provider2,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		Store:         storeMock,
-		SeedGenerator: func(_, _ string) uint64 { return 42 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{Prompt: "prompt", Seed: 42, MaxSize: 16384}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		Store:                storeMock,
+		SeedGenerator:        func(_, _ string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
@@ -769,19 +761,19 @@ func TestOrchestrator_ContextCancellation(t *testing.T) {
 	sarifWriterMock := &mockSARIFWriter{}
 	mergerMock := &mockMerger{}
 
+	registry, personaBuilder := createTestReviewerDeps("slow-provider")
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git: gitMock,
 		Providers: map[string]review.Provider{
 			"slow-provider": blockingProv,
 		},
-		Merger:        mergerMock,
-		Markdown:      writerMock,
-		JSON:          jsonWriterMock,
-		SARIF:         sarifWriterMock,
-		SeedGenerator: func(_, _ string) uint64 { return 42 },
-		PromptBuilder: func(ctx review.ProjectContext, d domain.Diff, req review.BranchRequest, providerName string) (review.ProviderRequest, error) {
-			return review.ProviderRequest{Prompt: "prompt", Seed: 42, MaxSize: 8192}, nil
-		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		SeedGenerator:        func(_, _ string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
 	})
 
 	// Run ReviewBranch in a goroutine
@@ -931,4 +923,436 @@ func TestFilterBinaryFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mockReviewerRegistry is a mock implementation of ReviewerRegistry for testing.
+type mockReviewerRegistry struct {
+	reviewers        map[string]domain.Reviewer
+	defaultReviewers []string
+	resolveErr       error
+}
+
+// createTestReviewerDeps creates a ReviewerRegistry and PersonaPromptBuilder for testing.
+// It creates a single reviewer named "default" that uses the specified provider.
+func createTestReviewerDeps(providerName string) (review.ReviewerRegistry, *review.PersonaPromptBuilder) {
+	reviewer := domain.Reviewer{
+		Name:     "default",
+		Provider: providerName,
+		Model:    "test-model",
+		Weight:   1.0,
+		Enabled:  true,
+	}
+	registry := &mockReviewerRegistry{
+		reviewers: map[string]domain.Reviewer{
+			"default": reviewer,
+		},
+		defaultReviewers: []string{"default"},
+	}
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+	return registry, personaBuilder
+}
+
+// createMultiProviderTestDeps creates a ReviewerRegistry with multiple reviewers for testing.
+func createMultiProviderTestDeps(providerNames []string) (review.ReviewerRegistry, *review.PersonaPromptBuilder) {
+	reviewers := make(map[string]domain.Reviewer)
+	defaults := make([]string, 0, len(providerNames))
+	for _, name := range providerNames {
+		reviewerName := "reviewer-" + name
+		reviewers[reviewerName] = domain.Reviewer{
+			Name:     reviewerName,
+			Provider: name,
+			Model:    "test-model",
+			Weight:   1.0,
+			Enabled:  true,
+		}
+		defaults = append(defaults, reviewerName)
+	}
+	registry := &mockReviewerRegistry{
+		reviewers:        reviewers,
+		defaultReviewers: defaults,
+	}
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+	return registry, personaBuilder
+}
+
+func (m *mockReviewerRegistry) Get(name string) (domain.Reviewer, error) {
+	reviewer, ok := m.reviewers[name]
+	if !ok {
+		return domain.Reviewer{}, review.ErrReviewerNotFound
+	}
+	return reviewer, nil
+}
+
+func (m *mockReviewerRegistry) List() []domain.Reviewer {
+	var result []domain.Reviewer
+	for _, r := range m.reviewers {
+		result = append(result, r)
+	}
+	return result
+}
+
+func (m *mockReviewerRegistry) ListEnabled() []domain.Reviewer {
+	var result []domain.Reviewer
+	for _, r := range m.reviewers {
+		if r.Enabled {
+			result = append(result, r)
+		}
+	}
+	return result
+}
+
+func (m *mockReviewerRegistry) Resolve(names []string) ([]domain.Reviewer, error) {
+	if m.resolveErr != nil {
+		return nil, m.resolveErr
+	}
+
+	// Use defaults if no names provided
+	if len(names) == 0 {
+		names = m.defaultReviewers
+	}
+
+	var reviewers []domain.Reviewer
+	for _, name := range names {
+		if r, ok := m.reviewers[name]; ok && r.Enabled {
+			reviewers = append(reviewers, r)
+		}
+	}
+
+	if len(reviewers) == 0 {
+		return nil, review.ErrNoEnabledReviewers
+	}
+
+	return reviewers, nil
+}
+
+func TestReviewBranchWithReviewerDispatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	diff := domain.Diff{
+		FromCommitHash: "abc",
+		ToCommitHash:   "def",
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "@@ -0,0 +1,2 @@\n+package main\n+func main() {}"},
+		},
+	}
+
+	// Create reviewer with weight
+	securityReviewer := domain.Reviewer{
+		Name:     "security",
+		Provider: "stub-provider",
+		Model:    "test-model",
+		Weight:   1.5,
+		Persona:  "You are a security expert.",
+		Focus:    []string{"security"},
+		Enabled:  true,
+	}
+
+	expectedReview := domain.Review{
+		ProviderName: "stub-provider",
+		ModelName:    "test-model",
+		Summary:      "Security review complete.",
+		Findings: []domain.Finding{
+			{
+				ID:          "hash1",
+				File:        "main.go",
+				LineStart:   1,
+				LineEnd:     2,
+				Severity:    "high",
+				Category:    "security",
+				Description: "Potential vulnerability",
+				Suggestion:  "Add validation",
+				Evidence:    true,
+			},
+		},
+	}
+
+	gitMock := &mockGitEngine{diff: diff}
+	providerMock := &mockProvider{response: expectedReview}
+	writerMock := &mockMarkdownWriter{}
+	mergerMock := &mockMerger{}
+	jsonWriterMock := &mockJSONWriter{}
+	sarifWriterMock := &mockSARIFWriter{}
+
+	registry := &mockReviewerRegistry{
+		reviewers: map[string]domain.Reviewer{
+			"security": securityReviewer,
+		},
+		defaultReviewers: []string{"security"},
+	}
+
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+		Git: gitMock,
+		Providers: map[string]review.Provider{
+			"stub-provider": providerMock,
+		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
+	})
+
+	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+		BaseRef:   "main",
+		TargetRef: "feature",
+		OutputDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify provider was called
+	if len(providerMock.requests) != 1 {
+		t.Fatalf("expected provider to be called once, got %d", len(providerMock.requests))
+	}
+
+	// Verify the request has the reviewer name
+	if providerMock.requests[0].ReviewerName != "security" {
+		t.Errorf("expected reviewer name 'security', got '%s'", providerMock.requests[0].ReviewerName)
+	}
+
+	// Verify findings are tagged with reviewer metadata
+	if len(result.Reviews) < 1 {
+		t.Fatalf("expected at least 1 review, got %d", len(result.Reviews))
+	}
+
+	// Find the review from stub-provider (not merged)
+	var reviewFromProvider domain.Review
+	for _, r := range result.Reviews {
+		if r.ProviderName == "stub-provider" {
+			reviewFromProvider = r
+			break
+		}
+	}
+
+	if len(reviewFromProvider.Findings) == 0 {
+		t.Fatalf("expected findings in review, got 0")
+	}
+
+	// Verify findings have reviewer metadata
+	finding := reviewFromProvider.Findings[0]
+	if finding.ReviewerName != "security" {
+		t.Errorf("expected finding.ReviewerName = 'security', got '%s'", finding.ReviewerName)
+	}
+	if finding.ReviewerWeight != 1.5 {
+		t.Errorf("expected finding.ReviewerWeight = 1.5, got %f", finding.ReviewerWeight)
+	}
+}
+
+func TestReviewBranchWithMultipleReviewers(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	diff := domain.Diff{
+		FromCommitHash: "abc",
+		ToCommitHash:   "def",
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "@@ -0,0 +1,2 @@\n+package main\n+func main() {}"},
+		},
+	}
+
+	// Create two reviewers using different providers
+	securityReviewer := domain.Reviewer{
+		Name:     "security",
+		Provider: "provider-a",
+		Model:    "model-a",
+		Weight:   1.5,
+		Persona:  "Security expert",
+		Enabled:  true,
+	}
+
+	maintainabilityReviewer := domain.Reviewer{
+		Name:     "maintainability",
+		Provider: "provider-b",
+		Model:    "model-b",
+		Weight:   1.0,
+		Persona:  "Maintainability expert",
+		Enabled:  true,
+	}
+
+	reviewA := domain.Review{
+		ProviderName: "provider-a",
+		ModelName:    "model-a",
+		Summary:      "Security review",
+		Findings: []domain.Finding{
+			{ID: "a1", File: "main.go", LineStart: 1, LineEnd: 1, Severity: "high", Category: "security", Description: "Issue A"},
+		},
+	}
+
+	reviewB := domain.Review{
+		ProviderName: "provider-b",
+		ModelName:    "model-b",
+		Summary:      "Maintainability review",
+		Findings: []domain.Finding{
+			{ID: "b1", File: "main.go", LineStart: 1, LineEnd: 1, Severity: "medium", Category: "complexity", Description: "Issue B"},
+		},
+	}
+
+	gitMock := &mockGitEngine{diff: diff}
+	providerA := &mockProvider{response: reviewA}
+	providerB := &mockProvider{response: reviewB}
+	writerMock := &mockMarkdownWriter{}
+	mergerMock := &mockMerger{}
+	jsonWriterMock := &mockJSONWriter{}
+	sarifWriterMock := &mockSARIFWriter{}
+
+	registry := &mockReviewerRegistry{
+		reviewers: map[string]domain.Reviewer{
+			"security":        securityReviewer,
+			"maintainability": maintainabilityReviewer,
+		},
+		defaultReviewers: []string{"security", "maintainability"},
+	}
+
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+		Git: gitMock,
+		Providers: map[string]review.Provider{
+			"provider-a": providerA,
+			"provider-b": providerB,
+		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
+	})
+
+	result, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+		BaseRef:   "main",
+		TargetRef: "feature",
+		OutputDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// Verify both providers were called
+	if len(providerA.requests) != 1 {
+		t.Errorf("expected provider-a to be called once, got %d", len(providerA.requests))
+	}
+	if len(providerB.requests) != 1 {
+		t.Errorf("expected provider-b to be called once, got %d", len(providerB.requests))
+	}
+
+	// Verify we have 3 reviews (2 from reviewers + 1 merged)
+	if len(result.Reviews) != 3 {
+		t.Fatalf("expected 3 reviews (2 reviewers + 1 merged), got %d", len(result.Reviews))
+	}
+
+	// Verify merger was called with both reviews
+	if len(mergerMock.calls) != 1 {
+		t.Fatalf("expected merger to be called once, got %d", len(mergerMock.calls))
+	}
+	if len(mergerMock.calls[0]) != 2 {
+		t.Errorf("expected merger to receive 2 reviews, got %d", len(mergerMock.calls[0]))
+	}
+
+	// Verify findings have correct reviewer metadata
+	for _, rev := range result.Reviews {
+		if rev.ProviderName == "merged" {
+			continue // Skip merged review
+		}
+
+		for _, finding := range rev.Findings {
+			switch rev.ProviderName {
+			case "provider-a":
+				if finding.ReviewerName != "security" {
+					t.Errorf("expected finding from provider-a to have ReviewerName='security', got '%s'", finding.ReviewerName)
+				}
+				if finding.ReviewerWeight != 1.5 {
+					t.Errorf("expected finding from provider-a to have ReviewerWeight=1.5, got %f", finding.ReviewerWeight)
+				}
+			case "provider-b":
+				if finding.ReviewerName != "maintainability" {
+					t.Errorf("expected finding from provider-b to have ReviewerName='maintainability', got '%s'", finding.ReviewerName)
+				}
+				if finding.ReviewerWeight != 1.0 {
+					t.Errorf("expected finding from provider-b to have ReviewerWeight=1.0, got %f", finding.ReviewerWeight)
+				}
+			}
+		}
+	}
+}
+
+func TestReviewBranchReviewerDispatchMissingProvider(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	diff := domain.Diff{
+		FromCommitHash: "abc",
+		ToCommitHash:   "def",
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "@@ -0,0 +1,2 @@\n+package main\n+func main() {}"},
+		},
+	}
+
+	// Reviewer references a provider that doesn't exist
+	reviewer := domain.Reviewer{
+		Name:     "test-reviewer",
+		Provider: "nonexistent-provider",
+		Model:    "test-model",
+		Weight:   1.0,
+		Enabled:  true,
+	}
+
+	gitMock := &mockGitEngine{diff: diff}
+	writerMock := &mockMarkdownWriter{}
+	mergerMock := &mockMerger{}
+	jsonWriterMock := &mockJSONWriter{}
+	sarifWriterMock := &mockSARIFWriter{}
+
+	registry := &mockReviewerRegistry{
+		reviewers: map[string]domain.Reviewer{
+			"test-reviewer": reviewer,
+		},
+		defaultReviewers: []string{"test-reviewer"},
+	}
+
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+	// Provide a different provider so validation passes, but not the one the reviewer needs
+	dummyProvider := &mockProvider{response: domain.Review{Summary: "dummy"}}
+	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+		Git: gitMock,
+		Providers: map[string]review.Provider{
+			"some-other-provider": dummyProvider, // Not "nonexistent-provider"
+		},
+		Merger:               mergerMock,
+		Markdown:             writerMock,
+		JSON:                 jsonWriterMock,
+		SARIF:                sarifWriterMock,
+		SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+		ReviewerRegistry:     registry,
+		PersonaPromptBuilder: personaBuilder,
+	})
+
+	_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+		BaseRef:   "main",
+		TargetRef: "feature",
+		OutputDir: t.TempDir(),
+	})
+
+	// Should return an error about missing provider
+	if err == nil {
+		t.Fatal("expected error for missing provider, got nil")
+	}
+
+	if !containsString(err.Error(), "nonexistent-provider") {
+		t.Errorf("expected error to mention missing provider, got: %v", err)
+	}
+}
+
+func containsString(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsString(s[1:], substr) || s[:len(substr)] == substr)
 }

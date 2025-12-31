@@ -2,35 +2,105 @@
 # This file configures the code-reviewer application for CI/CD usage
 
 # LLM Provider Configuration
+# Providers define connection details (API keys, credentials, timeouts) for LLM services.
+# The defaultModel is used when a reviewer doesn't specify its own model.
+# Reviewers (defined below) reference these providers by name.
 providers:
   # Static provider (for testing - returns canned responses)
   static:
     enabled: false
-    model: "static-model"
+    defaultModel: "static-model"
 
   # OpenAI provider (GPT models)
   openai:
     enabled: true
-    model: "gpt-5.2"
+    defaultModel: "gpt-5.2"
     apiKey: "${OPENAI_API_KEY}"
 
   # Anthropic provider (Claude models)
   anthropic:
     enabled: true
-    model: "claude-sonnet-4-5-20250929"
+    defaultModel: "claude-sonnet-4-5-20250929"
     apiKey: "${ANTHROPIC_API_KEY}"
 
   # Google Gemini provider
   gemini:
     enabled: true
-    model: "gemini-3-pro-preview"
+    defaultModel: "gemini-3-pro-preview"
     apiKey: "${GEMINI_API_KEY}"
     timeout: "180s"  # Gemini 3 Pro is a reasoning model that may need extra time
 
   # Ollama provider (local LLM)
   # ollama:
   #   enabled: false
-  #   model: "qwen3:235b"
+  #   defaultModel: "qwen3:235b"
+
+# Reviewer Personas (Phase 3.2 - OPTIONAL)
+# Each reviewer represents a specialized code review perspective.
+# Reviewers reference providers defined above for LLM connectivity.
+# If this section is omitted, the original provider-based dispatch is used.
+#
+# The 'model' field is optional - if not specified, uses the provider's defaultModel.
+reviewers:
+  # Security-focused reviewer using Claude for nuanced vulnerability detection
+  # Note: model omitted - uses anthropic's defaultModel (claude-sonnet-4-5-20250929)
+  security:
+    provider: "anthropic"
+    weight: 1.5  # Higher weight for security findings
+    persona: |
+      You are a senior security engineer specializing in application security.
+      Focus on OWASP Top 10 vulnerabilities, authentication/authorization flaws,
+      injection attacks, and sensitive data exposure. You have deep experience
+      with secure coding practices and threat modeling.
+    focus:
+      - security
+      - authentication
+      - authorization
+    ignore:
+      - style
+      - documentation
+
+  # Architecture/maintainability reviewer using GPT for code quality analysis
+  # Note: model omitted - uses openai's defaultModel (gpt-5.2)
+  architecture:
+    provider: "openai"
+    weight: 1.0
+    persona: |
+      You are a software architect focused on code maintainability and design.
+      Evaluate SOLID principles, clean architecture patterns, appropriate
+      abstractions, and long-term maintainability. You prioritize readable,
+      well-structured code that's easy to extend and test.
+    focus:
+      - maintainability
+      - architecture
+      - complexity
+    ignore:
+      - performance  # Leave to performance reviewer
+
+  # Performance/efficiency reviewer using Gemini for deep analysis
+  # Example of explicit model override (uses different model than provider default)
+  performance:
+    provider: "gemini"
+    model: "gemini-3-flash-preview"  # Override: use flash for faster performance checks
+    weight: 1.0
+    persona: |
+      You are a performance engineer specializing in system efficiency.
+      Identify N+1 queries, unnecessary allocations, poor algorithmic
+      complexity, resource leaks, and concurrency issues. You focus on
+      measurable performance impacts rather than micro-optimizations.
+    focus:
+      - performance
+      - scalability
+      - resource_management
+    ignore:
+      - style
+      - documentation
+
+# Default reviewers to use when no --reviewers flag is specified
+defaultReviewers:
+  - security
+  - architecture
+  - performance
 
 # Store Configuration
 # Enables persistence of review history to SQLite database

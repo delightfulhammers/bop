@@ -372,6 +372,9 @@ func commentToFinding(comment PullRequestComment, fingerprint string, replyCount
 
 	createdAt, _ := time.Parse(time.RFC3339, comment.CreatedAt)
 
+	// Extract reviewer name from CR_REVIEWER marker (Phase 3.2)
+	reviewer, _ := ExtractReviewerFromComment(comment.Body)
+
 	return domain.PRFinding{
 		CommentID:   comment.ID,
 		Fingerprint: fingerprint,
@@ -384,6 +387,7 @@ func commentToFinding(comment PullRequestComment, fingerprint string, replyCount
 		ReplyCount:  replyCount,
 		Severity:    parseSeverity(comment.Body),
 		Category:    parseCategory(comment.Body),
+		Reviewer:    reviewer,
 	}
 }
 
@@ -395,6 +399,9 @@ func apiCommentToFinding(comment commentAPIResponse, fingerprint string, replyCo
 	}
 
 	createdAt, _ := time.Parse(time.RFC3339, comment.CreatedAt)
+
+	// Extract reviewer name from CR_REVIEWER marker (Phase 3.2)
+	reviewer, _ := ExtractReviewerFromComment(comment.Body)
 
 	return domain.PRFinding{
 		CommentID:   comment.ID,
@@ -408,6 +415,7 @@ func apiCommentToFinding(comment commentAPIResponse, fingerprint string, replyCo
 		ReplyCount:  replyCount,
 		Severity:    parseSeverity(comment.Body),
 		Category:    parseCategory(comment.Body),
+		Reviewer:    reviewer,
 	}
 }
 
