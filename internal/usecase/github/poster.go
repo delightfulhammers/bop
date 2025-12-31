@@ -660,12 +660,9 @@ func extractPriorCosts(reviews []github.ReviewSummary, botUsername string) float
 			continue
 		}
 
-		// Skip dismissed reviews (they're historical, don't count)
-		if review.State == string(github.StateDismissed) {
-			continue
-		}
-
-		// Extract cost from review body
+		// Include ALL bot reviews (even DISMISSED) for true cumulative cost.
+		// Dismissed reviews are prior reviews we dismissed after posting new ones,
+		// so their costs are still part of the PR's total review spend.
 		if cost, ok := github.ExtractCostFromReview(review.Body); ok {
 			totalCost += cost
 		}
