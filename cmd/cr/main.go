@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"github.com/bkyoung/code-reviewer/internal/adapter/cli"
 	dedupadapter "github.com/bkyoung/code-reviewer/internal/adapter/dedup"
 	"github.com/bkyoung/code-reviewer/internal/adapter/git"
@@ -54,6 +56,11 @@ func run() error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	// Parse --log-level flag early, before config loading and observability setup.
+	// This uses pflag directly (which Cobra uses internally) to allow CLI override
+	// of the log level before the logger is created.
+	cliLogLevel := parseLogLevelFlag()
+
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
 		FileName:    "cr",
@@ -61,6 +68,11 @@ func run() error {
 	})
 	if err != nil {
 		return fmt.Errorf("config load failed: %w", err)
+	}
+
+	// Apply CLI log level override if provided
+	if cliLogLevel != "" {
+		cfg.Observability.Logging.Level = cliLogLevel
 	}
 
 	repoDir := cfg.Git.RepositoryDir
@@ -119,7 +131,9 @@ func run() error {
 	// Use intelligent merger for better finding aggregation
 	// Note: Pass nil for store for now - precision priors will use defaults
 	// TODO: Wire up store adapter when precision prior tracking is needed
-	merger := merge.NewIntelligentMerger(nil)
+	merger := merge.NewIntelligentMerger(nil).
+		WithReviewerWeighting(cfg.Merge.WeightByReviewer).
+		WithRespectFocus(cfg.Merge.RespectFocus)
 
 	// Wire up LLM-based summary synthesis using configured merge provider/model
 	synthProvider := createMergeSynthesisProvider(&cfg, obs)
@@ -230,24 +244,25 @@ func run() error {
 	providerMaxTokens := buildProviderMaxTokens(cfg.Providers)
 
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
-		Git:                  gitEngine,
-		Providers:            providers,
-		Merger:               merger,
-		Markdown:             markdownWriter,
-		JSON:                 jsonWriter,
-		SARIF:                sarifWriter,
-		Redactor:             redactor,
-		SeedGenerator:        determinism.GenerateSeed,
-		Store:                reviewStore,
-		ReviewerRegistry:     reviewerRegistry,
-		PersonaPromptBuilder: personaPromptBuilder,
-		Logger:               reviewLogger,
-		PlanningAgent:        planningAgent,
-		RepoDir:              repoDir,
-		GitHubPoster:         githubPoster,
-		Verifier:             verifier,
-		TriageContextFetcher: triageContextFetcher,
-		ProviderMaxTokens:    providerMaxTokens,
+		Git:                    gitEngine,
+		Providers:              providers,
+		Merger:                 merger,
+		Markdown:               markdownWriter,
+		JSON:                   jsonWriter,
+		SARIF:                  sarifWriter,
+		Redactor:               redactor,
+		SeedGenerator:          determinism.GenerateSeed,
+		Store:                  reviewStore,
+		ReviewerRegistry:       reviewerRegistry,
+		PersonaPromptBuilder:   personaPromptBuilder,
+		Logger:                 reviewLogger,
+		PlanningAgent:          planningAgent,
+		RepoDir:                repoDir,
+		GitHubPoster:           githubPoster,
+		Verifier:               verifier,
+		TriageContextFetcher:   triageContextFetcher,
+		ProviderMaxTokens:      providerMaxTokens,
+		MaxConcurrentReviewers: cfg.Review.MaxConcurrentReviewers,
 	})
 
 	root := cli.NewRootCommand(cli.Dependencies{
@@ -303,6 +318,46 @@ func defaultConfigPaths() []string {
 	return paths
 }
 
+// parseLogLevelFlag parses the --log-level flag early, before Cobra processes the full command.
+// This is necessary because observability components (including the logger) are created before
+// the CLI command runs. By parsing this flag early with pflag, we can override the config value.
+//
+// Returns the log level string if explicitly set, or empty string to use config/env default.
+// Valid values: "trace", "debug", "info", "error"
+func parseLogLevelFlag() string {
+	// Create a separate flag set for early parsing
+	// This avoids conflicts with Cobra's own flag parsing
+	fs := pflag.NewFlagSet("early", pflag.ContinueOnError)
+
+	// Define the log-level flag
+	logLevel := fs.String("log-level", "", "Log level: trace, debug, info, error")
+
+	// Also define flags that might appear before --log-level to avoid parse errors
+	// We only care about --log-level, but need to handle other flags gracefully
+	fs.Bool("version", false, "")
+	fs.BoolP("help", "h", false, "")
+
+	// Parse known flags, ignoring unknown ones (which will be handled by Cobra later)
+	fs.ParseErrorsAllowlist.UnknownFlags = true
+	_ = fs.Parse(os.Args[1:])
+
+	// Validate the log level if provided
+	if *logLevel != "" {
+		validLevels := map[string]bool{
+			"trace": true,
+			"debug": true,
+			"info":  true,
+			"error": true,
+		}
+		if !validLevels[*logLevel] {
+			log.Printf("[WARN] Invalid --log-level %q, using config default. Valid values: trace, debug, info, error", *logLevel)
+			return ""
+		}
+	}
+
+	return *logLevel
+}
+
 // observabilityComponents holds shared observability instances
 type observabilityComponents struct {
 	logger  llmhttp.Logger
@@ -320,6 +375,10 @@ func buildObservability(cfg config.ObservabilityConfig) observabilityComponents 
 	if cfg.Logging.Enabled {
 		logLevel := llmhttp.LogLevelInfo
 		switch cfg.Logging.Level {
+		case "trace":
+			logLevel = llmhttp.LogLevelTrace
+			// Warn about trace level exposing potentially sensitive content
+			log.Println("[WARN] Trace logging enabled - prompts and responses will be logged. This may expose sensitive code in logs.")
 		case "debug":
 			logLevel = llmhttp.LogLevelDebug
 		case "error":
@@ -331,7 +390,11 @@ func buildObservability(cfg config.ObservabilityConfig) observabilityComponents 
 			logFormat = llmhttp.LogFormatJSON
 		}
 
-		logger = llmhttp.NewDefaultLogger(logLevel, logFormat, cfg.Logging.RedactAPIKeys)
+		defaultLogger := llmhttp.NewDefaultLogger(logLevel, logFormat, cfg.Logging.RedactAPIKeys)
+		if cfg.Logging.MaxContentBytes > 0 {
+			defaultLogger = defaultLogger.WithMaxContentBytes(cfg.Logging.MaxContentBytes)
+		}
+		logger = defaultLogger
 	}
 
 	// Create metrics tracker if enabled

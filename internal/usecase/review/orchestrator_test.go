@@ -2,6 +2,7 @@ package review_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -1355,4 +1356,188 @@ func TestReviewBranchReviewerDispatchMissingProvider(t *testing.T) {
 	if !strings.Contains(err.Error(), "nonexistent-provider") {
 		t.Errorf("expected error to mention missing provider, got: %v", err)
 	}
+}
+
+func TestReviewBranchConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	diff := domain.Diff{
+		FromCommitHash: "abc",
+		ToCommitHash:   "def",
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "@@ -0,0 +1,2 @@\n+package main\n+func main() {}"},
+		},
+	}
+
+	// Create 5 reviewers to test concurrency limiting
+	reviewers := make(map[string]domain.Reviewer)
+	defaultReviewers := make([]string, 5)
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("reviewer-%d", i)
+		reviewers[name] = domain.Reviewer{
+			Name:     name,
+			Provider: "shared-provider",
+			Model:    "test-model",
+			Weight:   1.0,
+			Enabled:  true,
+		}
+		defaultReviewers[i] = name
+	}
+
+	// Track concurrent executions
+	var (
+		mu             sync.Mutex
+		currentCount   int
+		maxConcurrent  int
+		callTimestamps []time.Time
+	)
+
+	concurrencyTrackingProvider := &concurrencyTrackingMockProvider{
+		response: domain.Review{
+			ProviderName: "shared-provider",
+			ModelName:    "test-model",
+			Summary:      "Test review",
+			Findings:     []domain.Finding{},
+		},
+		delay: 50 * time.Millisecond, // Small delay to allow concurrency measurement
+		onCall: func() {
+			mu.Lock()
+			currentCount++
+			if currentCount > maxConcurrent {
+				maxConcurrent = currentCount
+			}
+			callTimestamps = append(callTimestamps, time.Now())
+			mu.Unlock()
+		},
+		onReturn: func() {
+			mu.Lock()
+			currentCount--
+			mu.Unlock()
+		},
+	}
+
+	gitMock := &mockGitEngine{diff: diff}
+	writerMock := &mockMarkdownWriter{}
+	mergerMock := &mockMerger{}
+	jsonWriterMock := &mockJSONWriter{}
+	sarifWriterMock := &mockSARIFWriter{}
+
+	registry := &mockReviewerRegistry{
+		reviewers:        reviewers,
+		defaultReviewers: defaultReviewers,
+	}
+
+	baseBuilder := review.NewEnhancedPromptBuilder()
+	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+	t.Run("unlimited concurrency", func(t *testing.T) {
+		mu.Lock()
+		currentCount = 0
+		maxConcurrent = 0
+		callTimestamps = nil
+		mu.Unlock()
+
+		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+			Git: gitMock,
+			Providers: map[string]review.Provider{
+				"shared-provider": concurrencyTrackingProvider,
+			},
+			Merger:                 mergerMock,
+			Markdown:               writerMock,
+			JSON:                   jsonWriterMock,
+			SARIF:                  sarifWriterMock,
+			SeedGenerator:          func(baseRef, targetRef string) uint64 { return 42 },
+			ReviewerRegistry:       registry,
+			PersonaPromptBuilder:   personaBuilder,
+			MaxConcurrentReviewers: 0, // Unlimited
+		})
+
+		_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+			BaseRef:   "main",
+			TargetRef: "feature",
+			OutputDir: t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		mu.Lock()
+		observed := maxConcurrent
+		mu.Unlock()
+
+		// With unlimited concurrency, all 5 should run at once
+		if observed < 3 {
+			t.Errorf("expected at least 3 concurrent reviewers with unlimited concurrency, got %d", observed)
+		}
+	})
+
+	t.Run("limited to 2 concurrent", func(t *testing.T) {
+		mu.Lock()
+		currentCount = 0
+		maxConcurrent = 0
+		callTimestamps = nil
+		mu.Unlock()
+
+		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+			Git: gitMock,
+			Providers: map[string]review.Provider{
+				"shared-provider": concurrencyTrackingProvider,
+			},
+			Merger:                 mergerMock,
+			Markdown:               writerMock,
+			JSON:                   jsonWriterMock,
+			SARIF:                  sarifWriterMock,
+			SeedGenerator:          func(baseRef, targetRef string) uint64 { return 42 },
+			ReviewerRegistry:       registry,
+			PersonaPromptBuilder:   personaBuilder,
+			MaxConcurrentReviewers: 2, // Limited to 2
+		})
+
+		_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+			BaseRef:   "main",
+			TargetRef: "feature",
+			OutputDir: t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		mu.Lock()
+		observed := maxConcurrent
+		mu.Unlock()
+
+		// With limit of 2, should never exceed 2 concurrent
+		if observed > 2 {
+			t.Errorf("expected max 2 concurrent reviewers, got %d", observed)
+		}
+	})
+}
+
+// concurrencyTrackingMockProvider tracks concurrent invocations
+type concurrencyTrackingMockProvider struct {
+	response domain.Review
+	delay    time.Duration
+	onCall   func()
+	onReturn func()
+}
+
+func (m *concurrencyTrackingMockProvider) Review(ctx context.Context, req review.ProviderRequest) (domain.Review, error) {
+	if m.onCall != nil {
+		m.onCall()
+	}
+	defer func() {
+		if m.onReturn != nil {
+			m.onReturn()
+		}
+	}()
+
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
+
+	return m.response, nil
+}
+
+func (m *concurrencyTrackingMockProvider) EstimateTokens(text string) int {
+	return len(text) / 4 // Simple estimate for testing
 }

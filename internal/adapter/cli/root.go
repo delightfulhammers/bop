@@ -108,6 +108,12 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 
 	var showVersion bool
 	root.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "Show version and exit")
+
+	// --log-level is parsed early (before config loading) via parseLogLevelFlag() in main.go.
+	// We define it here so it appears in --help output for discoverability.
+	// The actual value is already applied to config by the time this command runs.
+	root.PersistentFlags().String("log-level", "", "Log level: trace, debug, info, error (default from config)")
+
 	versionHandler := func(cmd *cobra.Command, args []string) error {
 		if showVersion {
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), versionString)

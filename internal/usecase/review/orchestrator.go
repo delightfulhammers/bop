@@ -232,6 +232,10 @@ type OrchestratorDeps struct {
 	// PersonaPromptBuilder builds prompts with persona injection.
 	// Required: used to build prompts for each reviewer.
 	PersonaPromptBuilder *PersonaPromptBuilder
+
+	// MaxConcurrentReviewers limits concurrent reviewer dispatch.
+	// 0 means unlimited (all reviewers run in parallel).
+	MaxConcurrentReviewers int
 }
 
 // ProviderRequest describes the payload the LLM provider expects.
@@ -569,10 +573,25 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 	var wg sync.WaitGroup
 	resultsChan := make(chan dispatchResult, len(reviewers))
 
+	// Create semaphore for concurrency limiting (0 = unlimited)
+	var sem chan struct{}
+	if o.deps.MaxConcurrentReviewers > 0 {
+		sem = make(chan struct{}, o.deps.MaxConcurrentReviewers)
+	}
+
 	for _, reviewer := range reviewers {
+		// Acquire semaphore slot if concurrency is limited
+		if sem != nil {
+			sem <- struct{}{}
+		}
+
 		wg.Add(1)
 		go func(reviewer domain.Reviewer, runID string) {
 			defer func() {
+				// Release semaphore slot
+				if sem != nil {
+					<-sem
+				}
 				if r := recover(); r != nil {
 					resultsChan <- dispatchResult{err: fmt.Errorf("reviewer %s panicked: %v", reviewer.Name, r)}
 				}

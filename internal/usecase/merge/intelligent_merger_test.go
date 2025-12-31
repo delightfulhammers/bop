@@ -571,3 +571,152 @@ func (m *mockSynthesisProvider) Review(ctx context.Context, prompt string, seed 
 	}
 	return m.response, nil
 }
+
+func TestWithReviewerWeighting(t *testing.T) {
+	// Create a group with reviewers having different weights
+	group := findingGroup{
+		findings: []domain.Finding{
+			{ReviewerName: "security", ReviewerWeight: 1.5},
+			{ReviewerName: "style", ReviewerWeight: 0.5},
+		},
+		providers: map[string]bool{"anthropic": true},
+		reviewers: map[string]float64{
+			"security": 1.5,
+			"style":    0.5,
+		},
+	}
+
+	t.Run("weighted scoring enabled", func(t *testing.T) {
+		merger := NewIntelligentMerger(nil).WithReviewerWeighting(true)
+		score := merger.calculateAgreementScore(group)
+
+		// Should sum weights: 1.5 + 0.5 = 2.0
+		expected := 2.0
+		if score != expected {
+			t.Errorf("expected weighted score %.1f, got %.1f", expected, score)
+		}
+	})
+
+	t.Run("weighted scoring disabled", func(t *testing.T) {
+		merger := NewIntelligentMerger(nil).WithReviewerWeighting(false)
+		score := merger.calculateAgreementScore(group)
+
+		// Should fall back to provider count: 1
+		expected := 1.0
+		if score != expected {
+			t.Errorf("expected provider count %.1f, got %.1f", expected, score)
+		}
+	})
+}
+
+func TestWithRespectFocus(t *testing.T) {
+	// Create a group from a specialized reviewer with low agreement
+	groupWithReviewer := findingGroup{
+		findings: []domain.Finding{
+			{ReviewerName: "security", ReviewerWeight: 1.0},
+		},
+		providers: map[string]bool{}, // Empty providers (edge case)
+		reviewers: map[string]float64{
+			"security": 1.0,
+		},
+	}
+
+	// Create a group without reviewers (legacy behavior)
+	groupWithoutReviewer := findingGroup{
+		findings: []domain.Finding{
+			{Description: "Some finding"},
+		},
+		providers: map[string]bool{}, // Empty = low agreement
+		reviewers: map[string]float64{},
+	}
+
+	t.Run("respect focus enabled with specialized reviewer", func(t *testing.T) {
+		merger := NewIntelligentMerger(nil).
+			WithReviewerWeighting(false). // Disable to test respectFocus path
+			WithRespectFocus(true)
+		score := merger.calculateAgreementScore(groupWithReviewer)
+
+		// Should not penalize specialized reviewer, minimum 1.0
+		if score < 1.0 {
+			t.Errorf("expected minimum score 1.0 for specialized reviewer, got %.1f", score)
+		}
+	})
+
+	t.Run("respect focus disabled", func(t *testing.T) {
+		merger := NewIntelligentMerger(nil).
+			WithReviewerWeighting(false).
+			WithRespectFocus(false)
+		score := merger.calculateAgreementScore(groupWithoutReviewer)
+
+		// Should return raw provider count (0)
+		expected := 0.0
+		if score != expected {
+			t.Errorf("expected raw score %.1f, got %.1f", expected, score)
+		}
+	})
+}
+
+func TestConfigTogglesBehavior(t *testing.T) {
+	// Integration test: verify config toggles change scoring behavior
+	reviews := []domain.Review{
+		{
+			ProviderName: "anthropic",
+			ModelName:    "claude-opus-4",
+			Findings: []domain.Finding{
+				{
+					ID:             "sec-1",
+					File:           "auth.go",
+					LineStart:      10,
+					Severity:       "error",
+					Category:       "security",
+					Description:    "SQL injection vulnerability",
+					ReviewerName:   "security",
+					ReviewerWeight: 2.0, // High-weight security reviewer
+				},
+			},
+		},
+		{
+			ProviderName: "anthropic",
+			ModelName:    "claude-sonnet-4-5",
+			Findings: []domain.Finding{
+				{
+					ID:             "style-1",
+					File:           "utils.go",
+					LineStart:      50,
+					Severity:       "info",
+					Category:       "style",
+					Description:    "Consider using early return",
+					ReviewerName:   "maintainability",
+					ReviewerWeight: 0.5, // Low-weight style reviewer
+				},
+			},
+		},
+	}
+
+	t.Run("weighted scoring affects merge order", func(t *testing.T) {
+		// With weighting enabled, security finding (weight 2.0) should score higher
+		mergerWeighted := NewIntelligentMerger(nil).
+			WithReviewerWeighting(true).
+			WithRespectFocus(true)
+		resultWeighted := mergerWeighted.Merge(context.Background(), reviews)
+
+		// With weighting disabled, raw count is used
+		mergerUnweighted := NewIntelligentMerger(nil).
+			WithReviewerWeighting(false).
+			WithRespectFocus(false)
+		resultUnweighted := mergerUnweighted.Merge(context.Background(), reviews)
+
+		// Both should have 2 findings (different files, no grouping)
+		if len(resultWeighted.Findings) != 2 || len(resultUnweighted.Findings) != 2 {
+			t.Errorf("expected 2 findings each, got weighted=%d, unweighted=%d",
+				len(resultWeighted.Findings), len(resultUnweighted.Findings))
+		}
+
+		// The ordering may differ based on scoring
+		// This test primarily verifies the config toggles don't break merging
+		t.Logf("Weighted first finding: %s (severity=%s)",
+			resultWeighted.Findings[0].Description, resultWeighted.Findings[0].Severity)
+		t.Logf("Unweighted first finding: %s (severity=%s)",
+			resultUnweighted.Findings[0].Description, resultUnweighted.Findings[0].Severity)
+	})
+}
