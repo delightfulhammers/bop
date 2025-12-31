@@ -167,8 +167,8 @@ runs:
 
         # Download archive and checksums (use RUNNER_TEMP for cleanup)
         TEMP_DIR=$(mktemp -d -p "${RUNNER_TEMP}")
-        curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_DIR/$ARCHIVE_NAME"
-        curl -fsSL "$CHECKSUM_URL" -o "$TEMP_DIR/checksums.txt"
+        curl -fsSL --retry 3 --retry-connrefused "$DOWNLOAD_URL" -o "$TEMP_DIR/$ARCHIVE_NAME"
+        curl -fsSL --retry 3 --retry-connrefused "$CHECKSUM_URL" -o "$TEMP_DIR/checksums.txt"
 
         # Verify checksum
         cd "$TEMP_DIR"
@@ -235,8 +235,8 @@ runs:
         set -euo pipefail
 
         # Validate PR context for review - check event type first, then head_ref
-        if [ "$GH_EVENT_NAME" != "pull_request" ]; then
-          echo "::error::This action must run on pull_request events (got: $GH_EVENT_NAME)"
+        if [ "$GH_EVENT_NAME" != "pull_request" ] && [ "$GH_EVENT_NAME" != "pull_request_target" ]; then
+          echo "::error::This action must run on pull_request or pull_request_target events (got: $GH_EVENT_NAME)"
           exit 1
         fi
         if [ -z "$GH_HEAD_REF" ]; then
@@ -342,18 +342,25 @@ runs:
           } >> "$GITHUB_OUTPUT"
         fi
 
-        # Check threshold
+        # Check threshold (case-insensitive)
         SHOULD_FAIL=0
         if [ "$INPUT_FAIL_ON_FINDINGS" = "true" ]; then
-          case "$INPUT_BLOCK_THRESHOLD" in
+          THRESHOLD=$(echo "$INPUT_BLOCK_THRESHOLD" | tr '[:upper:]' '[:lower:]')
+          case "$THRESHOLD" in
             critical)
-              [ "$CRITICAL" -gt 0 ] && SHOULD_FAIL=1 ;;
+              (( CRITICAL > 0 )) && SHOULD_FAIL=1 ;;
             high)
-              [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] && SHOULD_FAIL=1 ;;
+              (( CRITICAL > 0 || HIGH > 0 )) && SHOULD_FAIL=1 ;;
             medium)
-              [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 0 ] && SHOULD_FAIL=1 ;;
+              (( CRITICAL > 0 || HIGH > 0 || MEDIUM > 0 )) && SHOULD_FAIL=1 ;;
             low)
-              [ "$TOTAL" -gt 0 ] && SHOULD_FAIL=1 ;;
+              (( TOTAL > 0 )) && SHOULD_FAIL=1 ;;
+            none)
+              ;; # No blocking
+            *)
+              echo "::error::Invalid block-threshold: $INPUT_BLOCK_THRESHOLD (must be: critical, high, medium, low, none)"
+              exit 1
+              ;;
           esac
 
           if [ "$SHOULD_FAIL" -eq 1 ]; then
