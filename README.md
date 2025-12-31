@@ -124,7 +124,7 @@ Create `~/.config/cr/cr.yaml`:
 providers:
   openai:
     enabled: true
-    defaultModel: "gpt-4o-mini"
+    defaultModel: "gpt-5.2"
     apiKey: "${OPENAI_API_KEY}"
 
   anthropic:
@@ -155,7 +155,7 @@ providers:
 
   openai:
     enabled: true
-    defaultModel: "gpt-4o"
+    defaultModel: "gpt-5.2"
     apiKey: "${OPENAI_API_KEY}"
 
 # Reviewers section is OPTIONAL - if omitted, provider-based dispatch is used
@@ -172,7 +172,7 @@ reviewers:
 
   architecture:
     provider: "openai"
-    model: "o1-preview"  # Override the provider's default
+    model: "gpt-5.2-pro"  # Override the provider's default
     weight: 1.0
     persona: |
       You are a software architect focused on maintainability,
@@ -200,9 +200,9 @@ Built-in personas are available in `templates/reviewers/` for common review focu
 
 | Provider | Models | Local Option |
 |----------|--------|--------------|
-| OpenAI | gpt-4o, gpt-4o-mini, o1 | No |
-| Anthropic | claude-sonnet-4-5, claude-opus-4 | No |
-| Google | gemini-2.5-pro, gemini-2.5-flash | No |
+| OpenAI | gpt-5.2, gpt-5.2-mini, gpt-5.2-pro | No |
+| Anthropic | claude-haiku-4-5, claude-sonnet-4-5, claude-opus-4-5 | No |
+| Google | gemini-3-pro-preview, gemini-3-flash-preview | No |
 | Ollama | Any local model | Yes |
 
 See [Configuration Guide](docs/CONFIGURATION.md) for all options.

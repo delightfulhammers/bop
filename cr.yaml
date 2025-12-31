@@ -20,7 +20,7 @@ providers:
   # Anthropic provider (Claude models)
   anthropic:
     enabled: true
-    defaultModel: "claude-sonnet-4-5-20250929"
+    defaultModel: "claude-sonnet-4-5"
     apiKey: "${ANTHROPIC_API_KEY}"
 
   # Google Gemini provider
