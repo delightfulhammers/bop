@@ -49,6 +49,7 @@ func (b *PersonaPromptBuilder) Build(
 
 	return ProviderRequest{
 		Prompt:       prompt,
+		Seed:         baseReq.Seed,
 		MaxSize:      baseReq.MaxSize,
 		ReviewerName: reviewer.Name,
 	}, nil
@@ -92,6 +93,7 @@ func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 
 	return ProviderRequest{
 		Prompt:       prompt,
+		Seed:         baseReq.Seed,
 		MaxSize:      baseReq.MaxSize,
 		ReviewerName: reviewer.Name,
 	}, truncResult, nil

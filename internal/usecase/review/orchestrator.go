@@ -536,11 +536,12 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 
 	// Define result type for dispatch goroutines
 	type dispatchResult struct {
-		review    domain.Review
-		path      string
-		jsonPath  string
-		sarifPath string
-		err       error
+		review       domain.Review
+		reviewerName string // Used for path map keys (avoids collision when reviewers share provider)
+		path         string
+		jsonPath     string
+		sarifPath    string
+		err          error
 	}
 
 	// Resolve reviewers: use ReviewerRegistry if configured, otherwise fall back to providers
@@ -622,6 +623,13 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				review.Findings[i].ReviewerWeight = reviewer.Weight
 			}
 
+			// Use reviewer name for output filename to avoid collisions when
+			// multiple reviewers share the same provider (Phase 3.2).
+			outputName := reviewer.Name
+			if outputName == "" {
+				outputName = review.ProviderName
+			}
+
 			markdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
 				OutputDir:    req.OutputDir,
 				Repository:   req.Repository,
@@ -629,7 +637,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				TargetRef:    req.TargetRef,
 				Diff:         diff,
 				Review:       review,
-				ProviderName: review.ProviderName,
+				ProviderName: outputName,
 			})
 			if err != nil {
 				resultsChan <- dispatchResult{err: fmt.Errorf("markdown write failed for reviewer %s: %w", reviewer.Name, err)}
@@ -642,7 +650,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				BaseRef:      req.BaseRef,
 				TargetRef:    req.TargetRef,
 				Review:       review,
-				ProviderName: review.ProviderName,
+				ProviderName: outputName,
 			})
 			if err != nil {
 				resultsChan <- dispatchResult{err: fmt.Errorf("json write failed for reviewer %s: %w", reviewer.Name, err)}
@@ -655,7 +663,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				BaseRef:      req.BaseRef,
 				TargetRef:    req.TargetRef,
 				Review:       review,
-				ProviderName: review.ProviderName,
+				ProviderName: outputName,
 			})
 			if err != nil {
 				resultsChan <- dispatchResult{err: fmt.Errorf("sarif write failed for reviewer %s: %w", reviewer.Name, err)}
@@ -677,7 +685,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				}
 			}
 
-			resultsChan <- dispatchResult{review: review, path: markdownPath, jsonPath: jsonPath, sarifPath: sarifPath}
+			resultsChan <- dispatchResult{review: review, reviewerName: outputName, path: markdownPath, jsonPath: jsonPath, sarifPath: sarifPath}
 		}(reviewer, runID)
 	}
 
@@ -696,9 +704,9 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			errs = append(errs, res.err)
 		} else {
 			reviews = append(reviews, res.review)
-			markdownPaths[res.review.ProviderName] = res.path
-			jsonPaths[res.review.ProviderName] = res.jsonPath
-			sarifPaths[res.review.ProviderName] = res.sarifPath
+			markdownPaths[res.reviewerName] = res.path
+			jsonPaths[res.reviewerName] = res.jsonPath
+			sarifPaths[res.reviewerName] = res.sarifPath
 			totalCost += res.review.Cost
 		}
 	}

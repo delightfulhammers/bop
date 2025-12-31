@@ -936,8 +936,10 @@ type mockReviewerRegistry struct {
 // createTestReviewerDeps creates a ReviewerRegistry and PersonaPromptBuilder for testing.
 // It creates a single reviewer named "default" that uses the specified provider.
 func createTestReviewerDeps(providerName string) (review.ReviewerRegistry, *review.PersonaPromptBuilder) {
+	// Use provider name as reviewer name to maintain backward-compatible path keys.
+	// This ensures result.MarkdownPaths[providerName] works as expected.
 	reviewer := domain.Reviewer{
-		Name:     "default",
+		Name:     providerName,
 		Provider: providerName,
 		Model:    "test-model",
 		Weight:   1.0,
@@ -945,9 +947,9 @@ func createTestReviewerDeps(providerName string) (review.ReviewerRegistry, *revi
 	}
 	registry := &mockReviewerRegistry{
 		reviewers: map[string]domain.Reviewer{
-			"default": reviewer,
+			providerName: reviewer,
 		},
-		defaultReviewers: []string{"default"},
+		defaultReviewers: []string{providerName},
 	}
 	baseBuilder := review.NewEnhancedPromptBuilder()
 	personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
@@ -955,19 +957,20 @@ func createTestReviewerDeps(providerName string) (review.ReviewerRegistry, *revi
 }
 
 // createMultiProviderTestDeps creates a ReviewerRegistry with multiple reviewers for testing.
+// Uses provider names as reviewer names to maintain backward-compatible path keys.
 func createMultiProviderTestDeps(providerNames []string) (review.ReviewerRegistry, *review.PersonaPromptBuilder) {
 	reviewers := make(map[string]domain.Reviewer)
 	defaults := make([]string, 0, len(providerNames))
 	for _, name := range providerNames {
-		reviewerName := "reviewer-" + name
-		reviewers[reviewerName] = domain.Reviewer{
-			Name:     reviewerName,
+		// Use provider name as reviewer name for consistent path keys
+		reviewers[name] = domain.Reviewer{
+			Name:     name,
 			Provider: name,
 			Model:    "test-model",
 			Weight:   1.0,
 			Enabled:  true,
 		}
-		defaults = append(defaults, reviewerName)
+		defaults = append(defaults, name)
 	}
 	registry := &mockReviewerRegistry{
 		reviewers:        reviewers,
