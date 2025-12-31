@@ -207,7 +207,6 @@ type OrchestratorDeps struct {
 	SARIF         SARIFWriter
 	Redactor      Redactor
 	SeedGenerator SeedFunc
-	PromptBuilder PromptBuilder
 	Store         Store          // Optional: persistence layer for review history
 	Logger        Logger         // Optional: structured logging for warnings and info
 	PlanningAgent *PlanningAgent // Optional: interactive planning agent (only works in TTY mode)
@@ -223,8 +222,16 @@ type OrchestratorDeps struct {
 
 	// ProviderMaxTokens allows per-provider max output token overrides.
 	// Key is provider name, value is max output tokens.
-	// If not set for a provider, the default from PromptBuilder is used.
 	ProviderMaxTokens map[string]int
+
+	// Phase 3.2: Reviewer Personas
+	// ReviewerRegistry manages reviewer definitions and resolution.
+	// Required: the orchestrator dispatches to reviewers based on this registry.
+	ReviewerRegistry ReviewerRegistry
+
+	// PersonaPromptBuilder builds prompts with persona injection.
+	// Required: used to build prompts for each reviewer.
+	PersonaPromptBuilder *PersonaPromptBuilder
 }
 
 // ProviderRequest describes the payload the LLM provider expects.
@@ -232,6 +239,10 @@ type ProviderRequest struct {
 	Prompt  string
 	Seed    uint64
 	MaxSize int
+
+	// ReviewerName is the name of the reviewer that generated this request.
+	// Part of Phase 3.2 - Reviewer Personas.
+	ReviewerName string
 }
 
 // BranchRequest represents an inbound CLI request.
@@ -283,6 +294,12 @@ type BranchRequest struct {
 	// VerificationConfig holds verification-specific settings.
 	// These are populated from the config file and can be overridden by CLI flags.
 	VerificationConfig VerificationSettings
+
+	// Phase 3.2: Reviewer Personas
+	// Reviewers specifies which reviewers to use for this review.
+	// If empty, uses default reviewers from config.
+	// Can be set via --reviewers CLI flag.
+	Reviewers []string
 }
 
 // VerificationSettings holds configuration for the verification stage.
@@ -353,8 +370,9 @@ func (o *Orchestrator) validateDependencies() error {
 	if o.deps.SARIF == nil {
 		return errors.New("sarif writer is required")
 	}
-	if o.deps.PromptBuilder == nil {
-		return errors.New("prompt builder is required")
+	// ReviewerRegistry is optional - nil means use provider-based dispatch
+	if o.deps.PersonaPromptBuilder == nil {
+		return errors.New("persona prompt builder is required")
 	}
 	if o.deps.SeedGenerator == nil {
 		return errors.New("seed generator is required")
@@ -516,47 +534,62 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 		}
 	}
 
-	var wg sync.WaitGroup
-	resultsChan := make(chan struct {
-		review    domain.Review
-		path      string
-		jsonPath  string
-		sarifPath string
-		err       error
-	}, len(o.deps.Providers))
+	// Define result type for dispatch goroutines
+	type dispatchResult struct {
+		review       domain.Review
+		reviewerName string // Used for path map keys (avoids collision when reviewers share provider)
+		path         string
+		jsonPath     string
+		sarifPath    string
+		err          error
+	}
 
-	for name, provider := range o.deps.Providers {
+	// Resolve reviewers: use ReviewerRegistry if configured, otherwise fall back to providers
+	var reviewers []domain.Reviewer
+	if o.deps.ReviewerRegistry != nil {
+		// Phase 3.2: Reviewer-based dispatch
+		reviewers, err = o.deps.ReviewerRegistry.Resolve(req.Reviewers)
+		if err != nil {
+			return Result{}, fmt.Errorf("resolving reviewers: %w", err)
+		}
+	} else {
+		// Legacy mode: synthesize reviewers from enabled providers
+		reviewers = synthesizeReviewersFromProviders(o.deps.Providers)
+		if len(reviewers) == 0 {
+			return Result{}, errors.New("no providers configured")
+		}
+	}
+
+	// Filter binary files once before dispatching to reviewers
+	textDiff, binaryFiles := FilterBinaryFiles(diff)
+	if len(binaryFiles) > 0 {
+		log.Printf("Filtered %d binary file(s) from review", len(binaryFiles))
+	}
+
+	var wg sync.WaitGroup
+	resultsChan := make(chan dispatchResult, len(reviewers))
+
+	for _, reviewer := range reviewers {
 		wg.Add(1)
-		go func(name string, provider Provider, runID string) {
+		go func(reviewer domain.Reviewer, runID string) {
 			defer func() {
 				if r := recover(); r != nil {
-					resultsChan <- struct {
-						review    domain.Review
-						path      string
-						jsonPath  string
-						sarifPath string
-						err       error
-					}{err: fmt.Errorf("provider %s panicked: %v", name, r)}
+					resultsChan <- dispatchResult{err: fmt.Errorf("reviewer %s panicked: %v", reviewer.Name, r)}
 				}
 				wg.Done()
 			}()
 
-			// Filter binary files before building prompt (saves tokens, prevents impossible findings)
-			textDiff, binaryFiles := FilterBinaryFiles(diff)
-			if len(binaryFiles) > 0 {
-				log.Printf("[%s] Filtered %d binary file(s) from review", name, len(binaryFiles))
+			// Look up provider for this reviewer
+			provider, ok := o.deps.Providers[reviewer.Provider]
+			if !ok {
+				resultsChan <- dispatchResult{err: fmt.Errorf("provider %q not found for reviewer %q", reviewer.Provider, reviewer.Name)}
+				return
 			}
 
-			// Build provider-specific prompt using filtered diff
-			providerReq, err := o.deps.PromptBuilder(projectContext, textDiff, req, name)
+			// Build persona-specific prompt
+			providerReq, err := o.deps.PersonaPromptBuilder.Build(projectContext, textDiff, req, reviewer)
 			if err != nil {
-				resultsChan <- struct {
-					review    domain.Review
-					path      string
-					jsonPath  string
-					sarifPath string
-					err       error
-				}{err: fmt.Errorf("prompt building failed for %s: %w", name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("prompt building failed for reviewer %s: %w", reviewer.Name, err)}
 				return
 			}
 			if providerReq.Seed == 0 {
@@ -564,7 +597,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			}
 
 			// Apply per-provider MaxSize override if configured
-			if maxTokens, ok := o.deps.ProviderMaxTokens[name]; ok && maxTokens > 0 {
+			if maxTokens, ok := o.deps.ProviderMaxTokens[reviewer.Provider]; ok && maxTokens > 0 {
 				providerReq.MaxSize = maxTokens
 			}
 
@@ -572,13 +605,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			if o.deps.Redactor != nil {
 				redactedPrompt, err := o.deps.Redactor.Redact(providerReq.Prompt)
 				if err != nil {
-					resultsChan <- struct {
-						review    domain.Review
-						path      string
-						jsonPath  string
-						sarifPath string
-						err       error
-					}{err: fmt.Errorf("redaction failed for %s: %w", name, err)}
+					resultsChan <- dispatchResult{err: fmt.Errorf("redaction failed for reviewer %s: %w", reviewer.Name, err)}
 					return
 				}
 				providerReq.Prompt = redactedPrompt
@@ -586,14 +613,21 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 
 			review, err := provider.Review(ctx, providerReq)
 			if err != nil {
-				resultsChan <- struct {
-					review    domain.Review
-					path      string
-					jsonPath  string
-					sarifPath string
-					err       error
-				}{err: fmt.Errorf("provider %s failed: %w", name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("reviewer %s failed: %w", reviewer.Name, err)}
 				return
+			}
+
+			// Tag findings with reviewer metadata
+			for i := range review.Findings {
+				review.Findings[i].ReviewerName = reviewer.Name
+				review.Findings[i].ReviewerWeight = reviewer.Weight
+			}
+
+			// Use reviewer name for output filename to avoid collisions when
+			// multiple reviewers share the same provider (Phase 3.2).
+			outputName := reviewer.Name
+			if outputName == "" {
+				outputName = review.ProviderName
 			}
 
 			markdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
@@ -603,16 +637,10 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				TargetRef:    req.TargetRef,
 				Diff:         diff,
 				Review:       review,
-				ProviderName: review.ProviderName,
+				ProviderName: outputName,
 			})
 			if err != nil {
-				resultsChan <- struct {
-					review    domain.Review
-					path      string
-					jsonPath  string
-					sarifPath string
-					err       error
-				}{err: fmt.Errorf("markdown write failed for %s: %w", name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("markdown write failed for reviewer %s: %w", reviewer.Name, err)}
 				return
 			}
 
@@ -622,16 +650,10 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				BaseRef:      req.BaseRef,
 				TargetRef:    req.TargetRef,
 				Review:       review,
-				ProviderName: review.ProviderName,
+				ProviderName: outputName,
 			})
 			if err != nil {
-				resultsChan <- struct {
-					review    domain.Review
-					path      string
-					jsonPath  string
-					sarifPath string
-					err       error
-				}{err: fmt.Errorf("json write failed for %s: %w", name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("json write failed for reviewer %s: %w", reviewer.Name, err)}
 				return
 			}
 
@@ -641,27 +663,20 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				BaseRef:      req.BaseRef,
 				TargetRef:    req.TargetRef,
 				Review:       review,
-				ProviderName: review.ProviderName,
+				ProviderName: outputName,
 			})
 			if err != nil {
-				resultsChan <- struct {
-					review    domain.Review
-					path      string
-					jsonPath  string
-					sarifPath string
-					err       error
-				}{err: fmt.Errorf("sarif write failed for %s: %w", name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("sarif write failed for reviewer %s: %w", reviewer.Name, err)}
 				return
 			}
 
 			// Save review to store if available
 			if runID != "" {
 				if err := o.SaveReviewToStore(ctx, runID, review); err != nil {
-					// Log warning but continue
 					if o.deps.Logger != nil {
 						o.deps.Logger.LogWarning(ctx, "failed to save review to store", map[string]interface{}{
 							"runID":    runID,
-							"provider": name,
+							"reviewer": reviewer.Name,
 							"error":    err.Error(),
 						})
 					} else {
@@ -670,14 +685,8 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				}
 			}
 
-			resultsChan <- struct {
-				review    domain.Review
-				path      string
-				jsonPath  string
-				sarifPath string
-				err       error
-			}{review: review, path: markdownPath, jsonPath: jsonPath, sarifPath: sarifPath}
-		}(name, provider, runID)
+			resultsChan <- dispatchResult{review: review, reviewerName: outputName, path: markdownPath, jsonPath: jsonPath, sarifPath: sarifPath}
+		}(reviewer, runID)
 	}
 
 	wg.Wait()
@@ -695,9 +704,9 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			errs = append(errs, res.err)
 		} else {
 			reviews = append(reviews, res.review)
-			markdownPaths[res.review.ProviderName] = res.path
-			jsonPaths[res.review.ProviderName] = res.jsonPath
-			sarifPaths[res.review.ProviderName] = res.sarifPath
+			markdownPaths[res.reviewerName] = res.path
+			jsonPaths[res.reviewerName] = res.jsonPath
+			sarifPaths[res.reviewerName] = res.sarifPath
 			totalCost += res.review.Cost
 		}
 	}
@@ -904,6 +913,32 @@ func validateRequest(req BranchRequest) error {
 		return errors.New("output directory is required")
 	}
 	return nil
+}
+
+// synthesizeReviewersFromProviders creates synthetic reviewers from enabled providers.
+// This is used for backward compatibility when no reviewers are configured.
+// Each enabled provider becomes a reviewer with default settings.
+func synthesizeReviewersFromProviders(providers map[string]Provider) []domain.Reviewer {
+	reviewers := make([]domain.Reviewer, 0, len(providers))
+
+	for name, provider := range providers {
+		// Use the provider's name as the reviewer name
+		// Model is already configured on the provider, not needed here
+		reviewers = append(reviewers, domain.Reviewer{
+			Name:     name,
+			Provider: name,
+			Model:    "", // Provider already knows its model
+			Weight:   1.0,
+			Persona:  "", // No persona in legacy mode
+			Focus:    nil,
+			Ignore:   nil,
+			Enabled:  true,
+		})
+		// Log that we're using the provider
+		_ = provider // We just need to iterate over keys
+	}
+
+	return reviewers
 }
 
 // FilterBinaryFiles separates a diff into text files and binary files.

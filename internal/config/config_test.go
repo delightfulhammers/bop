@@ -1172,3 +1172,333 @@ func TestBlockThresholdMerge_OverlayWins(t *testing.T) {
 		t.Errorf("expected OnMedium 'request_changes' from overlay threshold, got %s", merged.Review.Actions.OnMedium)
 	}
 }
+
+// Reviewer config tests (Phase 3.2)
+
+func TestMergeReviewers_OverlayWins(t *testing.T) {
+	enabled := true
+	base := config.Config{
+		Reviewers: map[string]config.ReviewerConfig{
+			"security": {
+				Enabled:  &enabled,
+				Provider: "anthropic",
+				Model:    "claude-opus-4",
+				Weight:   1.0,
+			},
+		},
+	}
+	overlay := config.Config{
+		Reviewers: map[string]config.ReviewerConfig{
+			"security": {
+				Enabled:  &enabled,
+				Provider: "openai",
+				Model:    "gpt-4o",
+				Weight:   2.0,
+			},
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	// Overlay should completely replace reviewer
+	if merged.Reviewers["security"].Provider != "openai" {
+		t.Errorf("expected provider 'openai' from overlay, got %s", merged.Reviewers["security"].Provider)
+	}
+	if merged.Reviewers["security"].Model != "gpt-4o" {
+		t.Errorf("expected model 'gpt-4o' from overlay, got %s", merged.Reviewers["security"].Model)
+	}
+	if merged.Reviewers["security"].Weight != 2.0 {
+		t.Errorf("expected weight 2.0 from overlay, got %f", merged.Reviewers["security"].Weight)
+	}
+}
+
+func TestMergeReviewers_CombinesMaps(t *testing.T) {
+	enabled := true
+	base := config.Config{
+		Reviewers: map[string]config.ReviewerConfig{
+			"security": {
+				Enabled:  &enabled,
+				Provider: "anthropic",
+				Model:    "claude-opus-4",
+			},
+		},
+	}
+	overlay := config.Config{
+		Reviewers: map[string]config.ReviewerConfig{
+			"performance": {
+				Enabled:  &enabled,
+				Provider: "openai",
+				Model:    "gpt-4o",
+			},
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	// Both reviewers should exist
+	if len(merged.Reviewers) != 2 {
+		t.Fatalf("expected 2 reviewers, got %d", len(merged.Reviewers))
+	}
+	if _, ok := merged.Reviewers["security"]; !ok {
+		t.Error("expected 'security' reviewer to exist")
+	}
+	if _, ok := merged.Reviewers["performance"]; !ok {
+		t.Error("expected 'performance' reviewer to exist")
+	}
+}
+
+func TestMergeDefaultReviewers_OverlayWins(t *testing.T) {
+	base := config.Config{
+		DefaultReviewers: []string{"security", "performance"},
+	}
+	overlay := config.Config{
+		DefaultReviewers: []string{"maintainability"},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	// Overlay completely replaces default reviewers
+	if len(merged.DefaultReviewers) != 1 {
+		t.Fatalf("expected 1 default reviewer, got %d", len(merged.DefaultReviewers))
+	}
+	if merged.DefaultReviewers[0] != "maintainability" {
+		t.Errorf("expected 'maintainability', got %s", merged.DefaultReviewers[0])
+	}
+}
+
+func TestMergeDefaultReviewers_PreservesBaseWhenOverlayEmpty(t *testing.T) {
+	base := config.Config{
+		DefaultReviewers: []string{"security", "performance"},
+	}
+	overlay := config.Config{
+		// Empty DefaultReviewers
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	// Base should be preserved when overlay is empty
+	if len(merged.DefaultReviewers) != 2 {
+		t.Fatalf("expected 2 default reviewers, got %d", len(merged.DefaultReviewers))
+	}
+}
+
+func TestReviewerConfigTriStateBool(t *testing.T) {
+	enabled := true
+	disabled := false
+
+	tests := []struct {
+		name     string
+		enabled  *bool
+		expected bool
+	}{
+		{name: "nil_defaults_to_enabled", enabled: nil, expected: true},
+		{name: "explicit_true", enabled: &enabled, expected: true},
+		{name: "explicit_false", enabled: &disabled, expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.ReviewerConfig{
+				Enabled: tt.enabled,
+			}
+			got := cfg.IsEnabled()
+			if got != tt.expected {
+				t.Errorf("IsEnabled() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMergeReviewers_NilMaps(t *testing.T) {
+	// Both nil maps
+	base := config.Config{}
+	overlay := config.Config{}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if merged.Reviewers != nil {
+		t.Error("expected nil Reviewers map when both are nil")
+	}
+}
+
+func TestReviewerConfig_HasAllFields(t *testing.T) {
+	enabled := true
+	maxTokens := 64000
+
+	cfg := config.ReviewerConfig{
+		Enabled:         &enabled,
+		Provider:        "anthropic",
+		Model:           "claude-opus-4",
+		APIKey:          "test-key",
+		Weight:          1.5,
+		Persona:         "You are a security expert",
+		Focus:           []string{"security", "authentication"},
+		Ignore:          []string{"style", "documentation"},
+		MaxOutputTokens: &maxTokens,
+	}
+
+	// Verify all fields are accessible
+	if !cfg.IsEnabled() {
+		t.Error("expected enabled")
+	}
+	if cfg.Provider != "anthropic" {
+		t.Errorf("expected provider 'anthropic', got %s", cfg.Provider)
+	}
+	if cfg.Model != "claude-opus-4" {
+		t.Errorf("expected model 'claude-opus-4', got %s", cfg.Model)
+	}
+	if cfg.APIKey != "test-key" {
+		t.Errorf("expected apiKey 'test-key', got %s", cfg.APIKey)
+	}
+	if cfg.Weight != 1.5 {
+		t.Errorf("expected weight 1.5, got %f", cfg.Weight)
+	}
+	if cfg.Persona != "You are a security expert" {
+		t.Errorf("unexpected persona")
+	}
+	if len(cfg.Focus) != 2 {
+		t.Errorf("expected 2 focus categories, got %d", len(cfg.Focus))
+	}
+	if len(cfg.Ignore) != 2 {
+		t.Errorf("expected 2 ignore categories, got %d", len(cfg.Ignore))
+	}
+	if *cfg.MaxOutputTokens != 64000 {
+		t.Errorf("expected maxOutputTokens 64000, got %d", *cfg.MaxOutputTokens)
+	}
+}
+
+func TestReviewerConfig_EnvExpansion(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "cr.yaml")
+	content := `
+reviewers:
+  security:
+    enabled: true
+    provider: anthropic
+    model: claude-opus-4
+    apiKey: "${TEST_REVIEWER_API_KEY}"
+    weight: 1.5
+    persona: "Security expert for ${TEST_ORG_NAME}"
+`
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	t.Setenv("TEST_REVIEWER_API_KEY", "sk-test-key-123")
+	t.Setenv("TEST_ORG_NAME", "ACME Corp")
+
+	cfg, err := config.Load(config.LoaderOptions{
+		ConfigPaths: []string{dir},
+		FileName:    "cr",
+		EnvPrefix:   "CR_TEST_REVIEWER_ENV",
+	})
+	if err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+
+	reviewer, ok := cfg.Reviewers["security"]
+	if !ok {
+		t.Fatal("expected 'security' reviewer to exist")
+	}
+
+	if reviewer.APIKey != "sk-test-key-123" {
+		t.Errorf("expected APIKey 'sk-test-key-123', got %s", reviewer.APIKey)
+	}
+	if !strings.Contains(reviewer.Persona, "ACME Corp") {
+		t.Errorf("expected Persona to contain 'ACME Corp', got %s", reviewer.Persona)
+	}
+}
+
+func TestReviewerConfig_FromFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "cr.yaml")
+	content := `
+reviewers:
+  security:
+    enabled: true
+    provider: anthropic
+    model: claude-opus-4
+    weight: 1.5
+    persona: |
+      You are a security expert specializing in OWASP vulnerabilities.
+    focus:
+      - security
+      - authentication
+    ignore:
+      - style
+      - documentation
+
+  maintainability:
+    enabled: true
+    provider: openai
+    model: gpt-4o
+    weight: 1.0
+    focus:
+      - maintainability
+      - complexity
+
+defaultReviewers:
+  - security
+  - maintainability
+`
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := config.Load(config.LoaderOptions{
+		ConfigPaths: []string{dir},
+		FileName:    "cr",
+		EnvPrefix:   "CR_TEST_REVIEWER_FILE",
+	})
+	if err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+
+	// Verify reviewers
+	if len(cfg.Reviewers) != 2 {
+		t.Fatalf("expected 2 reviewers, got %d", len(cfg.Reviewers))
+	}
+
+	security := cfg.Reviewers["security"]
+	if security.Provider != "anthropic" {
+		t.Errorf("expected security provider 'anthropic', got %s", security.Provider)
+	}
+	if security.Model != "claude-opus-4" {
+		t.Errorf("expected security model 'claude-opus-4', got %s", security.Model)
+	}
+	if security.Weight != 1.5 {
+		t.Errorf("expected security weight 1.5, got %f", security.Weight)
+	}
+	if len(security.Focus) != 2 {
+		t.Errorf("expected 2 security focus categories, got %d", len(security.Focus))
+	}
+	if len(security.Ignore) != 2 {
+		t.Errorf("expected 2 security ignore categories, got %d", len(security.Ignore))
+	}
+
+	// Verify default_reviewers
+	if len(cfg.DefaultReviewers) != 2 {
+		t.Fatalf("expected 2 default reviewers, got %d", len(cfg.DefaultReviewers))
+	}
+	if cfg.DefaultReviewers[0] != "security" {
+		t.Errorf("expected first default reviewer 'security', got %s", cfg.DefaultReviewers[0])
+	}
+	if cfg.DefaultReviewers[1] != "maintainability" {
+		t.Errorf("expected second default reviewer 'maintainability', got %s", cfg.DefaultReviewers[1])
+	}
+}

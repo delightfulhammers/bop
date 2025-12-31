@@ -111,6 +111,32 @@ func expandEnvVars(cfg Config) Config {
 		cfg.Providers[name] = provider
 	}
 
+	// Phase 3.2: Expand reviewer config fields
+	for name, reviewer := range cfg.Reviewers {
+		reviewer.APIKey = expandEnvString(reviewer.APIKey)
+		reviewer.Provider = expandEnvString(reviewer.Provider)
+		reviewer.Model = expandEnvString(reviewer.Model)
+		reviewer.Persona = expandEnvString(reviewer.Persona)
+		reviewer.Focus = expandEnvStringSlice(reviewer.Focus)
+		reviewer.Ignore = expandEnvStringSlice(reviewer.Ignore)
+
+		// Expand reviewer-specific HTTP overrides
+		if reviewer.Timeout != nil {
+			timeout := expandEnvString(*reviewer.Timeout)
+			reviewer.Timeout = &timeout
+		}
+		if reviewer.InitialBackoff != nil {
+			backoff := expandEnvString(*reviewer.InitialBackoff)
+			reviewer.InitialBackoff = &backoff
+		}
+		if reviewer.MaxBackoff != nil {
+			backoff := expandEnvString(*reviewer.MaxBackoff)
+			reviewer.MaxBackoff = &backoff
+		}
+
+		cfg.Reviewers[name] = reviewer
+	}
+
 	// Expand HTTP config
 	cfg.HTTP.Timeout = expandEnvString(cfg.HTTP.Timeout)
 	cfg.HTTP.InitialBackoff = expandEnvString(cfg.HTTP.InitialBackoff)
@@ -259,11 +285,11 @@ func setDefaults(v *viper.Viper) {
 	// Note: providers.*.enabled is intentionally not defaulted.
 	// When nil (unset), isProviderEnabled uses API key presence to determine if enabled.
 	// This maintains backward compatibility while allowing explicit enabled: false to work.
-	v.SetDefault("providers.openai.model", "gpt-4o")
-	v.SetDefault("providers.anthropic.model", "claude-3-5-sonnet-20241022")
-	v.SetDefault("providers.gemini.model", "gemini-pro")
-	v.SetDefault("providers.ollama.model", "llama2")
-	v.SetDefault("providers.static.model", "static-v1")
+	v.SetDefault("providers.openai.defaultModel", "gpt-5.2")
+	v.SetDefault("providers.anthropic.defaultModel", "claude-sonnet-4-5")
+	v.SetDefault("providers.gemini.defaultModel", "gemini-3-pro-preview")
+	v.SetDefault("providers.ollama.defaultModel", "llama2")
+	v.SetDefault("providers.static.defaultModel", "static-v1")
 
 	// Review action defaults are NOT set here.
 	// They are applied in config.go after blockThreshold expansion to allow

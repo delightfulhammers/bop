@@ -38,6 +38,11 @@ type TriagedFinding struct {
 
 	// Fingerprint is the stable identifier for this finding.
 	Fingerprint FindingFingerprint `json:"fingerprint"`
+
+	// ReviewerName is the name of the reviewer that created this finding.
+	// Used for filtering prior findings by reviewer during persona-aware reviews.
+	// Part of Phase 3.2 - Reviewer Personas.
+	ReviewerName string `json:"reviewerName,omitempty"`
 }
 
 // TriagedFindingContext holds all triaged findings for a PR.
@@ -75,6 +80,31 @@ func (c TriagedFindingContext) DisputedFindings() []TriagedFinding {
 		}
 	}
 	return result
+}
+
+// FilterByReviewer returns a new TriagedFindingContext containing only
+// findings from the specified reviewer. Returns nil if no matching findings.
+// Part of Phase 3.2 - Reviewer Personas.
+func (c *TriagedFindingContext) FilterByReviewer(reviewerName string) *TriagedFindingContext {
+	if c == nil || !c.HasFindings() {
+		return nil
+	}
+
+	var filtered []TriagedFinding
+	for _, f := range c.Findings {
+		if f.ReviewerName == reviewerName {
+			filtered = append(filtered, f)
+		}
+	}
+
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	return &TriagedFindingContext{
+		PRNumber: c.PRNumber,
+		Findings: filtered,
+	}
 }
 
 // StatusReasonForAcknowledged returns a human-readable reason for acknowledged status.

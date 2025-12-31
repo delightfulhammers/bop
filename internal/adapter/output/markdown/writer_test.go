@@ -348,3 +348,108 @@ func TestWriterFallsBackToLegacyFindings(t *testing.T) {
 		t.Error("legacy review should not have confidence")
 	}
 }
+
+func TestWriterIncludesReviewerMetadata(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	writer := markdown.NewWriter(func() string {
+		return "2025-01-01T00-00-00Z"
+	})
+
+	// Create a review with multiple reviewer personas
+	reviewData := domain.Review{
+		ProviderName: "merged",
+		ModelName:    "multi-reviewer",
+		Summary:      "Multi-reviewer review",
+		Cost:         0.10,
+		Findings: []domain.Finding{
+			{
+				File:           "main.go",
+				LineStart:      10,
+				LineEnd:        12,
+				Description:    "SQL injection vulnerability",
+				Severity:       "critical",
+				Category:       "security",
+				Suggestion:     "Use parameterized queries",
+				ReviewerName:   "security",
+				ReviewerWeight: 1.5,
+			},
+			{
+				File:           "main.go",
+				LineStart:      25,
+				LineEnd:        30,
+				Description:    "Function too complex",
+				Severity:       "medium",
+				Category:       "maintainability",
+				Suggestion:     "Extract helper functions",
+				ReviewerName:   "architecture",
+				ReviewerWeight: 1.0,
+			},
+			{
+				File:           "main.go",
+				LineStart:      50,
+				Description:    "Authentication bypass possible",
+				Severity:       "high",
+				Category:       "security",
+				ReviewerName:   "security",
+				ReviewerWeight: 1.5,
+			},
+		},
+	}
+
+	path, err := writer.Write(ctx, domain.MarkdownArtifact{
+		OutputDir:    dir,
+		Repository:   "test-repo",
+		BaseRef:      "main",
+		TargetRef:    "feature",
+		Diff:         domain.Diff{},
+		Review:       reviewData,
+		ProviderName: "merged",
+	})
+	if err != nil {
+		t.Fatalf("writer returned error: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+
+	contentStr := string(content)
+
+	// Verify reviewer summary section
+	if !strings.Contains(contentStr, "### Reviewers") {
+		t.Error("markdown missing reviewers section")
+	}
+
+	// Verify security reviewer stats
+	if !strings.Contains(contentStr, "**security**") {
+		t.Error("markdown missing security reviewer")
+	}
+	if !strings.Contains(contentStr, "(weight: 1.5)") {
+		t.Error("markdown missing security reviewer weight")
+	}
+	if !strings.Contains(contentStr, "2 findings") {
+		t.Error("markdown missing security reviewer finding count")
+	}
+
+	// Verify architecture reviewer stats
+	if !strings.Contains(contentStr, "**architecture**") {
+		t.Error("markdown missing architecture reviewer")
+	}
+	if !strings.Contains(contentStr, "(weight: 1.0)") {
+		t.Error("markdown missing architecture reviewer weight")
+	}
+	if !strings.Contains(contentStr, "1 findings") {
+		t.Error("markdown missing architecture reviewer finding count")
+	}
+
+	// Verify findings are grouped by reviewer (multi-reviewer format uses sections)
+	if !strings.Contains(contentStr, "### security") {
+		t.Error("markdown missing security reviewer section")
+	}
+	if !strings.Contains(contentStr, "### architecture") {
+		t.Error("markdown missing architecture reviewer section")
+	}
+}

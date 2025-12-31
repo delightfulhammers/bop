@@ -37,6 +37,15 @@ type IntelligentMerger struct {
 	// LLM-based synthesis (optional)
 	synthProvider SynthesisProvider // Provider for summary synthesis (can be nil)
 	useLLM        bool              // Use LLM for synthesis vs simple concatenation
+
+	// Phase 3.2: Reviewer Personas
+	// weightByReviewer applies per-reviewer weights to agreement scoring.
+	// When true, agreement score sums reviewer weights instead of counting reviewers.
+	weightByReviewer bool
+
+	// respectFocus prevents penalizing low agreement for specialized reviewers.
+	// When true, findings with a ReviewerName are not penalized for lack of agreement.
+	respectFocus bool
 }
 
 // NewIntelligentMerger creates a new intelligent merger with default weights.
@@ -50,7 +59,21 @@ func NewIntelligentMerger(store PrecisionStore) *IntelligentMerger {
 		similarityThreshold: 0.3, // Lowered from 0.7 to group similar issues better
 		synthProvider:       nil,
 		useLLM:              false,
+		weightByReviewer:    true, // Phase 3.2: Default to reviewer-weighted scoring
+		respectFocus:        true, // Phase 3.2: Default to respecting focused reviewers
 	}
+}
+
+// WithReviewerWeighting configures whether to apply reviewer weights to scoring.
+func (m *IntelligentMerger) WithReviewerWeighting(enabled bool) *IntelligentMerger {
+	m.weightByReviewer = enabled
+	return m
+}
+
+// WithRespectFocus configures whether to skip agreement penalty for specialized reviewers.
+func (m *IntelligentMerger) WithRespectFocus(enabled bool) *IntelligentMerger {
+	m.respectFocus = enabled
+	return m
 }
 
 // WithSynthesisProvider configures LLM-based summary synthesis.
@@ -63,7 +86,12 @@ func (m *IntelligentMerger) WithSynthesisProvider(provider SynthesisProvider) *I
 // findingGroup represents a group of similar findings.
 type findingGroup struct {
 	findings  []domain.Finding
-	providers map[string]bool // Set of providers that found this issue
+	providers map[string]bool // Set of providers that found this issue (legacy)
+
+	// Phase 3.2: Reviewer Personas
+	// reviewers tracks which reviewers found this issue and their weights.
+	// Key is reviewer name, value is reviewer weight.
+	reviewers map[string]float64
 }
 
 // Merge combines multiple reviews intelligently using scoring and grouping.
@@ -136,14 +164,24 @@ func (m *IntelligentMerger) groupSimilarFindings(reviews []domain.Review) []find
 
 			if targetGroup == nil {
 				// Create new group
-				groups = append(groups, findingGroup{
+				newGroup := findingGroup{
 					findings:  []domain.Finding{finding},
 					providers: map[string]bool{review.ProviderName: true},
-				})
+					reviewers: make(map[string]float64),
+				}
+				// Track reviewer if present (Phase 3.2)
+				if finding.ReviewerName != "" {
+					newGroup.reviewers[finding.ReviewerName] = finding.ReviewerWeight
+				}
+				groups = append(groups, newGroup)
 			} else {
 				// Add to existing group
 				targetGroup.findings = append(targetGroup.findings, finding)
 				targetGroup.providers[review.ProviderName] = true
+				// Track reviewer if present (Phase 3.2)
+				if finding.ReviewerName != "" {
+					targetGroup.reviewers[finding.ReviewerName] = finding.ReviewerWeight
+				}
 			}
 
 			processedIDs[finding.ID] = true
@@ -231,8 +269,8 @@ func (m *IntelligentMerger) scoreGroup(ctx context.Context, group findingGroup) 
 		return 0.0
 	}
 
-	// Agreement component: how many providers found this
-	agreementScore := float64(len(group.providers))
+	// Agreement component: how many providers/reviewers found this
+	agreementScore := m.calculateAgreementScore(group)
 
 	// Severity component: average severity score
 	severityScore := m.averageSeverityScore(group.findings)
@@ -250,6 +288,43 @@ func (m *IntelligentMerger) scoreGroup(ctx context.Context, group findingGroup) 
 		(m.evidenceWeight * evidenceScore)
 
 	return totalScore
+}
+
+// calculateAgreementScore computes the agreement score for a finding group.
+// When weightByReviewer is enabled, it sums reviewer weights instead of counting.
+// When respectFocus is enabled, specialized reviewers are not penalized for low agreement.
+func (m *IntelligentMerger) calculateAgreementScore(group findingGroup) float64 {
+	// If we have reviewers tracked and weightByReviewer is enabled, use weighted scoring
+	if m.weightByReviewer && len(group.reviewers) > 0 {
+		var weightedSum float64
+		for _, weight := range group.reviewers {
+			// Use weight of 1.0 if not set (default)
+			if weight <= 0 {
+				weight = 1.0
+			}
+			weightedSum += weight
+		}
+		return weightedSum
+	}
+
+	// Fall back to provider count (legacy behavior)
+	agreementScore := float64(len(group.providers))
+
+	// If respectFocus is enabled and this is from a specialized reviewer,
+	// don't penalize for lack of agreement (give minimum score of 1.0)
+	if m.respectFocus && m.hasSpecializedReviewer(group) {
+		if agreementScore < 1.0 {
+			agreementScore = 1.0
+		}
+	}
+
+	return agreementScore
+}
+
+// hasSpecializedReviewer returns true if any finding in the group has a ReviewerName.
+// This indicates the finding came from a specialized reviewer persona.
+func (m *IntelligentMerger) hasSpecializedReviewer(group findingGroup) bool {
+	return len(group.reviewers) > 0
 }
 
 // averageSeverityScore converts severity to numeric score and averages.

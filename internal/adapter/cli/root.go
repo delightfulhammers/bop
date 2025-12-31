@@ -170,6 +170,9 @@ func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, de
 	var confidenceMedium int
 	var confidenceLow int
 
+	// Phase 3.2: Reviewer Personas
+	var reviewers []string
+
 	cmd := &cobra.Command{
 		Use:   "branch [target]",
 		Short: "Review a branch against a base reference",
@@ -282,6 +285,7 @@ func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, de
 					ConfidenceMedium:   resolvedConfMedium,
 					ConfidenceLow:      resolvedConfLow,
 				},
+				Reviewers: reviewers,
 			})
 			return err
 		},
@@ -333,6 +337,9 @@ func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, de
 	cmd.Flags().IntVar(&confidenceHigh, "confidence-high", 0, "Confidence threshold for high severity findings (0 uses config default)")
 	cmd.Flags().IntVar(&confidenceMedium, "confidence-medium", 0, "Confidence threshold for medium severity findings (0 uses config default)")
 	cmd.Flags().IntVar(&confidenceLow, "confidence-low", 0, "Confidence threshold for low severity findings (0 uses config default)")
+
+	// Phase 3.2: Reviewer Personas
+	cmd.Flags().StringSliceVar(&reviewers, "reviewers", []string{}, "Reviewers to use for this review (comma-separated, overrides config default)")
 
 	return cmd
 }

@@ -282,3 +282,97 @@ func TestWriter_Write_HandlesInvalidCost(t *testing.T) {
 		})
 	}
 }
+
+func TestWriter_Write_IncludesReviewerExtensions(t *testing.T) {
+	tmpDir := t.TempDir()
+	now := func() string { return "2025-10-20T12-00-00" }
+
+	// Create findings with reviewer attribution
+	testReview := domain.Review{
+		ProviderName: "merged",
+		ModelName:    "multi-reviewer",
+		Summary:      "Multi-reviewer review",
+		Findings: []domain.Finding{
+			{
+				File:           "main.go",
+				LineStart:      10,
+				Description:    "SQL injection vulnerability",
+				Severity:       "critical",
+				Category:       "security",
+				ReviewerName:   "security",
+				ReviewerWeight: 1.5,
+			},
+			{
+				File:           "main.go",
+				LineStart:      25,
+				Description:    "Function too complex",
+				Severity:       "medium",
+				Category:       "maintainability",
+				ReviewerName:   "architecture",
+				ReviewerWeight: 1.0,
+			},
+			{
+				File:           "main.go",
+				LineStart:      50,
+				Description:    "Auth bypass possible",
+				Severity:       "high",
+				ReviewerName:   "security",
+				ReviewerWeight: 1.5,
+			},
+		},
+	}
+
+	writer := sarif.NewWriter(now)
+	artifact := review.SARIFArtifact{
+		OutputDir:    tmpDir,
+		Repository:   "test-repo",
+		BaseRef:      "main",
+		TargetRef:    "feature",
+		Review:       testReview,
+		ProviderName: "merged",
+	}
+
+	path, err := writer.Write(context.Background(), artifact)
+	require.NoError(t, err)
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var sarifDoc map[string]interface{}
+	err = json.Unmarshal(content, &sarifDoc)
+	require.NoError(t, err)
+
+	// Verify tool extensions for reviewers
+	runs := sarifDoc["runs"].([]interface{})
+	require.Len(t, runs, 1)
+
+	run := runs[0].(map[string]interface{})
+	tool := run["tool"].(map[string]interface{})
+
+	// Should have extensions array
+	extensions, ok := tool["extensions"].([]interface{})
+	require.True(t, ok, "tool should have extensions array")
+	require.Len(t, extensions, 2, "should have 2 unique reviewers")
+
+	// Verify first extension (security)
+	ext1 := extensions[0].(map[string]interface{})
+	assert.Equal(t, "security", ext1["name"])
+	ext1Props := ext1["properties"].(map[string]interface{})
+	assert.Equal(t, 1.5, ext1Props["weight"])
+	assert.Equal(t, "reviewer-persona", ext1Props["role"])
+
+	// Verify second extension (architecture)
+	ext2 := extensions[1].(map[string]interface{})
+	assert.Equal(t, "architecture", ext2["name"])
+	ext2Props := ext2["properties"].(map[string]interface{})
+	assert.Equal(t, 1.0, ext2Props["weight"])
+
+	// Verify findings have reviewer properties
+	results := run["results"].([]interface{})
+	require.Len(t, results, 3)
+
+	result1 := results[0].(map[string]interface{})
+	result1Props := result1["properties"].(map[string]interface{})
+	assert.Equal(t, "security", result1Props["reviewerName"])
+	assert.Equal(t, 1.5, result1Props["reviewerWeight"])
+}

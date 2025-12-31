@@ -55,7 +55,18 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 	builder.WriteString(fmt.Sprintf("- Base: %s\n", artifact.BaseRef))
 	builder.WriteString(fmt.Sprintf("- Target: %s\n", artifact.TargetRef))
 	builder.WriteString(fmt.Sprintf("- Tokens: %d in / %d out\n", artifact.Review.TokensIn, artifact.Review.TokensOut))
-	builder.WriteString(fmt.Sprintf("- Cost: $%.4f\n\n", artifact.Review.Cost))
+	builder.WriteString(fmt.Sprintf("- Cost: $%.4f\n", artifact.Review.Cost))
+
+	// Show reviewer summary if findings have reviewer attribution
+	reviewerStats := collectReviewerStats(artifact.Review.Findings)
+	if len(reviewerStats) > 0 {
+		builder.WriteString("\n### Reviewers\n")
+		for _, stat := range reviewerStats {
+			builder.WriteString(fmt.Sprintf("- **%s** (weight: %.1f): %d findings\n",
+				stat.Name, stat.Weight, stat.Count))
+		}
+	}
+	builder.WriteString("\n")
 
 	// Include truncation warning if PR was too large
 	if artifact.Review.WasTruncated {
@@ -115,22 +126,110 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 			builder.WriteString("\n")
 		}
 	} else {
-		// Fallback to legacy findings format
-		for _, finding := range artifact.Review.Findings {
-			builder.WriteString(fmt.Sprintf("### %s (%s)\n", finding.Description, caser.String(finding.Severity)))
-			builder.WriteString(fmt.Sprintf("- File: %s:%d-%d\n", finding.File, finding.LineStart, finding.LineEnd))
-			builder.WriteString(fmt.Sprintf("- Category: %s\n", finding.Category))
-			builder.WriteString(fmt.Sprintf("- Suggestion: %s\n", finding.Suggestion))
-			if finding.Evidence {
-				builder.WriteString("- Evidence: Provided\n")
-			} else {
-				builder.WriteString("- Evidence: Not provided\n")
+		// Group findings by reviewer if they have reviewer attribution
+		groupedFindings := groupFindingsByReviewer(artifact.Review.Findings)
+
+		if len(groupedFindings) > 1 {
+			// Multiple reviewers: show grouped sections
+			for _, group := range groupedFindings {
+				if group.ReviewerName != "" {
+					builder.WriteString(fmt.Sprintf("### %s (weight: %.1f)\n\n", group.ReviewerName, group.ReviewerWeight))
+				}
+				for _, finding := range group.Findings {
+					writeFinding(&builder, finding, caser)
+				}
 			}
-			builder.WriteString("\n")
+		} else {
+			// Single or no reviewer: flat list
+			for _, finding := range artifact.Review.Findings {
+				writeFinding(&builder, finding, caser)
+			}
 		}
 	}
 
 	return builder.String()
+}
+
+// reviewerStat holds statistics for a single reviewer.
+type reviewerStat struct {
+	Name   string
+	Weight float64
+	Count  int
+}
+
+// collectReviewerStats gathers finding counts per reviewer.
+func collectReviewerStats(findings []domain.Finding) []reviewerStat {
+	stats := make(map[string]*reviewerStat)
+	order := make([]string, 0)
+
+	for _, f := range findings {
+		if f.ReviewerName == "" {
+			continue
+		}
+		if _, exists := stats[f.ReviewerName]; !exists {
+			stats[f.ReviewerName] = &reviewerStat{
+				Name:   f.ReviewerName,
+				Weight: f.ReviewerWeight,
+			}
+			order = append(order, f.ReviewerName)
+		}
+		stats[f.ReviewerName].Count++
+	}
+
+	result := make([]reviewerStat, 0, len(order))
+	for _, name := range order {
+		result = append(result, *stats[name])
+	}
+	return result
+}
+
+// findingGroup holds findings from a single reviewer.
+type findingGroup struct {
+	ReviewerName   string
+	ReviewerWeight float64
+	Findings       []domain.Finding
+}
+
+// groupFindingsByReviewer organizes findings by their reviewer attribution.
+func groupFindingsByReviewer(findings []domain.Finding) []findingGroup {
+	groups := make(map[string]*findingGroup)
+	order := make([]string, 0)
+
+	for _, f := range findings {
+		key := f.ReviewerName
+		if key == "" {
+			key = "_unattributed_"
+		}
+		if _, exists := groups[key]; !exists {
+			groups[key] = &findingGroup{
+				ReviewerName:   f.ReviewerName,
+				ReviewerWeight: f.ReviewerWeight,
+				Findings:       make([]domain.Finding, 0),
+			}
+			order = append(order, key)
+		}
+		groups[key].Findings = append(groups[key].Findings, f)
+	}
+
+	result := make([]findingGroup, 0, len(order))
+	for _, key := range order {
+		result = append(result, *groups[key])
+	}
+	return result
+}
+
+// writeFinding writes a single finding in markdown format.
+func writeFinding(builder *strings.Builder, finding domain.Finding, caser cases.Caser) {
+	_, _ = fmt.Fprintf(builder, "#### %s (%s)\n", finding.Description, caser.String(finding.Severity))
+	_, _ = fmt.Fprintf(builder, "- File: %s:%d-%d\n", finding.File, finding.LineStart, finding.LineEnd)
+	_, _ = fmt.Fprintf(builder, "- Category: %s\n", finding.Category)
+	_, _ = fmt.Fprintf(builder, "- Suggestion: %s\n", finding.Suggestion)
+	if finding.Evidence {
+		builder.WriteString("- Evidence: Provided\n")
+	} else {
+		builder.WriteString("- Evidence: Not provided\n")
+	}
+	builder.WriteString("\n")
 }
 
 func sanitise(value string) string {

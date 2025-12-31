@@ -71,6 +71,12 @@ type Finding struct {
 	Description string `json:"description"`
 	Suggestion  string `json:"suggestion"`
 	Evidence    bool   `json:"evidence"`
+
+	// Reviewer attribution (Phase 3.2 - Reviewer Personas)
+	// These fields are NOT included in the finding hash/ID to allow
+	// the same finding from different reviewers to merge together.
+	ReviewerName   string  `json:"reviewerName,omitempty"`
+	ReviewerWeight float64 `json:"reviewerWeight,omitempty"`
 }
 
 // FindingInput captures the information required to create a Finding.
