@@ -579,6 +579,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 		sem = make(chan struct{}, o.deps.MaxConcurrentReviewers)
 	}
 
+	var dispatchCancelled bool
 	for _, reviewer := range reviewers {
 		// Acquire semaphore slot if concurrency is limited
 		// Use select to respect context cancellation while waiting
@@ -587,9 +588,13 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			case sem <- struct{}{}:
 				// Acquired slot
 			case <-ctx.Done():
-				// Context cancelled while waiting for slot
-				return Result{}, ctx.Err()
+				// Context cancelled while waiting for slot - break to let
+				// already-spawned goroutines finish before returning
+				dispatchCancelled = true
 			}
+		}
+		if dispatchCancelled {
+			break
 		}
 
 		wg.Add(1)
@@ -744,6 +749,11 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			errMsgs = append(errMsgs, err.Error())
 		}
 		return Result{}, fmt.Errorf("%d provider(s) failed: %s", len(errs), strings.Join(errMsgs, "; "))
+	}
+
+	// Return context error if dispatch was cancelled (after allowing goroutines to finish)
+	if dispatchCancelled {
+		return Result{}, ctx.Err()
 	}
 
 	// Update run record with total cost now that all reviews are complete

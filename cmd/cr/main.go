@@ -344,6 +344,13 @@ func parseLogLevelFlag() string {
 // validateLogLevel checks if the log level is valid and returns it, or empty string with warning.
 // Accepts case-insensitive values and trims whitespace.
 func validateLogLevel(level string) string {
+	// Defense in depth: reject excessively long values
+	const maxLogLevelLen = 32
+	if len(level) > maxLogLevelLen {
+		log.Printf("[WARN] Log level value too long (max %d chars), using config default", maxLogLevelLen)
+		return ""
+	}
+
 	// Normalize: trim whitespace and lowercase
 	level = strings.TrimSpace(strings.ToLower(level))
 
