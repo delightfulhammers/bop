@@ -20,6 +20,13 @@ const fingerprintMarkerEnd = " -->"
 // legacyFingerprintMarker is the old format for backward compatibility when parsing.
 const legacyFingerprintMarker = "<!-- CR_FINGERPRINT:"
 
+// costMarkerStart is the HTML comment prefix for embedding review cost in summaries.
+// Format: <!-- CR_COST:0.0234 --> (cost in USD)
+const costMarkerStart = "<!-- CR_COST:"
+
+// costMarkerEnd closes the cost HTML comment.
+const costMarkerEnd = " -->"
+
 // ReviewActions configures the GitHub review action for each finding severity level.
 // This mirrors config.ReviewActions but lives in the adapter layer to avoid coupling.
 type ReviewActions struct {
@@ -509,4 +516,42 @@ func ExtractCommentDetails(body string) *ExtractedCommentDetails {
 	}
 
 	return details
+}
+
+// =============================================================================
+// Cost Tracking Helpers
+// =============================================================================
+
+// FormatCostMarker creates an invisible HTML comment containing the review cost.
+// This is appended to review summaries so cumulative cost can be calculated.
+// Format: <!-- CR_COST:0.0234 -->
+func FormatCostMarker(cost float64) string {
+	return fmt.Sprintf("%s%.6f%s", costMarkerStart, cost, costMarkerEnd)
+}
+
+// ExtractCostFromReview extracts the embedded cost from a review body.
+// Returns the cost and true if found, or 0 and false if not present or unparseable.
+// This is used to calculate cumulative PR costs across re-reviews.
+func ExtractCostFromReview(body string) (float64, bool) {
+	startIdx := strings.Index(body, costMarkerStart)
+	if startIdx == -1 {
+		return 0, false
+	}
+
+	contentStart := startIdx + len(costMarkerStart)
+	remaining := body[contentStart:]
+
+	endIdx := strings.Index(remaining, costMarkerEnd)
+	if endIdx == -1 {
+		return 0, false
+	}
+
+	costStr := strings.TrimSpace(remaining[:endIdx])
+	var cost float64
+	_, err := fmt.Sscanf(costStr, "%f", &cost)
+	if err != nil {
+		return 0, false
+	}
+
+	return cost, true
 }

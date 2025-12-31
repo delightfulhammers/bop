@@ -107,6 +107,10 @@ type PostReviewRequest struct {
 	// BotUsername is the username to match for auto-dismissing stale reviews.
 	// If empty, no reviews are dismissed. Example: "github-actions[bot]"
 	BotUsername string
+
+	// Cost is the total cost of this review in USD.
+	// Used for cost tracking in the summary.
+	Cost float64
 }
 
 // PostReviewResult contains the result of posting a review.
@@ -157,6 +161,16 @@ type PostReviewResult struct {
 	// CommentMismatch is true when CommentsPosted != CommentsVerified and verification succeeded.
 	// This indicates GitHub silently rejected some comments (e.g., stale diff positions).
 	CommentMismatch bool
+
+	// Cost tracking fields
+	// CurrentCost is the cost of this review in USD.
+	CurrentCost float64
+
+	// PriorCost is the sum of costs from previous bot reviews on this PR.
+	PriorCost float64
+
+	// CumulativeCost is the total cost across all reviews (CurrentCost + PriorCost).
+	CumulativeCost float64
 }
 
 // PostReview posts a code review to GitHub.
@@ -208,13 +222,15 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 	var semanticDupMap SemanticDuplicateMap
 	var existingStatuses map[domain.FindingFingerprint]domain.FindingStatus
 	var statusCounts StatusCounts
+	var priorCost float64
+	var existingReviews []github.ReviewSummary
 
-	// Analyze existing comments if BotUsername is set
+	// Analyze existing data if BotUsername is set
 	if req.BotUsername != "" {
 		var comments []github.PullRequestComment
 		var err error
 
-		// Fetch comments once for both deduplication and status analysis
+		// Fetch comments for deduplication and status analysis
 		comments, err = p.client.ListPullRequestComments(ctx, req.Owner, req.Repo, req.PullNumber)
 		if err != nil {
 			log.Printf("warning: failed to fetch comments: %v", err)
@@ -230,6 +246,14 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 
 			// Analyze reply statuses (Issue #108)
 			existingStatuses, statusCounts = analyzeFindingStatuses(comments, req.BotUsername)
+		}
+
+		// Fetch reviews for prior cost calculation and later dismissal
+		existingReviews, err = p.client.ListReviews(ctx, req.Owner, req.Repo, req.PullNumber)
+		if err != nil {
+			log.Printf("warning: failed to fetch reviews for cost tracking: %v", err)
+		} else {
+			priorCost = extractPriorCosts(existingReviews, req.BotUsername)
 		}
 	}
 
@@ -252,6 +276,28 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		event = determineEffectiveEvent(req.Findings, existingStatuses, semanticDupMap, req.ReviewActions)
 	}
 
+	// Build dedup stats for summary and logging (Issue #126, #127)
+	dedupStats := DedupStats{
+		TotalFindings:         len(req.Findings),
+		FingerprintDuplicates: duplicatesSkipped,
+		SemanticDuplicates:    semanticDuplicatesSkipped,
+		NewFindings:           len(findings),
+	}
+
+	// Log deduplication breakdown (Issue #127)
+	if dedupStats.FingerprintDuplicates > 0 || dedupStats.SemanticDuplicates > 0 {
+		log.Printf("deduplication: %d findings → %d new (%d fingerprint, %d semantic duplicates)",
+			dedupStats.TotalFindings, dedupStats.NewFindings,
+			dedupStats.FingerprintDuplicates, dedupStats.SemanticDuplicates)
+	}
+
+	// Build cost stats for summary
+	costStats := CostStats{
+		CurrentCost:    req.Cost,
+		PriorCost:      priorCost,
+		CumulativeCost: req.Cost + priorCost,
+	}
+
 	// Build the summary AFTER deduplication so counts reflect what's actually posted (Issue #125).
 	// If Diff is provided, rebuild the programmatic summary with deduplicated findings.
 	var summary string
@@ -259,12 +305,18 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		// Rebuild summary with accurate counts from deduplicated findings
 		programmaticSummary := github.BuildProgrammaticSummary(findings, *req.Diff, req.ReviewActions)
 		appendix := github.BuildSummaryAppendix(findings, *req.Diff)
-		summary = github.AppendSections(programmaticSummary, appendix) + formatStatusSection(statusCounts)
+		dedupSection := formatDedupSection(dedupStats)
+		statusSection := formatStatusSection(statusCounts)
+		costSection := formatCostSection(costStats)
+		summary = github.AppendSections(programmaticSummary, appendix) + dedupSection + statusSection + costSection
 	} else {
 		// Fall back to pre-built summary (legacy behavior)
 		// Note: This may contain stale counts if deduplication removed findings
 		log.Println("[WARN] No Diff provided to PostReview; using pre-built summary (counts may be stale)")
-		summary = req.Review.Summary + formatStatusSection(statusCounts)
+		dedupSection := formatDedupSection(dedupStats)
+		statusSection := formatStatusSection(statusCounts)
+		costSection := formatCostSection(costStats)
+		summary = req.Review.Summary + dedupSection + statusSection + costSection
 	}
 
 	// Call the client to create the new review first
@@ -289,9 +341,10 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 	// Dismiss previous bot reviews AFTER successful post
 	// This ensures PR always has review signal - if post failed, old reviews remain
 	// Pass the new review ID to avoid dismissing the review we just created
+	// Use existingReviews if we already fetched them, otherwise let dismissStaleReviews fetch
 	var dismissedCount int
 	if req.BotUsername != "" {
-		dismissedCount = p.dismissStaleReviews(ctx, req.Owner, req.Repo, req.PullNumber, req.BotUsername, resp.ID)
+		dismissedCount = p.dismissStaleReviewsFromList(ctx, req.Owner, req.Repo, req.PullNumber, req.BotUsername, resp.ID, existingReviews)
 	}
 
 	// Verify that comments were actually posted (Issue #129)
@@ -314,18 +367,26 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		OpenCount:                 statusCounts.Open,
 		CommentsVerified:          commentsVerified,
 		CommentMismatch:           commentMismatch,
+		CurrentCost:               costStats.CurrentCost,
+		PriorCost:                 costStats.PriorCost,
+		CumulativeCost:            costStats.CumulativeCost,
 	}, nil
 }
 
-// dismissStaleReviews finds and dismisses all previous reviews from the bot.
+// dismissStaleReviewsFromList dismisses previous bot reviews using a pre-fetched list.
+// If reviews is nil, it fetches the list first (fallback behavior).
 // The excludeReviewID parameter specifies a review ID to skip (typically the
 // newly created review). Returns the number of reviews dismissed. Errors are
 // logged but do not block the review posting workflow.
-func (p *ReviewPoster) dismissStaleReviews(ctx context.Context, owner, repo string, pullNumber int, botUsername string, excludeReviewID int64) int {
-	reviews, err := p.client.ListReviews(ctx, owner, repo, pullNumber)
-	if err != nil {
-		log.Printf("warning: failed to list reviews for dismissal: %v", err)
-		return 0
+func (p *ReviewPoster) dismissStaleReviewsFromList(ctx context.Context, owner, repo string, pullNumber int, botUsername string, excludeReviewID int64, reviews []github.ReviewSummary) int {
+	// Fetch reviews if not provided
+	if reviews == nil {
+		var err error
+		reviews, err = p.client.ListReviews(ctx, owner, repo, pullNumber)
+		if err != nil {
+			log.Printf("warning: failed to list reviews for dismissal: %v", err)
+			return 0
+		}
 	}
 
 	var dismissedCount int
@@ -517,6 +578,100 @@ func analyzeFindingStatuses(
 	}
 
 	return statuses, counts
+}
+
+// DedupStats tracks deduplication statistics for summary display.
+type DedupStats struct {
+	// TotalFindings is the total findings before deduplication.
+	TotalFindings int
+
+	// FingerprintDuplicates is the count of exact fingerprint matches skipped.
+	FingerprintDuplicates int
+
+	// SemanticDuplicates is the count of LLM-detected semantic duplicates skipped.
+	SemanticDuplicates int
+
+	// NewFindings is the count of findings that will be posted (TotalFindings - duplicates).
+	NewFindings int
+}
+
+// formatDedupSection creates a markdown section showing deduplication statistics.
+// Returns an empty string if no duplicates were found.
+func formatDedupSection(stats DedupStats) string {
+	totalDuplicates := stats.FingerprintDuplicates + stats.SemanticDuplicates
+	if totalDuplicates == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n\n---\n\n")
+	sb.WriteString("### Deduplication\n\n")
+	sb.WriteString(fmt.Sprintf("🔄 **%d new** | %d fingerprint matches | %d semantic duplicates skipped\n",
+		stats.NewFindings, stats.FingerprintDuplicates, stats.SemanticDuplicates))
+
+	return sb.String()
+}
+
+// CostStats tracks review cost information for summary display.
+type CostStats struct {
+	// CurrentCost is the cost of this review in USD.
+	CurrentCost float64
+
+	// PriorCost is the sum of costs from previous reviews on this PR.
+	PriorCost float64
+
+	// CumulativeCost is CurrentCost + PriorCost.
+	CumulativeCost float64
+}
+
+// formatCostSection creates a markdown section showing review costs.
+// Returns an empty string if cost is zero.
+func formatCostSection(stats CostStats) string {
+	if stats.CurrentCost == 0 && stats.PriorCost == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n\n---\n\n")
+	sb.WriteString("### Costs\n\n")
+
+	if stats.PriorCost > 0 {
+		sb.WriteString(fmt.Sprintf("💰 This review: $%.4f | Cumulative: $%.4f\n",
+			stats.CurrentCost, stats.CumulativeCost))
+	} else {
+		sb.WriteString(fmt.Sprintf("💰 This review: $%.4f\n", stats.CurrentCost))
+	}
+
+	// Embed cost marker for future extraction (invisible in rendered markdown)
+	sb.WriteString("\n")
+	sb.WriteString(github.FormatCostMarker(stats.CurrentCost))
+
+	return sb.String()
+}
+
+// extractPriorCosts calculates the total cost from previous bot reviews on this PR.
+// It parses the embedded cost marker from each bot review's body.
+func extractPriorCosts(reviews []github.ReviewSummary, botUsername string) float64 {
+	var totalCost float64
+
+	for _, review := range reviews {
+		// Skip reviews not from the bot (case-insensitive)
+		if !strings.EqualFold(review.User.Login, botUsername) {
+			continue
+		}
+
+		// Skip dismissed reviews (they're historical, don't count)
+		if review.State == string(github.StateDismissed) {
+			continue
+		}
+
+		// Extract cost from review body
+		if cost, ok := github.ExtractCostFromReview(review.Body); ok {
+			totalCost += cost
+		}
+	}
+
+	return totalCost
 }
 
 // formatStatusSection creates a markdown section showing finding status breakdown.

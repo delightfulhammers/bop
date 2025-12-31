@@ -719,10 +719,10 @@ func TestReviewPoster_PostReview_NoBotReviewsToDissmiss(t *testing.T) {
 func TestReviewPoster_PostReview_NoDismissalOnCreateFailure(t *testing.T) {
 	// Verify that if CreateReview fails, no reviews are dismissed.
 	// This ensures the PR always maintains review signal.
-	listCalled := false
+	// Note: ListReviews IS called before CreateReview (for cost tracking),
+	// but dismissal only happens AFTER successful post.
 	client := &MockReviewClient{
 		ListReviewsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.ReviewSummary, error) {
-			listCalled = true
 			return []github.ReviewSummary{
 				{ID: 100, User: github.User{Login: "bot[bot]"}, State: "APPROVED"},
 			}, nil
@@ -743,9 +743,7 @@ func TestReviewPoster_PostReview_NoDismissalOnCreateFailure(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "create review failed")
-	// ListReviews should NOT have been called since dismissal happens after CreateReview
-	assert.False(t, listCalled, "ListReviews should not be called when CreateReview fails")
-	// No reviews should have been dismissed
+	// No reviews should have been dismissed (dismissal happens after successful CreateReview)
 	assert.Empty(t, client.GetDismissedIDs())
 }
 
