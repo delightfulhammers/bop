@@ -365,11 +365,11 @@ func buildReplyMetadataMap(comments []PullRequestComment) map[int64]replyMetadat
 	metadata := make(map[int64]replyMetadata)
 	for _, c := range comments {
 		if c.InReplyToID != 0 {
-			createdAt, _ := time.Parse(time.RFC3339, c.CreatedAt)
+			createdAt, err := time.Parse(time.RFC3339, c.CreatedAt)
 			existing := metadata[c.InReplyToID]
 			existing.count++
-			// Track the most recent reply
-			if createdAt.After(existing.lastReplyAt) {
+			// Track the most recent reply (skip if timestamp unparseable)
+			if err == nil && createdAt.After(existing.lastReplyAt) {
 				existing.lastReplyAt = createdAt
 				existing.lastReplyBy = c.User.Login
 			}
