@@ -1133,6 +1133,32 @@ func TestPRService_ListFindings(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorIs(t, err, triage.ErrInvalidFilter)
 	})
+
+	t.Run("filters by combined severity and reply status", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "high", HasReply: true},
+			{CommentID: 2, Fingerprint: "fp2", Severity: "high", HasReply: false},
+			{CommentID: 3, Fingerprint: "fp3", Severity: "low", HasReply: false},
+			{CommentID: 4, Fingerprint: "fp4", Severity: "low", HasReply: true},
+		}
+		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		// Filter for high severity AND unreplied - should only get fp2
+		highSeverity := "high"
+		unreplied := triage.ReplyStatusUnreplied
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, &highSeverity, nil, &unreplied)
+		require.NoError(t, err)
+		require.Len(t, result, 1)
+		assert.Equal(t, "fp2", result[0].Fingerprint)
+		assert.Equal(t, "high", result[0].Severity)
+		assert.False(t, result[0].HasReply)
+		mockComment.AssertExpectations(t)
+	})
 }
 
 // =============================================================================
