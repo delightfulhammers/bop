@@ -102,14 +102,19 @@ func IsBlockingFinding(f domain.Finding, actions ReviewActions) bool {
 	}
 
 	// Check configured action for this severity
-	actionMap := map[string]string{
-		"critical": actions.OnCritical,
-		"high":     actions.OnHigh,
-		"medium":   actions.OnMedium,
-		"low":      actions.OnLow,
+	var action string
+	switch severity {
+	case "critical":
+		action = actions.OnCritical
+	case "high":
+		action = actions.OnHigh
+	case "medium":
+		action = actions.OnMedium
+	case "low":
+		action = actions.OnLow
 	}
 
-	return wouldTriggerRequestChanges(actionMap[severity], defaultBlocking)
+	return wouldTriggerRequestChanges(action, defaultBlocking)
 }
 
 // BuildReviewComments converts positioned findings to GitHub review comments.
@@ -126,7 +131,8 @@ func BuildReviewComments(findings []PositionedFinding) []ReviewComment {
 // BuildReviewCommentsWithActions converts positioned findings to GitHub review comments.
 // Uses the provided ReviewActions to determine the correct blocking indicator for each finding.
 func BuildReviewCommentsWithActions(findings []PositionedFinding, actions ReviewActions) []ReviewComment {
-	var comments []ReviewComment
+	// Pre-allocate with capacity to avoid re-allocations during append
+	comments := make([]ReviewComment, 0, len(findings))
 
 	for _, pf := range findings {
 		if !pf.InDiff() {
