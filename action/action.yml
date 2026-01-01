@@ -152,7 +152,7 @@ runs:
             https://api.github.com/repos/bkyoung/code-reviewer/releases/latest | \
             jq -r '.tag_name')
           if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
-            echo "::error::Failed to determine latest version. Consider pinning to a specific version (e.g., @v0.6.2)"
+            echo "::error::Failed to determine latest version. Consider pinning to a specific version (e.g., @v0.6.3)"
             exit 1
           fi
           VERSION="$LATEST_VERSION"

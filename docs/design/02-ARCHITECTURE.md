@@ -3,7 +3,7 @@
 **Version:** 0.2
 **Date:** 2025-12-31
 **Author:** Brandon Young
-**Status:** Phase 3.1 & 3.2 Complete (v0.6.2)
+**Status:** Phase 3.1 & 3.2 Complete (v0.6.3)
 
 ---
 
@@ -21,7 +21,7 @@ This document describes the architectural changes required for Phase 3 of code-r
 
 ---
 
-## 2. Current Architecture (v0.6.2)
+## 2. Current Architecture (v0.6.3)
 
 ```mermaid
 graph TB

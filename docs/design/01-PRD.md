@@ -3,7 +3,7 @@
 **Version:** 0.3
 **Date:** 2025-12-31
 **Author:** Brandon Young
-**Status:** Phase 3.1 & 3.2 Complete (v0.6.0-v0.6.2)
+**Status:** Phase 3.1 & 3.2 Complete (v0.6.0-v0.6.3)
 
 ---
 
@@ -31,6 +31,7 @@ Code-reviewer provides high-quality, automated code reviews using the LLM-as-jud
 - **v0.6.0** — Reviewer personas with weighted findings, focus/ignore areas, CLI selection
 - **v0.6.1** — Observability improvements, concurrency limiting, verbose logging
 - **v0.6.2** — Official GitHub Action, semantic deduplication improvements
+- **v0.6.3** — Defense-in-depth input validation, token budget reservation for personas
 
 ---
 

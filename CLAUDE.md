@@ -2,7 +2,7 @@
 
 **Project:** AI-Powered Code Review Tool
 **Status:** Phase 3.1 & 3.2 Complete, v0.6.x Stable
-**Version:** v0.6.2
+**Version:** v0.6.3
 **Last Updated:** 2025-12-31
 
 ---
@@ -19,7 +19,7 @@
 ### GitHub Action (CI/CD)
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.6.2
+- uses: bkyoung/code-reviewer/action@v0.6.3
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
