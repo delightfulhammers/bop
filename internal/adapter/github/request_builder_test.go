@@ -1,6 +1,7 @@
 package github_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/bkyoung/code-reviewer/internal/adapter/github"
@@ -822,6 +823,179 @@ func TestHasBlockingFindings_AlwaysBlockCategories(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := github.HasBlockingFindings(tt.findings, tt.actions)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestExtractReviewerFromComment(t *testing.T) {
+	tests := []struct {
+		name        string
+		commentBody string
+		wantName    string
+		wantFound   bool
+	}{
+		// Valid reviewer names
+		{
+			name:        "valid reviewer name",
+			commentBody: "Some content\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security -->",
+			wantName:    "security",
+			wantFound:   true,
+		},
+		{
+			name:        "reviewer with underscore",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security_expert -->",
+			wantName:    "security_expert",
+			wantFound:   true,
+		},
+		{
+			name:        "reviewer with hyphen",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:code-quality -->",
+			wantName:    "code-quality",
+			wantFound:   true,
+		},
+		{
+			name:        "reviewer with numbers",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:reviewer123 -->",
+			wantName:    "reviewer123",
+			wantFound:   true,
+		},
+		{
+			name:        "single character reviewer",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:x -->",
+			wantName:    "x",
+			wantFound:   true,
+		},
+		{
+			name:        "max length reviewer (64 chars)",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:a234567890123456789012345678901234567890123456789012345678901234 -->",
+			wantName:    "a234567890123456789012345678901234567890123456789012345678901234",
+			wantFound:   true,
+		},
+
+		// Invalid reviewer names (should return false)
+		{
+			name:        "no reviewer marker",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "empty reviewer name",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER: -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "whitespace-only reviewer name",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:   -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer starting with hyphen",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:-invalid -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer starting with underscore",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:_invalid -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer with special characters",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security@team -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer with spaces",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security team -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer with injection attempt",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:<script>alert(1)</script> -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer too long (65 chars)",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:a2345678901234567890123456789012345678901234567890123456789012345 -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "no fingerprint marker",
+			commentBody: "Some content without markers",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer with path traversal attempt",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:../etc/passwd -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+		{
+			name:        "reviewer with unicode characters",
+			commentBody: "<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:café -->",
+			wantName:    "",
+			wantFound:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, found := github.ExtractReviewerFromComment(tt.commentBody)
+			assert.Equal(t, tt.wantFound, found, "found mismatch")
+			if found {
+				assert.Equal(t, tt.wantName, name, "reviewer name mismatch")
+			}
+		})
+	}
+}
+
+func TestValidReviewerNamePattern(t *testing.T) {
+	// Tests specifically for the regex pattern validation
+	tests := []struct {
+		name    string
+		input   string
+		isValid bool
+	}{
+		// Valid names
+		{"simple alphanumeric", "security", true},
+		{"single char", "a", true},
+		{"starts with number", "1reviewer", true},
+		{"with underscore", "code_review", true},
+		{"with hyphen", "code-review", true},
+		{"mixed special chars", "security_code-123", true},
+		{"all numbers", "123456", true},
+		{"max length (64 chars)", "a234567890123456789012345678901234567890123456789012345678901234", true},
+
+		// Invalid names
+		{"starts with hyphen", "-invalid", false},
+		{"starts with underscore", "_invalid", false},
+		{"empty string", "", false},
+		{"too long (65 chars)", "a2345678901234567890123456789012345678901234567890123456789012345", false},
+		{"contains space", "invalid name", false},
+		{"contains at sign", "invalid@name", false},
+		{"contains dot", "invalid.name", false},
+		{"contains slash", "invalid/name", false},
+		{"contains backslash", "invalid\\name", false},
+		{"only hyphen", "-", false},
+		{"only underscore", "_", false},
+		{"ends with hyphen only", "-", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build a comment body with the test input as reviewer name
+			commentBody := fmt.Sprintf("<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:%s -->", tt.input)
+			_, found := github.ExtractReviewerFromComment(commentBody)
+			assert.Equal(t, tt.isValid, found, "validation mismatch for %q", tt.input)
 		})
 	}
 }

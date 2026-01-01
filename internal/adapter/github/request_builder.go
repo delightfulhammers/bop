@@ -2,10 +2,16 @@ package github
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/bkyoung/code-reviewer/internal/domain"
 )
+
+// validReviewerNamePattern validates reviewer names extracted from comments.
+// Constraints: 1-64 chars, starts with alphanumeric, followed by alphanumeric/underscore/hyphen.
+// This provides defense-in-depth against injection of malformed reviewer names.
+var validReviewerNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
 // fingerprintMarkerStart is the HTML comment prefix for embedding fingerprints.
 // This marker is invisible in rendered markdown but can be extracted for reply matching.
@@ -219,8 +225,12 @@ func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool
 }
 
 // ExtractReviewerFromComment extracts the reviewer name from a GitHub comment body.
-// Returns the reviewer name and true if found, or empty and false if not present.
+// Returns the reviewer name and true if found and valid, or empty and false otherwise.
 // This is used for Phase 3.2 triage context to filter findings by reviewer.
+//
+// Validation: The extracted name must match validReviewerNamePattern (1-64 chars,
+// alphanumeric start, alphanumeric/underscore/hyphen). This provides defense-in-depth
+// against injection of malformed reviewer names in comment bodies.
 func ExtractReviewerFromComment(body string) (string, bool) {
 	// Find the fingerprint marker first (reviewer is always after fingerprint)
 	startIdx := strings.Index(body, fingerprintMarkerStart)
@@ -247,6 +257,11 @@ func ExtractReviewerFromComment(body string) (string, bool) {
 
 	reviewer := strings.TrimSpace(afterReviewer[:endIdx])
 	if reviewer == "" {
+		return "", false
+	}
+
+	// Validate reviewer name format (defense-in-depth)
+	if !validReviewerNamePattern.MatchString(reviewer) {
 		return "", false
 	}
 
