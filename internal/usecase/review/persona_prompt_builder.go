@@ -57,11 +57,9 @@ func (b *PersonaPromptBuilder) Build(
 
 // BuildWithSizeGuards creates a prompt with size guard enforcement for a specific reviewer.
 //
-// Note: Persona content (persona text + focus/ignore instructions) is added AFTER the base
-// builder performs truncation. This means the final token count may exceed MaxTokens by the
-// persona overhead. In practice, persona content is typically small (a few hundred tokens)
-// compared to token limits (tens of thousands), so this is acceptable. If persona overhead
-// becomes a concern, consider pre-calculating and reserving tokens for persona content.
+// The persona overhead (persona text + focus/ignore instructions) is pre-calculated and
+// reserved from the token budget before the base builder performs truncation. This ensures
+// the final prompt stays within MaxTokens even after persona content is injected.
 func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 	ctx ProjectContext,
 	diff domain.Diff,
@@ -77,9 +75,18 @@ func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 	// Filter prior findings for this reviewer only
 	filteredCtx := b.filterContext(ctx, reviewer)
 
-	// Build base prompt with size guards using filtered context
+	// Reserve token budget for persona content before base builder truncates
+	personaContent := b.buildPersonaContent(reviewer)
+	personaOverhead := estimator.EstimateTokens(personaContent)
+
+	adjustedLimits := limits
+	if personaOverhead > 0 && adjustedLimits.MaxTokens > personaOverhead {
+		adjustedLimits.MaxTokens -= personaOverhead
+	}
+
+	// Build base prompt with size guards using adjusted limits
 	baseReq, truncResult, err := b.base.BuildWithSizeGuards(
-		filteredCtx, diff, req, reviewer.Provider, estimator, limits,
+		filteredCtx, diff, req, reviewer.Provider, estimator, adjustedLimits,
 	)
 	if err != nil {
 		return ProviderRequest{}, TruncationResult{}, fmt.Errorf("building base prompt with size guards: %w", err)
@@ -111,29 +118,36 @@ func (b *PersonaPromptBuilder) filterContext(ctx ProjectContext, reviewer domain
 	return filtered
 }
 
-// injectPersonaContent prepends persona-specific content to the prompt.
-// This includes the persona description and focus/ignore instructions.
-func (b *PersonaPromptBuilder) injectPersonaContent(prompt string, reviewer domain.Reviewer) string {
+// buildPersonaContent builds the persona-specific content string for a reviewer.
+// Returns an empty string if the reviewer has no persona or focus/ignore settings.
+// Used for token budget estimation before size guards are applied.
+func (b *PersonaPromptBuilder) buildPersonaContent(reviewer domain.Reviewer) string {
 	var sections []string
 
-	// Add persona section if defined
 	if reviewer.Persona != "" {
 		sections = append(sections, b.formatPersonaSection(reviewer.Persona))
 	}
 
-	// Add focus/ignore section if defined
 	if reviewer.HasFocus() || reviewer.HasIgnore() {
 		sections = append(sections, b.formatFocusSection(reviewer.Focus, reviewer.Ignore))
 	}
 
-	// No persona content to inject
 	if len(sections) == 0 {
-		return prompt
+		return ""
 	}
 
-	// Prepend persona content to prompt
-	personaContent := strings.Join(sections, "\n\n")
-	return personaContent + "\n\n" + prompt
+	// Include the separator that will be added when injecting
+	return strings.Join(sections, "\n\n") + "\n\n"
+}
+
+// injectPersonaContent prepends persona-specific content to the prompt.
+// This includes the persona description and focus/ignore instructions.
+func (b *PersonaPromptBuilder) injectPersonaContent(prompt string, reviewer domain.Reviewer) string {
+	personaContent := b.buildPersonaContent(reviewer)
+	if personaContent == "" {
+		return prompt
+	}
+	return personaContent + prompt
 }
 
 // formatPersonaSection creates the reviewer persona section.
