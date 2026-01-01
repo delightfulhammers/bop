@@ -106,9 +106,13 @@ func run() error {
 	// Create branch reviewer if providers are available.
 	var branchReviewer mcpadapter.BranchReviewer
 	if len(providers) > 0 {
-		// Create minimal orchestrator for branch reviews
+		// Create minimal orchestrator for branch reviews.
+		// Note: Merger takes nil store - precision priors will use defaults (same as CLI).
 		merger := merge.NewIntelligentMerger(nil)
-		reviewerRegistry, _ := review.NewReviewerRegistry(&cfg)
+		reviewerRegistry, err := review.NewReviewerRegistry(&cfg)
+		if err != nil {
+			log.Printf("warning: reviewer registry creation failed, using defaults: %v", err)
+		}
 
 		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 			Git:              gitEngine,
