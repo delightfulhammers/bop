@@ -68,7 +68,8 @@ type DefaultVerification struct {
 // Dependencies captures the collaborators for the CLI.
 type Dependencies struct {
 	BranchReviewer       BranchReviewer
-	PRReviewer           PRReviewer // Optional: only required for cr review pr
+	PRReviewer           PRReviewer     // Optional: only required for cr review pr
+	SessionManager       SessionManager // Optional: only required for cr sessions
 	Args                 Arguments
 	DefaultOutput        string
 	DefaultRepo          string
@@ -114,6 +115,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())
+	if deps.SessionManager != nil {
+		root.AddCommand(SessionsCommand(deps.SessionManager))
+	}
 
 	var showVersion bool
 	root.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "Show version and exit")
