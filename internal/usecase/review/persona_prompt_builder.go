@@ -106,8 +106,10 @@ func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 	// Prepend cached persona content (reuse string built for estimation)
 	prompt := personaContent + baseReq.Prompt
 
-	// Update token count to include persona overhead (sum avoids redundant O(N) re-tokenization)
-	truncResult.FinalTokens += personaOverhead
+	// Re-estimate final token count on concatenated prompt for accuracy.
+	// BPE tokenizers are non-additive across boundaries, so simple arithmetic
+	// (FinalTokens += personaOverhead) can under/over-count.
+	truncResult.FinalTokens = estimator.EstimateTokens(prompt)
 
 	return ProviderRequest{
 		Prompt:       prompt,
