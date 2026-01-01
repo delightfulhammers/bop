@@ -27,6 +27,12 @@ type PRMetadataFetcher interface {
 	GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error)
 }
 
+// BranchReviewer reviews local git branches (for review_branch tool).
+// This is implemented by review.Orchestrator.
+type BranchReviewer interface {
+	ReviewBranch(ctx context.Context, req review.BranchRequest) (review.Result, error)
+}
+
 const (
 	// ServerName is the name reported to MCP clients.
 	ServerName = "code-reviewer-triage"
@@ -54,6 +60,10 @@ type ServerDeps struct {
 	// RemoteGitHubClient fetches PR metadata and diffs.
 	// Optional: only required for post_findings tool.
 	RemoteGitHubClient PRMetadataFetcher
+
+	// BranchReviewer reviews local git branches.
+	// Optional: only required for review_branch tool.
+	BranchReviewer BranchReviewer
 }
 
 // Server wraps the MCP server and provides triage tools.
@@ -110,6 +120,7 @@ func (s *Server) registerTools() {
 	s.registerEditFindingTool()
 	s.registerReviewPRTool()
 	s.registerPostFindingsTool()
+	s.registerReviewBranchTool()
 }
 
 // Tool input/output types for M2 PR-based tools.

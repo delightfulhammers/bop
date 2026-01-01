@@ -548,3 +548,93 @@ func truncateFingerprint(fp string, maxLen int) string {
 	}
 	return fp[:maxLen]
 }
+
+// =============================================================================
+// review_branch Tool
+// =============================================================================
+
+// registerReviewBranchTool registers the review_branch tool.
+func (s *Server) registerReviewBranchTool() {
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name: "review_branch",
+		Description: `Review a local git branch against a base reference. Returns findings without posting to any remote service.
+
+Use this for:
+- Running code review on local changes before pushing
+- Reviewing uncommitted changes in working tree
+- Getting findings for manual triage before PR creation`,
+	}, s.handleReviewBranch)
+}
+
+func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolRequest, input ReviewBranchInput) (*mcp.CallToolResult, ReviewBranchOutput, error) {
+	// Check dependency availability
+	if s.deps.BranchReviewer == nil {
+		return notImplementedResult("review_branch requires LLM providers - set ANTHROPIC_API_KEY or OPENAI_API_KEY"),
+			ReviewBranchOutput{}, nil
+	}
+
+	// Validate input
+	if input.BaseRef == "" {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "base_ref is required"},
+			},
+		}, ReviewBranchOutput{}, nil
+	}
+
+	// Build BranchRequest
+	branchReq := review.BranchRequest{
+		BaseRef:            input.BaseRef,
+		TargetRef:          input.TargetRef,
+		IncludeUncommitted: input.IncludeUncommitted,
+		Reviewers:          input.Reviewers,
+		PostToGitHub:       false, // Never post from this tool
+	}
+
+	// Execute review
+	result, err := s.deps.BranchReviewer.ReviewBranch(ctx, branchReq)
+	if err != nil {
+		return nil, ReviewBranchOutput{}, fmt.Errorf("review branch: %w", err)
+	}
+
+	// Aggregate findings from all reviews
+	var allFindings []domain.Finding
+	var totalTokensIn, totalTokensOut int
+	var totalCost float64
+
+	for _, r := range result.Reviews {
+		allFindings = append(allFindings, r.Findings...)
+		totalTokensIn += r.TokensIn
+		totalTokensOut += r.TokensOut
+		totalCost += r.Cost
+	}
+
+	// Build output (same pattern as review_pr)
+	output := ReviewBranchOutput{
+		Findings:      domainFindingsToOutput(allFindings),
+		TotalFindings: len(allFindings),
+		BySeverity:    countBySeverity(allFindings),
+		ByCategory:    countByCategory(allFindings),
+		ReviewerStats: buildReviewerStats(result.Reviews),
+		TokensIn:      totalTokensIn,
+		TokensOut:     totalTokensOut,
+		Cost:          totalCost,
+		BaseRef:       input.BaseRef,
+		TargetRef:     input.TargetRef,
+	}
+
+	if len(allFindings) == 0 {
+		output.Summary = "No findings detected"
+		output.Message = "Branch review complete: no issues found"
+	} else {
+		output.Summary = buildFindingsSummary(allFindings)
+		output.Message = fmt.Sprintf("Branch review complete: %d findings", len(allFindings))
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: output.Message},
+		},
+	}, output, nil
+}

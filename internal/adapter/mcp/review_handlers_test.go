@@ -948,3 +948,263 @@ func TestDetermineReviewAction(t *testing.T) {
 		assert.Equal(t, "REQUEST_CHANGES", action, "should REQUEST_CHANGES when preserved fingerprint matches blocking")
 	})
 }
+
+// =============================================================================
+// review_branch Tests
+// =============================================================================
+
+// mockBranchReviewer is a test mock for BranchReviewer interface.
+type mockBranchReviewer struct {
+	result review.Result
+	err    error
+}
+
+func (m *mockBranchReviewer) ReviewBranch(ctx context.Context, req review.BranchRequest) (review.Result, error) {
+	return m.result, m.err
+}
+
+func TestHandleReviewBranch(t *testing.T) {
+	t.Run("returns not implemented when BranchReviewer is nil", func(t *testing.T) {
+		s := &Server{deps: ServerDeps{}}
+
+		input := ReviewBranchInput{
+			BaseRef: "main",
+		}
+
+		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.True(t, result.IsError)
+		assert.Empty(t, output.Findings)
+		// Should provide helpful message about API keys
+		textContent, ok := result.Content[0].(*mcp.TextContent)
+		require.True(t, ok)
+		assert.Contains(t, textContent.Text, "LLM providers")
+	})
+
+	t.Run("validates required base_ref", func(t *testing.T) {
+		mock := &mockBranchReviewer{}
+		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
+
+		input := ReviewBranchInput{} // Missing BaseRef
+
+		result, _, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.True(t, result.IsError)
+		textContent, ok := result.Content[0].(*mcp.TextContent)
+		require.True(t, ok)
+		assert.Contains(t, textContent.Text, "base_ref is required")
+	})
+
+	t.Run("returns findings from branch review", func(t *testing.T) {
+		mock := &mockBranchReviewer{
+			result: review.Result{
+				Reviews: []domain.Review{
+					{
+						ProviderName: "anthropic",
+						ModelName:    "claude-sonnet-4-5",
+						TokensIn:     1000,
+						TokensOut:    500,
+						Cost:         0.01,
+						Findings: []domain.Finding{
+							{
+								ID:          "f1",
+								File:        "main.go",
+								LineStart:   10,
+								LineEnd:     15,
+								Severity:    "high",
+								Category:    "security",
+								Description: "SQL injection vulnerability",
+							},
+							{
+								ID:          "f2",
+								File:        "utils.go",
+								LineStart:   20,
+								LineEnd:     25,
+								Severity:    "medium",
+								Category:    "bug",
+								Description: "Nil pointer dereference",
+							},
+						},
+					},
+				},
+			},
+		}
+		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
+
+		input := ReviewBranchInput{
+			BaseRef:   "main",
+			TargetRef: "feature/test",
+		}
+
+		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.False(t, result.IsError)
+
+		assert.Equal(t, 2, output.TotalFindings)
+		assert.Len(t, output.Findings, 2)
+		assert.Equal(t, 1, output.BySeverity["high"])
+		assert.Equal(t, 1, output.BySeverity["medium"])
+		assert.Equal(t, 1, output.ByCategory["security"])
+		assert.Equal(t, 1, output.ByCategory["bug"])
+		assert.Equal(t, 1000, output.TokensIn)
+		assert.Equal(t, 500, output.TokensOut)
+		assert.Equal(t, 0.01, output.Cost)
+		assert.Equal(t, "main", output.BaseRef)
+		assert.Equal(t, "feature/test", output.TargetRef)
+	})
+
+	t.Run("aggregates findings from multiple reviewers", func(t *testing.T) {
+		mock := &mockBranchReviewer{
+			result: review.Result{
+				Reviews: []domain.Review{
+					{
+						ProviderName: "security",
+						TokensIn:     500,
+						TokensOut:    200,
+						Cost:         0.005,
+						Findings: []domain.Finding{
+							{ID: "f1", Severity: "high", Category: "security"},
+						},
+					},
+					{
+						ProviderName: "architecture",
+						TokensIn:     600,
+						TokensOut:    300,
+						Cost:         0.006,
+						Findings: []domain.Finding{
+							{ID: "f2", Severity: "medium", Category: "architecture"},
+							{ID: "f3", Severity: "low", Category: "maintainability"},
+						},
+					},
+				},
+			},
+		}
+		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
+
+		input := ReviewBranchInput{
+			BaseRef: "main",
+		}
+
+		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		assert.Equal(t, 3, output.TotalFindings)
+		assert.Equal(t, 1100, output.TokensIn)
+		assert.Equal(t, 500, output.TokensOut)
+		assert.InDelta(t, 0.011, output.Cost, 0.0001)
+	})
+
+	t.Run("handles no findings", func(t *testing.T) {
+		mock := &mockBranchReviewer{
+			result: review.Result{
+				Reviews: []domain.Review{
+					{ProviderName: "security", Findings: []domain.Finding{}},
+				},
+			},
+		}
+		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
+
+		input := ReviewBranchInput{
+			BaseRef: "main",
+		}
+
+		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		assert.Equal(t, 0, output.TotalFindings)
+		assert.Contains(t, output.Message, "no issues found")
+		assert.Equal(t, "No findings detected", output.Summary)
+	})
+
+	t.Run("propagates review errors", func(t *testing.T) {
+		mock := &mockBranchReviewer{
+			err: errors.New("git ref not found"),
+		}
+		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
+
+		input := ReviewBranchInput{
+			BaseRef: "nonexistent-branch",
+		}
+
+		_, _, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "git ref not found")
+	})
+
+	t.Run("passes include_uncommitted flag correctly", func(t *testing.T) {
+		var capturedReq review.BranchRequest
+		mock := &mockBranchReviewer{
+			result: review.Result{},
+		}
+		// Create a custom mock to capture the request
+		s := &Server{deps: ServerDeps{BranchReviewer: &capturingBranchReviewer{
+			result:     review.Result{},
+			capturedFn: func(req review.BranchRequest) { capturedReq = req },
+		}}}
+
+		input := ReviewBranchInput{
+			BaseRef:            "main",
+			IncludeUncommitted: true,
+		}
+
+		_, _, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+
+		assert.True(t, capturedReq.IncludeUncommitted)
+		_ = mock // silence unused warning
+	})
+
+	t.Run("passes reviewers correctly", func(t *testing.T) {
+		var capturedReq review.BranchRequest
+		s := &Server{deps: ServerDeps{BranchReviewer: &capturingBranchReviewer{
+			result:     review.Result{},
+			capturedFn: func(req review.BranchRequest) { capturedReq = req },
+		}}}
+
+		input := ReviewBranchInput{
+			BaseRef:   "main",
+			Reviewers: []string{"security", "architecture"},
+		}
+
+		_, _, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+
+		assert.Equal(t, []string{"security", "architecture"}, capturedReq.Reviewers)
+	})
+
+	t.Run("never sets PostToGitHub", func(t *testing.T) {
+		var capturedReq review.BranchRequest
+		s := &Server{deps: ServerDeps{BranchReviewer: &capturingBranchReviewer{
+			result:     review.Result{},
+			capturedFn: func(req review.BranchRequest) { capturedReq = req },
+		}}}
+
+		input := ReviewBranchInput{
+			BaseRef: "main",
+		}
+
+		_, _, err := s.handleReviewBranch(context.Background(), nil, input)
+		require.NoError(t, err)
+
+		assert.False(t, capturedReq.PostToGitHub, "PostToGitHub should always be false for review_branch")
+	})
+}
+
+// capturingBranchReviewer captures the request for inspection in tests.
+type capturingBranchReviewer struct {
+	result     review.Result
+	err        error
+	capturedFn func(review.BranchRequest)
+}
+
+func (c *capturingBranchReviewer) ReviewBranch(ctx context.Context, req review.BranchRequest) (review.Result, error) {
+	if c.capturedFn != nil {
+		c.capturedFn(req)
+	}
+	return c.result, c.err
+}
