@@ -51,8 +51,8 @@ func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumbe
 		return nil, fmt.Errorf("list comments: %w", err)
 	}
 
-	// Build reply count map (count replies per parent)
-	replyCountMap := buildReplyCountMap(rawComments)
+	// Build reply metadata map (replies per parent with last reply info)
+	replyMetadataMap := buildReplyMetadataMap(rawComments)
 
 	// Convert to domain type with filtering
 	var findings []domain.PRFinding
@@ -74,7 +74,7 @@ func (c *Client) ListPRComments(ctx context.Context, owner, repo string, prNumbe
 			continue
 		}
 
-		finding := commentToFinding(comment, fingerprint, replyCountMap[comment.ID])
+		finding := commentToFinding(comment, fingerprint, replyMetadataMap[comment.ID])
 		findings = append(findings, finding)
 	}
 
@@ -172,15 +172,15 @@ func (c *Client) GetPRComment(ctx context.Context, owner, repo string, prNumber 
 		return nil, triage.ErrCommentNotFound
 	}
 
-	// Get reply count for this comment
-	replyCount, err := c.countReplies(ctx, owner, repo, prNumber, commentID)
+	// Get reply metadata for this comment
+	meta, err := c.getReplyMetadata(ctx, owner, repo, prNumber, commentID)
 	if err != nil {
-		// Non-fatal: just use 0 if we can't get reply count
-		replyCount = 0
+		// Non-fatal: just use empty metadata if we can't get it
+		meta = replyMetadata{}
 	}
 
 	fingerprint := parseFingerprint(comment.Body)
-	finding := apiCommentToFinding(comment, fingerprint, replyCount)
+	finding := apiCommentToFinding(comment, fingerprint, meta)
 	return &finding, nil
 }
 
@@ -352,19 +352,35 @@ type commentAPIResponse struct {
 
 // Helper functions
 
-// buildReplyCountMap counts replies for each parent comment.
-func buildReplyCountMap(comments []PullRequestComment) map[int64]int {
-	counts := make(map[int64]int)
+// replyMetadata captures reply statistics for a parent comment.
+type replyMetadata struct {
+	count       int
+	lastReplyAt time.Time
+	lastReplyBy string
+}
+
+// buildReplyMetadataMap aggregates reply metadata for each parent comment.
+// Returns a map from parent comment ID to its reply metadata.
+func buildReplyMetadataMap(comments []PullRequestComment) map[int64]replyMetadata {
+	metadata := make(map[int64]replyMetadata)
 	for _, c := range comments {
 		if c.InReplyToID != 0 {
-			counts[c.InReplyToID]++
+			createdAt, err := time.Parse(time.RFC3339, c.CreatedAt)
+			existing := metadata[c.InReplyToID]
+			existing.count++
+			// Track the most recent reply (skip if timestamp unparseable)
+			if err == nil && createdAt.After(existing.lastReplyAt) {
+				existing.lastReplyAt = createdAt
+				existing.lastReplyBy = c.User.Login
+			}
+			metadata[c.InReplyToID] = existing
 		}
 	}
-	return counts
+	return metadata
 }
 
 // commentToFinding converts a PullRequestComment to a domain.PRFinding.
-func commentToFinding(comment PullRequestComment, fingerprint string, replyCount int) domain.PRFinding {
+func commentToFinding(comment PullRequestComment, fingerprint string, meta replyMetadata) domain.PRFinding {
 	line := 0
 	if comment.Line != nil {
 		line = *comment.Line
@@ -375,7 +391,7 @@ func commentToFinding(comment PullRequestComment, fingerprint string, replyCount
 	// Extract reviewer name from CR_REVIEWER marker (Phase 3.2)
 	reviewer, _ := ExtractReviewerFromComment(comment.Body)
 
-	return domain.PRFinding{
+	finding := domain.PRFinding{
 		CommentID:   comment.ID,
 		Fingerprint: fingerprint,
 		Path:        comment.Path,
@@ -384,15 +400,24 @@ func commentToFinding(comment PullRequestComment, fingerprint string, replyCount
 		Author:      comment.User.Login,
 		CreatedAt:   createdAt,
 		IsResolved:  false, // GitHub doesn't include this in list endpoint
-		ReplyCount:  replyCount,
+		ReplyCount:  meta.count,
+		HasReply:    meta.count > 0,
 		Severity:    parseSeverity(comment.Body),
 		Category:    parseCategory(comment.Body),
 		Reviewer:    reviewer,
 	}
+
+	// Set last reply info if there are replies
+	if meta.count > 0 {
+		finding.LastReplyAt = &meta.lastReplyAt
+		finding.LastReplyBy = meta.lastReplyBy
+	}
+
+	return finding
 }
 
 // apiCommentToFinding converts a commentAPIResponse to a domain.PRFinding.
-func apiCommentToFinding(comment commentAPIResponse, fingerprint string, replyCount int) domain.PRFinding {
+func apiCommentToFinding(comment commentAPIResponse, fingerprint string, meta replyMetadata) domain.PRFinding {
 	line := 0
 	if comment.Line != nil {
 		line = *comment.Line
@@ -403,7 +428,7 @@ func apiCommentToFinding(comment commentAPIResponse, fingerprint string, replyCo
 	// Extract reviewer name from CR_REVIEWER marker (Phase 3.2)
 	reviewer, _ := ExtractReviewerFromComment(comment.Body)
 
-	return domain.PRFinding{
+	finding := domain.PRFinding{
 		CommentID:   comment.ID,
 		Fingerprint: fingerprint,
 		Path:        comment.Path,
@@ -412,11 +437,20 @@ func apiCommentToFinding(comment commentAPIResponse, fingerprint string, replyCo
 		Author:      comment.User.Login,
 		CreatedAt:   createdAt,
 		IsResolved:  false,
-		ReplyCount:  replyCount,
+		ReplyCount:  meta.count,
+		HasReply:    meta.count > 0,
 		Severity:    parseSeverity(comment.Body),
 		Category:    parseCategory(comment.Body),
 		Reviewer:    reviewer,
 	}
+
+	// Set last reply info if there are replies
+	if meta.count > 0 {
+		finding.LastReplyAt = &meta.lastReplyAt
+		finding.LastReplyBy = meta.lastReplyBy
+	}
+
+	return finding
 }
 
 // parseFingerprint extracts the CR_FP marker from a comment body.
@@ -465,23 +499,19 @@ func extractPRNumber(prURL string) int {
 	return num
 }
 
-// countReplies counts the number of replies to a specific comment.
+// getReplyMetadata retrieves reply metadata for a specific comment.
 //
 // Performance limitation: This fetches all PR comments and filters client-side.
-// GitHub's API doesn't provide a direct way to count replies for a single comment.
+// GitHub's API doesn't provide a direct way to get reply info for a single comment.
 // For PRs with hundreds of comments, consider caching the comment list or
-// making reply count opt-in for callers who don't need it.
-func (c *Client) countReplies(ctx context.Context, owner, repo string, prNumber int, parentID int64) (int, error) {
+// making reply metadata opt-in for callers who don't need it.
+func (c *Client) getReplyMetadata(ctx context.Context, owner, repo string, prNumber int, parentID int64) (replyMetadata, error) {
 	comments, err := c.ListPullRequestComments(ctx, owner, repo, prNumber)
 	if err != nil {
-		return 0, err
+		return replyMetadata{}, err
 	}
 
-	count := 0
-	for _, comment := range comments {
-		if comment.InReplyToID == parentID {
-			count++
-		}
-	}
-	return count, nil
+	// Build full metadata map and extract the one we need
+	metadataMap := buildReplyMetadataMap(comments)
+	return metadataMap[parentID], nil
 }

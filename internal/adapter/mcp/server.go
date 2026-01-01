@@ -120,32 +120,46 @@ type GetAnnotationOutput struct {
 
 // ListFindingsInput is the input for the list_findings tool.
 type ListFindingsInput struct {
-	Owner    string  `json:"owner" jsonschema:"Repository owner"`
-	Repo     string  `json:"repo" jsonschema:"Repository name"`
-	PRNumber int     `json:"pr_number" jsonschema:"Pull request number"`
-	Severity *string `json:"severity,omitempty" jsonschema:"Filter by severity (critical, high, medium, low)"`
-	Category *string `json:"category,omitempty" jsonschema:"Filter by category"`
+	Owner       string  `json:"owner" jsonschema:"Repository owner"`
+	Repo        string  `json:"repo" jsonschema:"Repository name"`
+	PRNumber    int     `json:"pr_number" jsonschema:"Pull request number"`
+	Severity    *string `json:"severity,omitempty" jsonschema:"Filter by severity (critical, high, medium, low)"`
+	Category    *string `json:"category,omitempty" jsonschema:"Filter by category"`
+	ReplyStatus *string `json:"reply_status,omitempty" jsonschema:"Filter by reply status (all, replied, unreplied)"`
 }
 
 // ListFindingsOutput is the output for the list_findings tool.
 type ListFindingsOutput struct {
 	Findings []PRFindingOutput `json:"findings"`
 	Total    int               `json:"total"`
+	Summary  *FindingsSummary  `json:"summary,omitempty"`
+}
+
+// FindingsSummary provides triage progress statistics.
+type FindingsSummary struct {
+	Total         int            `json:"total"`
+	Replied       int            `json:"replied"`
+	Unreplied     int            `json:"unreplied"`
+	BySeverity    map[string]int `json:"by_severity"`
+	TriagePercent float64        `json:"triage_percent"`
 }
 
 // PRFindingOutput represents a PR comment finding in tool output.
 type PRFindingOutput struct {
-	CommentID    int64  `json:"comment_id"`
-	Fingerprint  string `json:"fingerprint,omitempty"`
-	Path         string `json:"path"`
-	Line         int    `json:"line"`
-	Severity     string `json:"severity,omitempty"`
-	Category     string `json:"category,omitempty"`
-	Body         string `json:"body"`
-	Author       string `json:"author"`
-	IsResolved   bool   `json:"is_resolved"`
-	ReplyCount   int    `json:"reply_count"`
-	ThreadStatus string `json:"thread_status"`
+	CommentID    int64   `json:"comment_id"`
+	Fingerprint  string  `json:"fingerprint,omitempty"`
+	Path         string  `json:"path"`
+	Line         int     `json:"line"`
+	Severity     string  `json:"severity,omitempty"`
+	Category     string  `json:"category,omitempty"`
+	Body         string  `json:"body"`
+	Author       string  `json:"author"`
+	IsResolved   bool    `json:"is_resolved"`
+	ReplyCount   int     `json:"reply_count"`
+	HasReply     bool    `json:"has_reply"`
+	LastReplyAt  *string `json:"last_reply_at,omitempty"`
+	LastReplyBy  string  `json:"last_reply_by,omitempty"`
+	ThreadStatus string  `json:"thread_status"`
 }
 
 // GetFindingInput is the input for the get_finding tool.

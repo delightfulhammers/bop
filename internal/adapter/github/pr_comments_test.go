@@ -519,11 +519,11 @@ func TestBuildReplyCountMap(t *testing.T) {
 		{ID: 5, InReplyToID: 4},
 	}
 
-	counts := buildReplyCountMap(comments)
+	metadata := buildReplyMetadataMap(comments)
 
-	assert.Equal(t, 2, counts[1])
-	assert.Equal(t, 1, counts[4])
-	assert.Equal(t, 0, counts[2]) // No replies to comment 2
+	assert.Equal(t, 2, metadata[1].count)
+	assert.Equal(t, 1, metadata[4].count)
+	assert.Equal(t, 0, metadata[2].count) // No replies to comment 2
 }
 
 func TestCommentToFinding(t *testing.T) {
@@ -536,7 +536,8 @@ func TestCommentToFinding(t *testing.T) {
 		CreatedAt: "2024-01-15T10:00:00Z",
 	}
 
-	finding := commentToFinding(comment, "abc123", 3)
+	meta := replyMetadata{count: 3}
+	finding := commentToFinding(comment, "abc123", meta)
 
 	assert.Equal(t, int64(1001), finding.CommentID)
 	assert.Equal(t, "abc123", finding.Fingerprint)
@@ -546,6 +547,7 @@ func TestCommentToFinding(t *testing.T) {
 	assert.Equal(t, "bug", finding.Category)
 	assert.Equal(t, "reviewer", finding.Author)
 	assert.Equal(t, 3, finding.ReplyCount)
+	assert.True(t, finding.HasReply)
 }
 
 func TestCommentToFinding_NilLine(t *testing.T) {
@@ -558,9 +560,10 @@ func TestCommentToFinding_NilLine(t *testing.T) {
 		CreatedAt: "2024-01-15T10:00:00Z",
 	}
 
-	finding := commentToFinding(comment, "", 0)
+	finding := commentToFinding(comment, "", replyMetadata{})
 
 	assert.Equal(t, 0, finding.Line)
+	assert.False(t, finding.HasReply)
 }
 
 func TestCommentToFinding_WithReviewer(t *testing.T) {
@@ -607,7 +610,7 @@ func TestCommentToFinding_WithReviewer(t *testing.T) {
 				CreatedAt: "2024-01-15T10:00:00Z",
 			}
 
-			finding := commentToFinding(comment, "abc123", 0)
+			finding := commentToFinding(comment, "abc123", replyMetadata{})
 
 			assert.Equal(t, tt.wantReviewer, finding.Reviewer)
 		})
@@ -625,7 +628,7 @@ func TestAPICommentToFinding_WithReviewer(t *testing.T) {
 		PullRequestURL: "https://api.github.com/repos/owner/repo/pulls/123",
 	}
 
-	finding := apiCommentToFinding(comment, "abc123", 0)
+	finding := apiCommentToFinding(comment, "abc123", replyMetadata{})
 
 	assert.Equal(t, "architecture", finding.Reviewer)
 }
