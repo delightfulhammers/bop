@@ -33,6 +33,10 @@ Code-reviewer provides high-quality, automated code reviews using the LLM-as-jud
 - **v0.6.2** — Official GitHub Action, semantic deduplication improvements
 - **v0.6.3** — Defense-in-depth input validation, token budget reservation for personas
 
+### Phase 3.3 Decision (2025-12-31)
+
+Analyzed cost/benefit of dynamic model routing. Conclusion: current per-PR costs (~$2 worst case) don't justify the complexity of intelligent routing. The routing layer would add latency and cost while unlikely to eliminate enough reviewer calls to break even. At 3-5 PRs/day, the daily ceiling is ~$10 — well within acceptable range for the value provided. Deferred indefinitely in favor of using the tool on real projects rather than over-optimizing.
+
 ---
 
 ## 2. Problem Statement

@@ -36,7 +36,7 @@
 | Phase 2: GitHub Native | ✅ Complete | First-class reviewer with inline annotations |
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
-| Phase 3.3: Model Selection | Planned | Right-size models to change characteristics |
+| Phase 3.3: Model Selection | Deferred | Right-size models to change characteristics |
 | Phase 4: Enterprise | Planned | Multi-platform, org-wide learning |
 
 ### Phase 3 Focus Areas
@@ -45,7 +45,7 @@
 |-----------|-------|----------|--------|
 | **3.1 Triage Automation** | MCP server, CLI, skill for triage workflow | P0 | ✅ Complete |
 | **3.2 Reviewer Personas** | Specialized reviewers with distinct prompts | P0 | ✅ Complete |
-| **3.3 Dynamic Model Selection** | Right-size models to change characteristics | P1 | Planned |
+| **3.3 Dynamic Model Selection** | Right-size models to change characteristics | P2 | Deferred |
 
 ### Phase 3.1 Deliverables (Triage MCP Server)
 
