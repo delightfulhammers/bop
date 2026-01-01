@@ -4,6 +4,7 @@
 /code-reviewer-mcp
 /out/**
 /~
+/review-output
 
 # Database files
 *.db

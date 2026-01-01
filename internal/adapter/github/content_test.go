@@ -112,6 +112,39 @@ func TestClient_GetFileContent(t *testing.T) {
 			wantErr:        true,
 			wantErrContain: "path",
 		},
+		{
+			name:           "returns error for path traversal with double dots",
+			owner:          "testowner",
+			repo:           "testrepo",
+			path:           "../../../etc/passwd",
+			ref:            "main",
+			serverResponse: nil,
+			statusCode:     0,
+			wantErr:        true,
+			wantErrContain: "traversal",
+		},
+		{
+			name:           "returns error for path traversal in middle",
+			owner:          "testowner",
+			repo:           "testrepo",
+			path:           "src/../../../etc/passwd",
+			ref:            "main",
+			serverResponse: nil,
+			statusCode:     0,
+			wantErr:        true,
+			wantErrContain: "traversal",
+		},
+		{
+			name:           "returns error for absolute path",
+			owner:          "testowner",
+			repo:           "testrepo",
+			path:           "/etc/passwd",
+			ref:            "main",
+			serverResponse: nil,
+			statusCode:     0,
+			wantErr:        true,
+			wantErrContain: "traversal",
+		},
 	}
 
 	for _, tt := range tests {
@@ -187,4 +220,53 @@ type contentAPIResponse struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
 	SHA      string `json:"sha"`
+}
+
+func TestClient_GetFileContent_SizeLimit(t *testing.T) {
+	// Test that files exceeding size limit are rejected
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := contentAPIResponse{
+			Type:     "file",
+			Encoding: "base64",
+			Content:  base64.StdEncoding.EncodeToString([]byte("small content")),
+			Size:     11 * 1024 * 1024, // 11MB - over the 10MB limit
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	_, err := client.GetFileContent(context.Background(), "owner", "repo", "largefile.bin", "main")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "too large")
+}
+
+func TestClient_GetFileContent_SizeLimitAllowsNormalFiles(t *testing.T) {
+	// Test that files under the size limit are accepted
+	originalContent := "Normal sized content"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := contentAPIResponse{
+			Type:     "file",
+			Encoding: "base64",
+			Content:  base64.StdEncoding.EncodeToString([]byte(originalContent)),
+			Size:     len(originalContent),
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	content, err := client.GetFileContent(context.Background(), "owner", "repo", "normalfile.txt", "main")
+
+	require.NoError(t, err)
+	assert.Equal(t, originalContent, content)
 }

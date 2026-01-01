@@ -40,6 +40,10 @@ func (c *Client) GetFileContent(ctx context.Context, owner, repo, path, ref stri
 	if path == "" {
 		return "", fmt.Errorf("invalid path: must not be empty")
 	}
+	// Validate path for traversal sequences
+	if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+		return "", fmt.Errorf("invalid path: contains traversal sequence or absolute path")
+	}
 
 	// Build URL - path needs to be escaped but preserve slashes for nested paths
 	escapedPath := url.PathEscape(path)
@@ -111,6 +115,12 @@ func (c *Client) GetFileContent(ctx context.Context, owner, repo, path, ref stri
 	// Verify it's a file, not a directory
 	if content.Type != "file" {
 		return "", fmt.Errorf("path is not a file: %s (type: %s)", path, content.Type)
+	}
+
+	// Validate content size before decoding to prevent memory exhaustion
+	const maxContentSize = 10 * 1024 * 1024 // 10MB
+	if content.Size > maxContentSize {
+		return "", fmt.Errorf("file too large: %d bytes (max: %d)", content.Size, maxContentSize)
 	}
 
 	// Decode base64 content
