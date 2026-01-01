@@ -181,6 +181,14 @@ func (c *Client) ReplyToComment(ctx context.Context, owner, repo string, prNumbe
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Verify expected status codes (GitHub returns 201 Created for new comments)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNoContent {
+			return 0, fmt.Errorf("unexpected 204 No Content: expected response body with comment ID")
+		}
+		return 0, fmt.Errorf("unexpected status %d: expected 200 or 201", resp.StatusCode)
+	}
+
 	var commentResp CommentResponse
 	if err := json.NewDecoder(resp.Body).Decode(&commentResp); err != nil {
 		return 0, fmt.Errorf("failed to parse response: %w", err)
@@ -295,6 +303,14 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Verify expected status codes (GitHub returns 201 Created for new comments)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNoContent {
+			return 0, fmt.Errorf("unexpected 204 No Content: expected response body with comment ID")
+		}
+		return 0, fmt.Errorf("unexpected status %d: expected 200 or 201", resp.StatusCode)
+	}
+
 	var commentResp CommentResponse
 	if err := json.NewDecoder(resp.Body).Decode(&commentResp); err != nil {
 		return 0, fmt.Errorf("failed to parse response: %w", err)
@@ -408,6 +424,11 @@ func (c *Client) RequestReviewers(ctx context.Context, owner, repo string, prNum
 		return err
 	}
 	_ = resp.Body.Close()
+
+	// Verify expected status codes (GitHub returns 201 Created for review requests)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d: expected 200 or 201", resp.StatusCode)
+	}
 
 	return nil
 }
