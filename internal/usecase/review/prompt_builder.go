@@ -458,6 +458,8 @@ func sanitizeRationale(rationale, indent string) string {
 	// Wrap in quote block to visually separate user content
 	// This helps both human readers and LLMs distinguish user input from structured prompt
 	// The indent prefix maintains markdown list structure when used within list items
+	// Trim trailing newlines to avoid empty "> " lines at the end
+	rationale = strings.TrimRight(rationale, "\n")
 	lines := strings.Split(rationale, "\n")
 	var sb strings.Builder
 	for _, line := range lines {
@@ -497,8 +499,10 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString("   - Rationale (user-provided):\n")
-			sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
+			if f.StatusReason != "" {
+				sb.WriteString("   - Rationale (user-provided):\n")
+				sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
+			}
 			sb.WriteString("\n")
 		}
 	}
@@ -515,8 +519,10 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString("   - Rationale (user-provided):\n")
-			sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
+			if f.StatusReason != "" {
+				sb.WriteString("   - Rationale (user-provided):\n")
+				sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
+			}
 			sb.WriteString("\n")
 		}
 	}
@@ -533,8 +539,10 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString("   - Status:\n")
-			sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
+			if f.StatusReason != "" {
+				sb.WriteString("   - Status:\n")
+				sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
+			}
 			sb.WriteString("\n")
 		}
 	}
