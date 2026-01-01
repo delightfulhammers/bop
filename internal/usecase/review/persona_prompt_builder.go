@@ -75,13 +75,24 @@ func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 	// Filter prior findings for this reviewer only
 	filteredCtx := b.filterContext(ctx, reviewer)
 
-	// Reserve token budget for persona content before base builder truncates
+	// Build persona content once and reuse for both estimation and injection
 	personaContent := b.buildPersonaContent(reviewer)
 	personaOverhead := estimator.EstimateTokens(personaContent)
 
+	// Reserve token budget for persona content using saturation arithmetic
+	// (clamp to 0 rather than skipping adjustment if overhead >= budget)
 	adjustedLimits := limits
-	if personaOverhead > 0 && adjustedLimits.MaxTokens > personaOverhead {
-		adjustedLimits.MaxTokens -= personaOverhead
+	if personaOverhead > 0 {
+		if adjustedLimits.MaxTokens > personaOverhead {
+			adjustedLimits.MaxTokens -= personaOverhead
+		} else {
+			adjustedLimits.MaxTokens = 0
+		}
+		if adjustedLimits.WarnTokens > personaOverhead {
+			adjustedLimits.WarnTokens -= personaOverhead
+		} else {
+			adjustedLimits.WarnTokens = 0
+		}
 	}
 
 	// Build base prompt with size guards using adjusted limits
@@ -92,8 +103,8 @@ func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 		return ProviderRequest{}, TruncationResult{}, fmt.Errorf("building base prompt with size guards: %w", err)
 	}
 
-	// Inject persona-specific content at prompt start
-	prompt := b.injectPersonaContent(baseReq.Prompt, reviewer)
+	// Prepend cached persona content (reuse string built for estimation)
+	prompt := personaContent + baseReq.Prompt
 
 	// Update token count to include persona overhead
 	truncResult.FinalTokens = estimator.EstimateTokens(prompt)
