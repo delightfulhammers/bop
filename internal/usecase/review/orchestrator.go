@@ -995,12 +995,16 @@ func validateRequest(req BranchRequest) error {
 // synthesizeReviewersFromProviders creates synthetic reviewers from enabled providers.
 // This is used for backward compatibility when no reviewers are configured.
 // Each enabled provider becomes a reviewer with default settings.
+//
+// These reviewers are marked as IsLegacy=true to indicate they were synthesized
+// (not configured explicitly). Legacy reviewers don't require Model because the
+// Provider implementation already has the model configured internally.
 func synthesizeReviewersFromProviders(providers map[string]Provider) []domain.Reviewer {
 	reviewers := make([]domain.Reviewer, 0, len(providers))
 
 	for name, provider := range providers {
 		// Use the provider's name as the reviewer name
-		// Model is already configured on the provider, not needed here
+		// Model is empty because Provider already has it configured
 		reviewers = append(reviewers, domain.Reviewer{
 			Name:     name,
 			Provider: name,
@@ -1010,6 +1014,7 @@ func synthesizeReviewersFromProviders(providers map[string]Provider) []domain.Re
 			Focus:    nil,
 			Ignore:   nil,
 			Enabled:  true,
+			IsLegacy: true, // Mark as legacy for explicit contract
 		})
 		// Log that we're using the provider
 		_ = provider // We just need to iterate over keys

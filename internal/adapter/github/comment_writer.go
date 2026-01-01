@@ -16,10 +16,46 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 )
 
-// githubNamePattern validates GitHub usernames and team slugs.
-// GitHub usernames: alphanumeric and hyphens, 1-39 chars, no leading/trailing hyphens.
-// Team slugs: alphanumeric, hyphens, and underscores.
-var githubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$|^[a-zA-Z0-9]$`)
+// githubTeamSlugPattern validates GitHub team slugs.
+// Constraints: alphanumeric, hyphens, and underscores, no leading/trailing special chars.
+var githubTeamSlugPattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$|^[a-zA-Z0-9]$`)
+
+// isValidGitHubUsername validates a GitHub username.
+// Constraints: alphanumeric and single hyphens, 1-39 chars,
+// no leading/trailing/consecutive hyphens.
+func isValidGitHubUsername(username string) bool {
+	if len(username) == 0 || len(username) > 39 {
+		return false
+	}
+
+	// Must start and end with alphanumeric
+	if !isAlphanumeric(username[0]) || !isAlphanumeric(username[len(username)-1]) {
+		return false
+	}
+
+	// Check for consecutive hyphens and invalid characters
+	prevWasHyphen := false
+	for i := 0; i < len(username); i++ {
+		c := username[i]
+		if c == '-' {
+			if prevWasHyphen {
+				return false // consecutive hyphens
+			}
+			prevWasHyphen = true
+		} else if isAlphanumeric(c) {
+			prevWasHyphen = false
+		} else {
+			return false // invalid character
+		}
+	}
+
+	return true
+}
+
+// isAlphanumeric returns true if c is a-z, A-Z, or 0-9.
+func isAlphanumeric(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
 
 // ReplyCommentRequest is the request body for replying to a PR comment.
 // See: https://docs.github.com/en/rest/pulls/comments#create-a-reply-for-a-review-comment
@@ -145,6 +181,14 @@ func (c *Client) ReplyToComment(ctx context.Context, owner, repo string, prNumbe
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Verify expected status codes (GitHub returns 201 Created for new comments)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNoContent {
+			return 0, fmt.Errorf("unexpected 204 No Content: expected response body with comment ID")
+		}
+		return 0, fmt.Errorf("unexpected status %d: expected 200 or 201", resp.StatusCode)
+	}
+
 	var commentResp CommentResponse
 	if err := json.NewDecoder(resp.Body).Decode(&commentResp); err != nil {
 		return 0, fmt.Errorf("failed to parse response: %w", err)
@@ -259,6 +303,14 @@ func (c *Client) CreateComment(ctx context.Context, owner, repo string, prNumber
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	// Verify expected status codes (GitHub returns 201 Created for new comments)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNoContent {
+			return 0, fmt.Errorf("unexpected 204 No Content: expected response body with comment ID")
+		}
+		return 0, fmt.Errorf("unexpected status %d: expected 200 or 201", resp.StatusCode)
+	}
+
 	var commentResp CommentResponse
 	if err := json.NewDecoder(resp.Body).Decode(&commentResp); err != nil {
 		return 0, fmt.Errorf("failed to parse response: %w", err)
@@ -292,12 +344,12 @@ func (c *Client) RequestReviewers(ctx context.Context, owner, repo string, prNum
 	}
 	// Validate reviewer names match GitHub's username/team slug patterns
 	for _, r := range reviewers {
-		if !githubNamePattern.MatchString(r) {
+		if !isValidGitHubUsername(r) {
 			return fmt.Errorf("invalid reviewer username: %q", r)
 		}
 	}
 	for _, t := range teamReviewers {
-		if !githubNamePattern.MatchString(t) {
+		if !githubTeamSlugPattern.MatchString(t) {
 			return fmt.Errorf("invalid team slug: %q", t)
 		}
 	}
@@ -372,6 +424,11 @@ func (c *Client) RequestReviewers(ctx context.Context, owner, repo string, prNum
 		return err
 	}
 	_ = resp.Body.Close()
+
+	// Verify expected status codes (GitHub returns 201 Created for review requests)
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d: expected 200 or 201", resp.StatusCode)
+	}
 
 	return nil
 }

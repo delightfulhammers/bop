@@ -13,6 +13,8 @@ type Reviewer struct {
 	Provider string `json:"provider"`
 
 	// Model is the specific model name (e.g., "claude-opus-4", "gpt-4").
+	// In persona mode, this is resolved from config or provider defaults.
+	// In legacy mode, this is empty because the Provider already has the model configured.
 	Model string `json:"model"`
 
 	// Weight controls the influence of this reviewer's findings in aggregation.
@@ -36,6 +38,11 @@ type Reviewer struct {
 	// Enabled indicates whether this reviewer is active.
 	// Disabled reviewers are skipped during multi-reviewer orchestration.
 	Enabled bool `json:"enabled"`
+
+	// IsLegacy indicates this reviewer was synthesized for backward compatibility.
+	// Legacy reviewers don't require Model because the Provider has it configured.
+	// This makes the persona mode vs legacy mode contract explicit.
+	IsLegacy bool `json:"isLegacy,omitempty"`
 }
 
 // NewReviewer creates a new Reviewer with sensible defaults.
@@ -55,6 +62,9 @@ var ErrInvalidReviewer = fmt.Errorf("invalid reviewer")
 
 // Validate checks that the reviewer has valid configuration.
 // Returns ErrInvalidReviewer with details if validation fails.
+//
+// Note: For legacy mode reviewers (IsLegacy=true), Model is not required
+// because the Provider already has the model configured internally.
 func (r Reviewer) Validate() error {
 	if r.Name == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalidReviewer)
@@ -64,7 +74,9 @@ func (r Reviewer) Validate() error {
 		return fmt.Errorf("%w: provider is required for reviewer %q", ErrInvalidReviewer, r.Name)
 	}
 
-	if r.Model == "" {
+	// Model is required for persona mode, but not for legacy mode
+	// (legacy reviewers use the Provider's internal model configuration)
+	if r.Model == "" && !r.IsLegacy {
 		return fmt.Errorf("%w: model is required for reviewer %q", ErrInvalidReviewer, r.Name)
 	}
 

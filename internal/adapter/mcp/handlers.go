@@ -12,6 +12,21 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// ValidStatusTags contains the allowed status tags for reply_to_finding.
+// These are used to mark the disposition of a finding during triage.
+var ValidStatusTags = []string{"acknowledged", "disputed", "fixed", "wont_fix"}
+
+// isValidStatusTag checks if a status tag is valid (case-insensitive).
+func isValidStatusTag(status string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	for _, valid := range ValidStatusTags {
+		if normalized == valid {
+			return true
+		}
+	}
+	return false
+}
+
 // notImplementedResult returns a standard "not implemented" MCP result with IsError=true.
 func notImplementedResult(scope string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{
@@ -514,8 +529,29 @@ func (s *Server) handleReplyToFinding(ctx context.Context, req *mcp.CallToolRequ
 	// Build the reply body with optional status tag
 	body := input.Body
 	if input.Status != nil && *input.Status != "" {
+		// Reject oversized inputs before allocation (valid tags are ≤12 chars)
+		const maxStatusLen = 30
+		if len(*input.Status) > maxStatusLen {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Status tag too long (max %d chars). Valid values: %v", maxStatusLen, ValidStatusTags)},
+				},
+			}, ReplyToFindingOutput{Success: false, Message: "Invalid status tag"}, nil
+		}
+		// Validate and normalize the status tag
+		normalizedStatus := strings.ToLower(strings.TrimSpace(*input.Status))
+		if !isValidStatusTag(normalizedStatus) {
+			// Use normalizedStatus in error message to avoid log injection from original input
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Invalid status tag: %q. Valid values: %v", normalizedStatus, ValidStatusTags)},
+				},
+			}, ReplyToFindingOutput{Success: false, Message: "Invalid status tag"}, nil
+		}
 		// Prepend status tag for machine parsing
-		body = fmt.Sprintf("**Status:** %s\n\n%s", *input.Status, input.Body)
+		body = fmt.Sprintf("**Status:** %s\n\n%s", normalizedStatus, input.Body)
 	}
 
 	commentID, err := s.deps.PRService.ReplyToFinding(ctx, input.Owner, input.Repo, input.PRNumber, input.FindingID, body)

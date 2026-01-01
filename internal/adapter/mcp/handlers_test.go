@@ -12,6 +12,7 @@ import (
 
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // =============================================================================
@@ -1290,6 +1291,97 @@ func TestServer_handleReplyToFinding(t *testing.T) {
 		assert.False(t, output.Success)
 
 		mockComment.AssertExpectations(t)
+	})
+
+	t.Run("returns error for invalid status tag", func(t *testing.T) {
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: new(MockCommentReader),
+			CommentWriter: new(MockCommentWriter),
+		})
+		server := createTestServer(svc)
+
+		invalidStatus := "invalid_status"
+		input := ReplyToFindingInput{
+			Owner:     "owner",
+			Repo:      "repo",
+			PRNumber:  42,
+			FindingID: "12345",
+			Body:      "reply",
+			Status:    &invalidStatus,
+		}
+
+		result, output, err := server.handleReplyToFinding(ctx, nil, input)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+		assert.False(t, output.Success)
+		assert.Equal(t, "Invalid status tag", output.Message)
+		// Verify error message includes the invalid value and valid options
+		assert.Contains(t, result.Content[0].(*mcpsdk.TextContent).Text, "invalid_status")
+		assert.Contains(t, result.Content[0].(*mcpsdk.TextContent).Text, "acknowledged")
+	})
+
+	t.Run("normalizes status tag case and whitespace", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockWriter := new(MockCommentWriter)
+
+		finding := &domain.PRFinding{
+			CommentID: 12345,
+			Path:      "main.go",
+		}
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(12345)).Return(finding, nil)
+		// Verify the normalized status is used (lowercase, trimmed)
+		mockWriter.On("ReplyToComment", ctx, "owner", "repo", 42, int64(12345), "**Status:** acknowledged\n\nAcknowledged").Return(int64(99999), nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+			CommentWriter: mockWriter,
+		})
+		server := createTestServer(svc)
+
+		// Use mixed case with whitespace
+		status := "  ACKNOWLEDGED  "
+		input := ReplyToFindingInput{
+			Owner:     "owner",
+			Repo:      "repo",
+			PRNumber:  42,
+			FindingID: "12345",
+			Body:      "Acknowledged",
+			Status:    &status,
+		}
+
+		result, output, err := server.handleReplyToFinding(ctx, nil, input)
+		require.NoError(t, err)
+		assert.False(t, result.IsError)
+		assert.True(t, output.Success)
+
+		mockComment.AssertExpectations(t)
+		mockWriter.AssertExpectations(t)
+	})
+
+	t.Run("rejects oversized status tag before allocation", func(t *testing.T) {
+		// Need a PRService to pass the nil check before reaching status validation
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+		server := createTestServer(svc)
+
+		// Create a very long status tag (> 30 chars)
+		oversizedStatus := "this_is_a_very_long_status_tag_that_exceeds_the_maximum_allowed_length"
+		input := ReplyToFindingInput{
+			Owner:     "owner",
+			Repo:      "repo",
+			PRNumber:  42,
+			FindingID: "12345",
+			Body:      "reply",
+			Status:    &oversizedStatus,
+		}
+
+		result, output, err := server.handleReplyToFinding(ctx, nil, input)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+		assert.False(t, output.Success)
+		assert.Equal(t, "Invalid status tag", output.Message)
+		// Verify error message mentions length limit
+		assert.Contains(t, result.Content[0].(*mcpsdk.TextContent).Text, "too long")
+		assert.Contains(t, result.Content[0].(*mcpsdk.TextContent).Text, "30")
 	})
 }
 

@@ -93,6 +93,16 @@ func TestReviewer_Validate(t *testing.T) {
 			errMsg:  "model is required",
 		},
 		{
+			name: "legacy_reviewer_without_model",
+			reviewer: Reviewer{
+				Name:     "anthropic",
+				Provider: "anthropic",
+				Weight:   1.0,
+				IsLegacy: true, // Legacy reviewers don't require model
+			},
+			wantErr: false,
+		},
+		{
 			name: "zero_weight",
 			reviewer: Reviewer{
 				Name:     "security",
