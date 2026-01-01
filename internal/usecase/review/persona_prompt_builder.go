@@ -119,16 +119,18 @@ func (b *PersonaPromptBuilder) BuildWithSizeGuards(
 	}, truncResult, nil
 }
 
-// filterContext returns a copy of the context with prior findings filtered
-// to only include findings from the specified reviewer.
-func (b *PersonaPromptBuilder) filterContext(ctx ProjectContext, reviewer domain.Reviewer) ProjectContext {
-	filtered := ctx
-
-	if ctx.TriagedFindings != nil {
-		filtered.TriagedFindings = ctx.TriagedFindings.FilterByReviewer(reviewer.Name)
-	}
-
-	return filtered
+// filterContext returns a copy of the context for the specified reviewer.
+//
+// Note: Prior findings are NOT filtered by reviewer name. All personas see all
+// prior findings to prevent cross-persona duplicates. This is intentional:
+// if security-reviewer raised a finding that was disputed, architecture-reviewer
+// should also see it and not re-raise a similar concern.
+//
+// The reviewer name is preserved in each finding for attribution, but filtering
+// is disabled to prioritize deduplication over noise reduction.
+func (b *PersonaPromptBuilder) filterContext(ctx ProjectContext, _ domain.Reviewer) ProjectContext {
+	// Return context as-is without filtering prior findings
+	return ctx
 }
 
 // buildPersonaContent builds the persona-specific content string for a reviewer.

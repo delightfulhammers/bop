@@ -203,7 +203,7 @@ func TestPersonaPromptBuilder_Build_PriorFindingsFiltering(t *testing.T) {
 		TargetRef: "feature/test",
 	}
 
-	t.Run("filters prior findings by reviewer name", func(t *testing.T) {
+	t.Run("includes all prior findings regardless of reviewer name", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := review.ProjectContext{
@@ -239,7 +239,8 @@ func TestPersonaPromptBuilder_Build_PriorFindingsFiltering(t *testing.T) {
 			},
 		}
 
-		// Security reviewer should only see security findings
+		// Security reviewer should see ALL findings (no filtering)
+		// This prevents cross-persona duplicates
 		result, err := builder.Build(ctx, baseDiff, baseReq, securityReviewer)
 		require.NoError(t, err)
 
@@ -247,11 +248,11 @@ func TestPersonaPromptBuilder_Build_PriorFindingsFiltering(t *testing.T) {
 		assert.Contains(t, result.Prompt, "SQL injection vulnerability")
 		assert.Contains(t, result.Prompt, "Credential exposure risk")
 
-		// Should NOT contain maintainability findings
-		assert.NotContains(t, result.Prompt, "Cyclomatic complexity too high")
+		// Should ALSO contain maintainability findings (no filtering)
+		assert.Contains(t, result.Prompt, "Cyclomatic complexity too high")
 	})
 
-	t.Run("excludes all prior findings for reviewer with no matching findings", func(t *testing.T) {
+	t.Run("all personas see all prior findings to prevent cross-persona duplicates", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := review.ProjectContext{
@@ -271,14 +272,15 @@ func TestPersonaPromptBuilder_Build_PriorFindingsFiltering(t *testing.T) {
 			},
 		}
 
-		// Maintainability reviewer should see no prior findings
+		// Maintainability reviewer should ALSO see security findings
+		// This prevents cross-persona duplicates
 		result, err := builder.Build(ctx, baseDiff, baseReq, maintainabilityReviewer)
 		require.NoError(t, err)
 
-		// Should NOT contain security findings
-		assert.NotContains(t, result.Prompt, "SQL injection")
-		// Should NOT have prior findings section at all
-		assert.NotContains(t, result.Prompt, "Previously Addressed Concerns")
+		// Should contain security findings even though it's a different reviewer
+		assert.Contains(t, result.Prompt, "SQL injection")
+		// Should have prior findings section
+		assert.Contains(t, result.Prompt, "Previously Addressed Concerns")
 	})
 
 	t.Run("handles nil triaged findings gracefully", func(t *testing.T) {
