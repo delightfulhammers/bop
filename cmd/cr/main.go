@@ -242,6 +242,14 @@ func run() error {
 	// Build per-provider max tokens map from config
 	providerMaxTokens := buildProviderMaxTokens(cfg.Providers)
 
+	// Phase 3.5: Create RemoteGitHubClient for remote PR review
+	// This shares the same GitHub client used for posting, enabling
+	// cr review pr <identifier> to work without a local clone.
+	var remoteGitHubClient review.RemoteGitHubClient
+	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
+		remoteGitHubClient = githubadapter.NewClient(githubToken)
+	}
+
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git:                    gitEngine,
 		Providers:              providers,
@@ -262,10 +270,12 @@ func run() error {
 		TriageContextFetcher:   triageContextFetcher,
 		ProviderMaxTokens:      providerMaxTokens,
 		MaxConcurrentReviewers: cfg.Review.MaxConcurrentReviewers,
+		RemoteGitHubClient:     remoteGitHubClient, // Phase 3.5: Remote PR review
 	})
 
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
+		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
 		DefaultOutput:       cfg.Output.Directory,
 		DefaultRepo:         repoName,
 		DefaultInstructions: cfg.Review.Instructions,
@@ -673,6 +683,7 @@ var _ review.JSONWriter = (*json.Writer)(nil)
 var _ review.SARIFWriter = (*sarif.Writer)(nil)
 var _ review.Redactor = (*redaction.Engine)(nil)
 var _ review.GitHubPoster = (*githubPosterAdapter)(nil)
+var _ review.RemoteGitHubClient = (*githubadapter.Client)(nil)
 
 // githubPosterAdapter bridges review.GitHubPoster to the underlying GitHub client.
 // It handles diff position calculation and maps between usecase types.
