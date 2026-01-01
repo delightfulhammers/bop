@@ -1168,6 +1168,62 @@ func TestSanitizeRationale_UTF8Safe(t *testing.T) {
 	}
 }
 
+func TestSanitizeRationale_WindowsNewlines(t *testing.T) {
+	// Windows-style \r\n newlines should be normalized to \n
+	input := "Line one\r\nLine two\r\nLine three"
+	result := sanitizeRationale(input, "")
+
+	// Should NOT contain any \r characters
+	if strings.Contains(result, "\r") {
+		t.Error("result should not contain carriage return characters")
+	}
+
+	// Should have 3 lines, each with quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 lines, got %d", len(lines))
+	}
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "> ") {
+			t.Errorf("line %d should start with '> ', got: %q", i, line)
+		}
+	}
+}
+
+func TestSanitizeRationale_OldMacNewlines(t *testing.T) {
+	// Old Mac-style \r newlines should be normalized to \n
+	input := "Line one\rLine two\rLine three"
+	result := sanitizeRationale(input, "")
+
+	// Should NOT contain any \r characters
+	if strings.Contains(result, "\r") {
+		t.Error("result should not contain carriage return characters")
+	}
+
+	// Should have 3 lines, each with quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 lines, got %d", len(lines))
+	}
+}
+
+func TestSanitizeRationale_MixedNewlines(t *testing.T) {
+	// Mixed newline styles should all be normalized
+	input := "Unix line\nWindows line\r\nOld Mac line\rFinal line"
+	result := sanitizeRationale(input, "")
+
+	// Should NOT contain any \r characters
+	if strings.Contains(result, "\r") {
+		t.Error("result should not contain carriage return characters")
+	}
+
+	// Should have 4 lines
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Errorf("expected 4 lines, got %d", len(lines))
+	}
+}
+
 func TestFormatPriorFindings_SanitizesRationale(t *testing.T) {
 	// Issue #191: User-provided rationales should be sanitized
 	ctx := &domain.TriagedFindingContext{

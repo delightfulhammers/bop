@@ -93,6 +93,10 @@ type CreateReviewInput struct {
 	Event      ReviewEvent
 	Summary    string
 	Findings   []PositionedFinding
+
+	// ReviewActions configures blocking behavior for accurate "Blocking: yes/no" indicators.
+	// Optional: if empty, defaults to severity-only blocking (critical/high = blocking).
+	ReviewActions ReviewActions
 }
 
 // CreateReview posts a pull request review with inline comments.
@@ -107,8 +111,8 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 		return nil, err
 	}
 
-	// Build the API request
-	comments := BuildReviewComments(input.Findings)
+	// Build the API request with proper blocking indicators
+	comments := BuildReviewCommentsWithActions(input.Findings, input.ReviewActions)
 
 	reqBody := CreateReviewRequest{
 		CommitID: input.CommitSHA,

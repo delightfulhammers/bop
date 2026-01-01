@@ -78,16 +78,54 @@ var defaultBlockingSeverities = map[string]bool{
 	"low":      false,
 }
 
-// isBlockingSeverity returns true if the severity level blocks PR approval by default.
-func isBlockingSeverity(severity string) bool {
-	return defaultBlockingSeverities[strings.ToLower(severity)]
+// IsBlockingFinding returns true if a finding should block PR approval.
+// A finding blocks if EITHER:
+//   - Its severity is blocking (critical/high by default, configurable via actions)
+//   - Its category is in the AlwaysBlockCategories list (additive override)
+//
+// This is the single source of truth for determining if a finding blocks.
+// Used by both FormatFindingCommentWithActions (display) and HasBlockingFindings (decision).
+func IsBlockingFinding(f domain.Finding, actions ReviewActions) bool {
+	// Check category-based blocking first (additive override)
+	normalizedCategory := strings.ToLower(strings.TrimSpace(f.Category))
+	for _, cat := range actions.AlwaysBlockCategories {
+		if strings.ToLower(strings.TrimSpace(cat)) == normalizedCategory && normalizedCategory != "" {
+			return true
+		}
+	}
+
+	// Check severity-based blocking
+	severity := strings.ToLower(f.Severity)
+	defaultBlocking, known := defaultBlockingSeverities[severity]
+	if !known {
+		return false // Unknown severities don't block by default
+	}
+
+	// Check configured action for this severity
+	actionMap := map[string]string{
+		"critical": actions.OnCritical,
+		"high":     actions.OnHigh,
+		"medium":   actions.OnMedium,
+		"low":      actions.OnLow,
+	}
+
+	return wouldTriggerRequestChanges(actionMap[severity], defaultBlocking)
 }
 
 // BuildReviewComments converts positioned findings to GitHub review comments.
 // Only findings with a valid DiffPosition (InDiff() == true) are included.
 // Each comment includes an embedded fingerprint for linking replies to findings.
 // This function is pure and does not modify the input.
+//
+// For accurate blocking indicators that respect AlwaysBlockCategories, use
+// BuildReviewCommentsWithActions instead.
 func BuildReviewComments(findings []PositionedFinding) []ReviewComment {
+	return BuildReviewCommentsWithActions(findings, ReviewActions{})
+}
+
+// BuildReviewCommentsWithActions converts positioned findings to GitHub review comments.
+// Uses the provided ReviewActions to determine the correct blocking indicator for each finding.
+func BuildReviewCommentsWithActions(findings []PositionedFinding, actions ReviewActions) []ReviewComment {
 	var comments []ReviewComment
 
 	for _, pf := range findings {
@@ -97,7 +135,7 @@ func BuildReviewComments(findings []PositionedFinding) []ReviewComment {
 
 		// Compute fingerprint and embed in comment body
 		fingerprint := domain.FingerprintFromFinding(pf.Finding)
-		body := FormatFindingCommentWithFingerprint(pf.Finding, fingerprint)
+		body := FormatFindingCommentWithFingerprintAndActions(pf.Finding, fingerprint, actions)
 
 		comments = append(comments, ReviewComment{
 			Path:     pf.Finding.File,
@@ -111,11 +149,19 @@ func BuildReviewComments(findings []PositionedFinding) []ReviewComment {
 
 // FormatFindingComment formats a domain.Finding as a GitHub-flavored Markdown comment.
 // The blocking indicator is determined by severity (critical/high = blocking by default).
+// For accurate blocking status that respects AlwaysBlockCategories config, use
+// FormatFindingCommentWithActions instead.
 func FormatFindingComment(f domain.Finding) string {
+	return FormatFindingCommentWithActions(f, ReviewActions{})
+}
+
+// FormatFindingCommentWithActions formats a domain.Finding as a GitHub-flavored Markdown comment.
+// The blocking indicator respects both severity-based and category-based blocking rules.
+func FormatFindingCommentWithActions(f domain.Finding, actions ReviewActions) string {
 	var sb strings.Builder
 
-	// Determine if finding is blocking based on severity
-	blocking := isBlockingSeverity(f.Severity)
+	// Determine if finding is blocking based on severity AND category
+	blocking := IsBlockingFinding(f, actions)
 
 	// Header with severity, category, and blocking indicator
 	sb.WriteString(fmt.Sprintf("**Severity:** %s", f.Severity))
@@ -156,11 +202,20 @@ func FormatFindingComment(f domain.Finding) string {
 //
 // Format: <!-- CR_FP:abc123 CR_REVIEWER:security -->
 // If no reviewer is set, only the fingerprint is included: <!-- CR_FP:abc123 -->
+//
+// For accurate blocking status that respects AlwaysBlockCategories, use
+// FormatFindingCommentWithFingerprintAndActions instead.
 func FormatFindingCommentWithFingerprint(f domain.Finding, fingerprint domain.FindingFingerprint) string {
+	return FormatFindingCommentWithFingerprintAndActions(f, fingerprint, ReviewActions{})
+}
+
+// FormatFindingCommentWithFingerprintAndActions formats a finding with fingerprint and blocking config.
+// This is the full-featured version that respects AlwaysBlockCategories for the blocking indicator.
+func FormatFindingCommentWithFingerprintAndActions(f domain.Finding, fingerprint domain.FindingFingerprint, actions ReviewActions) string {
 	var sb strings.Builder
 
-	// Start with the standard format
-	sb.WriteString(FormatFindingComment(f))
+	// Start with the standard format (with actions for proper blocking indicator)
+	sb.WriteString(FormatFindingCommentWithActions(f, actions))
 
 	// Add fingerprint (and optional reviewer) in hidden HTML comment
 	sb.WriteString("\n")

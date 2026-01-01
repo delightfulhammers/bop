@@ -436,13 +436,18 @@ func fileTypePriority(path string) int {
 // reduce the impact of potential prompt injection attempts.
 const MaxRationaleLength = 1000
 
-// sanitizeRationale sanitizes and truncates user-provided rationale for safe inclusion in LLM prompts.
-// This protects against:
-// 1. Prompt bloat from excessively long rationales eating token budget
-// 2. Prompt injection attempts through crafted user content
+// sanitizeRationale truncates and formats user-provided rationale for inclusion in LLM prompts.
 //
-// The output wraps the rationale in a markdown quote block to visually separate it from
-// the structured prompt, and truncates to MaxRationaleLength runes if needed.
+// This function provides:
+// 1. Token budget protection via truncation to MaxRationaleLength runes
+// 2. Visual separation via markdown quote block formatting
+//
+// Note: The quote block formatting is a visual delimiter, not a security boundary.
+// It helps readers distinguish user content from structured prompt, but does not
+// prevent LLMs from potentially following instructions embedded in the rationale.
+// The primary defense against prompt injection is the truncation limit, which bounds
+// the amount of user-controlled content that can appear in the prompt.
+//
 // The indent parameter allows callers to maintain markdown list structure (e.g., "     " for list items).
 func sanitizeRationale(rationale, indent string) string {
 	if rationale == "" {
@@ -455,11 +460,15 @@ func sanitizeRationale(rationale, indent string) string {
 		rationale = string(runes[:MaxRationaleLength]) + "... [truncated]"
 	}
 
-	// Wrap in quote block to visually separate user content
-	// This helps both human readers and LLMs distinguish user input from structured prompt
-	// The indent prefix maintains markdown list structure when used within list items
+	// Normalize newlines: convert Windows \r\n and old Mac \r to Unix \n
+	// This prevents trailing \r characters from causing rendering issues
+	rationale = strings.ReplaceAll(rationale, "\r\n", "\n")
+	rationale = strings.ReplaceAll(rationale, "\r", "\n")
+
 	// Trim trailing newlines to avoid empty "> " lines at the end
 	rationale = strings.TrimRight(rationale, "\n")
+
+	// Wrap in quote block to visually separate user content from structured prompt
 	lines := strings.Split(rationale, "\n")
 	var sb strings.Builder
 	for _, line := range lines {

@@ -1037,6 +1037,237 @@ func TestValidReviewerNamePattern(t *testing.T) {
 	}
 }
 
+func TestIsBlockingFinding(t *testing.T) {
+	// Helper to create a finding with specific category
+	makeFindingWithCategory := func(severity, category string) domain.Finding {
+		return domain.Finding{
+			ID:          "test-id",
+			File:        "test.go",
+			LineStart:   1,
+			LineEnd:     1,
+			Severity:    severity,
+			Category:    category,
+			Description: "Test finding",
+		}
+	}
+
+	tests := []struct {
+		name     string
+		finding  domain.Finding
+		actions  github.ReviewActions
+		expected bool
+	}{
+		// Severity-based blocking (default behavior)
+		{
+			name:     "critical severity blocks by default",
+			finding:  makeFindingWithCategory("critical", "style"),
+			actions:  github.ReviewActions{},
+			expected: true,
+		},
+		{
+			name:     "high severity blocks by default",
+			finding:  makeFindingWithCategory("high", "style"),
+			actions:  github.ReviewActions{},
+			expected: true,
+		},
+		{
+			name:     "medium severity does not block by default",
+			finding:  makeFindingWithCategory("medium", "style"),
+			actions:  github.ReviewActions{},
+			expected: false,
+		},
+		{
+			name:     "low severity does not block by default",
+			finding:  makeFindingWithCategory("low", "style"),
+			actions:  github.ReviewActions{},
+			expected: false,
+		},
+
+		// Category-based blocking (AlwaysBlockCategories)
+		{
+			name:    "security category blocks even with low severity",
+			finding: makeFindingWithCategory("low", "security"),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expected: true,
+		},
+		{
+			name:    "security category blocks even with medium severity",
+			finding: makeFindingWithCategory("medium", "security"),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expected: true,
+		},
+		{
+			name:    "case insensitive category matching (uppercase finding)",
+			finding: makeFindingWithCategory("low", "SECURITY"),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expected: true,
+		},
+		{
+			name:    "case insensitive category matching (uppercase config)",
+			finding: makeFindingWithCategory("low", "security"),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"SECURITY"},
+			},
+			expected: true,
+		},
+		{
+			name:    "multiple categories in config",
+			finding: makeFindingWithCategory("low", "bug"),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security", "bug", "correctness"},
+			},
+			expected: true,
+		},
+		{
+			name:    "category not in AlwaysBlockCategories follows severity",
+			finding: makeFindingWithCategory("low", "style"),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expected: false,
+		},
+		{
+			name:    "empty category doesn't match",
+			finding: makeFindingWithCategory("low", ""),
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expected: false,
+		},
+
+		// Configurable severity actions
+		{
+			name:    "high configured to comment does not block",
+			finding: makeFindingWithCategory("high", "style"),
+			actions: github.ReviewActions{
+				OnHigh: "comment",
+			},
+			expected: false,
+		},
+		{
+			name:    "low configured to request_changes blocks",
+			finding: makeFindingWithCategory("low", "style"),
+			actions: github.ReviewActions{
+				OnLow: "request_changes",
+			},
+			expected: true,
+		},
+
+		// Category blocking overrides severity action config
+		{
+			name:    "category blocking works even when severity is set to comment",
+			finding: makeFindingWithCategory("high", "security"),
+			actions: github.ReviewActions{
+				OnHigh:                "comment", // would not block
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expected: true, // category override wins
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := github.IsBlockingFinding(tt.finding, tt.actions)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFormatFindingCommentWithActions_BlockingIndicator(t *testing.T) {
+	// This test verifies the bug fix: low-severity security findings should show
+	// "Blocking: yes" when security is in AlwaysBlockCategories.
+	// Previously, the blocking indicator only checked severity, not category.
+
+	tests := []struct {
+		name            string
+		finding         domain.Finding
+		actions         github.ReviewActions
+		expectBlocking  bool
+		expectInComment string
+	}{
+		{
+			name: "low severity security shows Blocking: yes with AlwaysBlockCategories",
+			finding: domain.Finding{
+				File:        "test.go",
+				LineStart:   1,
+				Severity:    "low",
+				Category:    "security",
+				Description: "Minor security issue",
+			},
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expectBlocking:  true,
+			expectInComment: "**Blocking:** yes",
+		},
+		{
+			name: "low severity style shows Blocking: no (not in AlwaysBlockCategories)",
+			finding: domain.Finding{
+				File:        "test.go",
+				LineStart:   1,
+				Severity:    "low",
+				Category:    "style",
+				Description: "Style issue",
+			},
+			actions: github.ReviewActions{
+				AlwaysBlockCategories: []string{"security"},
+			},
+			expectBlocking:  false,
+			expectInComment: "**Blocking:** no",
+		},
+		{
+			name: "high severity without config shows Blocking: yes (default behavior)",
+			finding: domain.Finding{
+				File:        "test.go",
+				LineStart:   1,
+				Severity:    "high",
+				Category:    "bug",
+				Description: "Bug found",
+			},
+			actions:         github.ReviewActions{},
+			expectBlocking:  true,
+			expectInComment: "**Blocking:** yes",
+		},
+		{
+			name: "medium severity shows Blocking: no (default behavior)",
+			finding: domain.Finding{
+				File:        "test.go",
+				LineStart:   1,
+				Severity:    "medium",
+				Category:    "maintainability",
+				Description: "Maintainability issue",
+			},
+			actions:         github.ReviewActions{},
+			expectBlocking:  false,
+			expectInComment: "**Blocking:** no",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			comment := github.FormatFindingCommentWithActions(tt.finding, tt.actions)
+
+			assert.Contains(t, comment, tt.expectInComment,
+				"expected comment to contain %q", tt.expectInComment)
+
+			// Verify the inverse is NOT present
+			if tt.expectBlocking {
+				assert.NotContains(t, comment, "**Blocking:** no",
+					"blocking finding should not show 'Blocking: no'")
+			} else {
+				assert.NotContains(t, comment, "**Blocking:** yes",
+					"non-blocking finding should not show 'Blocking: yes'")
+			}
+		})
+	}
+}
+
 func TestExtractCommentDetails(t *testing.T) {
 	tests := []struct {
 		name            string

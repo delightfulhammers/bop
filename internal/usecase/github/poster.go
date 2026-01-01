@@ -319,13 +319,14 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 
 	// Call the client to create the new review first
 	input := github.CreateReviewInput{
-		Owner:      req.Owner,
-		Repo:       req.Repo,
-		PullNumber: req.PullNumber,
-		CommitSHA:  req.CommitSHA,
-		Event:      event,
-		Summary:    summary,
-		Findings:   findings,
+		Owner:         req.Owner,
+		Repo:          req.Repo,
+		PullNumber:    req.PullNumber,
+		CommitSHA:     req.CommitSHA,
+		Event:         event,
+		Summary:       summary,
+		Findings:      findings,
+		ReviewActions: req.ReviewActions, // Pass through for accurate blocking indicators
 	}
 
 	resp, err := p.client.CreateReview(ctx, input)
