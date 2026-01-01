@@ -529,6 +529,16 @@ func (s *Server) handleReplyToFinding(ctx context.Context, req *mcp.CallToolRequ
 	// Build the reply body with optional status tag
 	body := input.Body
 	if input.Status != nil && *input.Status != "" {
+		// Reject oversized inputs before allocation (valid tags are ≤12 chars)
+		const maxStatusLen = 30
+		if len(*input.Status) > maxStatusLen {
+			return &mcp.CallToolResult{
+				IsError: true,
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Status tag too long (max %d chars). Valid values: %v", maxStatusLen, ValidStatusTags)},
+				},
+			}, ReplyToFindingOutput{Success: false, Message: "Invalid status tag"}, nil
+		}
 		// Validate and normalize the status tag
 		normalizedStatus := strings.ToLower(strings.TrimSpace(*input.Status))
 		if !isValidStatusTag(normalizedStatus) {

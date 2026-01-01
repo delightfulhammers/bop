@@ -1357,6 +1357,32 @@ func TestServer_handleReplyToFinding(t *testing.T) {
 		mockComment.AssertExpectations(t)
 		mockWriter.AssertExpectations(t)
 	})
+
+	t.Run("rejects oversized status tag before allocation", func(t *testing.T) {
+		// Need a PRService to pass the nil check before reaching status validation
+		svc := triage.NewPRService(triage.PRServiceDeps{})
+		server := createTestServer(svc)
+
+		// Create a very long status tag (> 30 chars)
+		oversizedStatus := "this_is_a_very_long_status_tag_that_exceeds_the_maximum_allowed_length"
+		input := ReplyToFindingInput{
+			Owner:     "owner",
+			Repo:      "repo",
+			PRNumber:  42,
+			FindingID: "12345",
+			Body:      "reply",
+			Status:    &oversizedStatus,
+		}
+
+		result, output, err := server.handleReplyToFinding(ctx, nil, input)
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
+		assert.False(t, output.Success)
+		assert.Equal(t, "Invalid status tag", output.Message)
+		// Verify error message mentions length limit
+		assert.Contains(t, result.Content[0].(*mcpsdk.TextContent).Text, "too long")
+		assert.Contains(t, result.Content[0].(*mcpsdk.TextContent).Text, "30")
+	})
 }
 
 func TestServer_handlePostComment(t *testing.T) {
