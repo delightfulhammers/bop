@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"unicode/utf8"
 
 	"github.com/bkyoung/code-reviewer/internal/domain"
 )
@@ -430,7 +431,7 @@ func fileTypePriority(path string) int {
 	return 3
 }
 
-// MaxRationaleLength is the maximum character length for user-provided rationales.
+// MaxRationaleLength is the maximum rune (character) count for user-provided rationales.
 // Rationales exceeding this limit are truncated to prevent prompt bloat and
 // reduce the impact of potential prompt injection attempts.
 const MaxRationaleLength = 1000
@@ -441,22 +442,26 @@ const MaxRationaleLength = 1000
 // 2. Prompt injection attempts through crafted user content
 //
 // The output wraps the rationale in a markdown quote block to visually separate it from
-// the structured prompt, and truncates to MaxRationaleLength characters if needed.
-func sanitizeRationale(rationale string) string {
+// the structured prompt, and truncates to MaxRationaleLength runes if needed.
+// The indent parameter allows callers to maintain markdown list structure (e.g., "     " for list items).
+func sanitizeRationale(rationale, indent string) string {
 	if rationale == "" {
 		return ""
 	}
 
-	// Truncate if needed
-	if len(rationale) > MaxRationaleLength {
-		rationale = rationale[:MaxRationaleLength] + "... [truncated]"
+	// UTF-8 safe truncation: count runes, not bytes
+	if utf8.RuneCountInString(rationale) > MaxRationaleLength {
+		runes := []rune(rationale)
+		rationale = string(runes[:MaxRationaleLength]) + "... [truncated]"
 	}
 
 	// Wrap in quote block to visually separate user content
 	// This helps both human readers and LLMs distinguish user input from structured prompt
+	// The indent prefix maintains markdown list structure when used within list items
 	lines := strings.Split(rationale, "\n")
 	var sb strings.Builder
 	for _, line := range lines {
+		sb.WriteString(indent)
 		sb.WriteString("> ")
 		sb.WriteString(line)
 		sb.WriteString("\n")
@@ -493,7 +498,7 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
 			sb.WriteString("   - Rationale (user-provided):\n")
-			sb.WriteString(sanitizeRationale(f.StatusReason))
+			sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
 			sb.WriteString("\n")
 		}
 	}
@@ -511,7 +516,7 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
 			sb.WriteString("   - Rationale (user-provided):\n")
-			sb.WriteString(sanitizeRationale(f.StatusReason))
+			sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
 			sb.WriteString("\n")
 		}
 	}
@@ -529,7 +534,7 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
 			sb.WriteString("   - Status:\n")
-			sb.WriteString(sanitizeRationale(f.StatusReason))
+			sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
 			sb.WriteString("\n")
 		}
 	}

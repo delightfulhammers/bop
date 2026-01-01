@@ -1062,7 +1062,7 @@ func TestRenderTemplate_WithPriorFindings(t *testing.T) {
 // Tests for sanitizeRationale (Issue #191)
 
 func TestSanitizeRationale_EmptyString(t *testing.T) {
-	result := sanitizeRationale("")
+	result := sanitizeRationale("", "")
 	if result != "" {
 		t.Errorf("expected empty string for empty input, got: %q", result)
 	}
@@ -1070,7 +1070,7 @@ func TestSanitizeRationale_EmptyString(t *testing.T) {
 
 func TestSanitizeRationale_ShortRationale(t *testing.T) {
 	input := "This is a valid rationale."
-	result := sanitizeRationale(input)
+	result := sanitizeRationale(input, "")
 
 	// Should be wrapped in quote block
 	if !strings.HasPrefix(result, "> ") {
@@ -1087,7 +1087,7 @@ func TestSanitizeRationale_ShortRationale(t *testing.T) {
 
 func TestSanitizeRationale_MultilineRationale(t *testing.T) {
 	input := "Line one\nLine two\nLine three"
-	result := sanitizeRationale(input)
+	result := sanitizeRationale(input, "")
 
 	// Each line should have quote prefix
 	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
@@ -1098,10 +1098,23 @@ func TestSanitizeRationale_MultilineRationale(t *testing.T) {
 	}
 }
 
+func TestSanitizeRationale_WithIndent(t *testing.T) {
+	input := "Line one\nLine two"
+	result := sanitizeRationale(input, "     ") // 5 spaces for markdown list
+
+	// Each line should have indent + quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "     > ") {
+			t.Errorf("line %d should start with '     > ', got: %q", i, line)
+		}
+	}
+}
+
 func TestSanitizeRationale_ExceedsMaxLength(t *testing.T) {
 	// Create a rationale that exceeds MaxRationaleLength
 	longRationale := strings.Repeat("a", MaxRationaleLength+100)
-	result := sanitizeRationale(longRationale)
+	result := sanitizeRationale(longRationale, "")
 
 	// Should be truncated
 	if !strings.Contains(result, "[truncated]") {
@@ -1122,11 +1135,36 @@ func TestSanitizeRationale_ExceedsMaxLength(t *testing.T) {
 func TestSanitizeRationale_ExactlyMaxLength(t *testing.T) {
 	// Create a rationale that is exactly MaxRationaleLength
 	exactRationale := strings.Repeat("b", MaxRationaleLength)
-	result := sanitizeRationale(exactRationale)
+	result := sanitizeRationale(exactRationale, "")
 
 	// Should NOT be truncated (boundary case)
 	if strings.Contains(result, "[truncated]") {
 		t.Error("rationale exactly at max length should not be truncated")
+	}
+}
+
+func TestSanitizeRationale_UTF8Safe(t *testing.T) {
+	// Create a rationale with multi-byte UTF-8 characters near the truncation boundary
+	// Using emoji (4 bytes each) to test UTF-8 safety
+	emoji := "🔥" // 4 bytes, 1 rune
+	longRationale := strings.Repeat(emoji, MaxRationaleLength+10)
+	result := sanitizeRationale(longRationale, "")
+
+	// Should be truncated
+	if !strings.Contains(result, "[truncated]") {
+		t.Error("long rationale should be truncated with marker")
+	}
+
+	// Result should be valid UTF-8 (no broken characters)
+	content := strings.ReplaceAll(result, "> ", "")
+	content = strings.TrimSpace(content)
+	content = strings.TrimSuffix(content, "... [truncated]")
+
+	// Each remaining character should be a complete emoji
+	for _, r := range content {
+		if r == '�' { // Unicode replacement character indicates broken UTF-8
+			t.Error("truncation produced invalid UTF-8 (broken multi-byte character)")
+		}
 	}
 }
 
@@ -1148,9 +1186,9 @@ func TestFormatPriorFindings_SanitizesRationale(t *testing.T) {
 	}
 	result := formatPriorFindings(ctx)
 
-	// Rationale should be in quote block format
-	if !strings.Contains(result, "> User provided rationale") {
-		t.Error("expected rationale to be wrapped in quote block")
+	// Rationale should be in indented quote block format (5 spaces for markdown list structure)
+	if !strings.Contains(result, "     > User provided rationale") {
+		t.Error("expected rationale to be wrapped in indented quote block")
 	}
 
 	// Should have the "(user-provided)" label
