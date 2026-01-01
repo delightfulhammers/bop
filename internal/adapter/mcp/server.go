@@ -3,9 +3,29 @@ package mcp
 import (
 	"context"
 
+	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// PRReviewer defines the interface for invoking code reviews on GitHub PRs.
+// This is implemented by review.Orchestrator.
+type PRReviewer interface {
+	ReviewPR(ctx context.Context, req review.PRRequest) (review.Result, error)
+}
+
+// FindingPoster defines the interface for posting findings to GitHub PRs.
+// This is implemented by github.Poster.
+type FindingPoster interface {
+	PostReview(ctx context.Context, req review.GitHubPostRequest) (*review.GitHubPostResult, error)
+}
+
+// PRMetadataFetcher fetches PR metadata for the post_findings tool.
+type PRMetadataFetcher interface {
+	GetPRMetadata(ctx context.Context, owner, repo string, prNumber int) (*domain.PRMetadata, error)
+	GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error)
+}
 
 const (
 	// ServerName is the name reported to MCP clients.
@@ -22,6 +42,18 @@ type ServerDeps struct {
 
 	// TriageService is the session-based service (deprecated, for M3 write ops).
 	TriageService triage.TriageService
+
+	// PRReviewer invokes code reviews on GitHub PRs.
+	// Optional: only required for review_pr tool.
+	PRReviewer PRReviewer
+
+	// FindingPoster posts findings to GitHub PRs.
+	// Optional: only required for post_findings tool.
+	FindingPoster FindingPoster
+
+	// RemoteGitHubClient fetches PR metadata and diffs.
+	// Optional: only required for post_findings tool.
+	RemoteGitHubClient PRMetadataFetcher
 }
 
 // Server wraps the MCP server and provides triage tools.
@@ -73,6 +105,11 @@ func (s *Server) registerTools() {
 	s.registerPostCommentTool()
 	s.registerMarkResolvedTool()
 	s.registerRequestRereviewTool()
+
+	// Phase 3.5d Review tools
+	s.registerEditFindingTool()
+	s.registerReviewPRTool()
+	s.registerPostFindingsTool()
 }
 
 // Tool input/output types for M2 PR-based tools.
