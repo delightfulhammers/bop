@@ -532,10 +532,11 @@ func (s *Server) handleReplyToFinding(ctx context.Context, req *mcp.CallToolRequ
 		// Validate and normalize the status tag
 		normalizedStatus := strings.ToLower(strings.TrimSpace(*input.Status))
 		if !isValidStatusTag(normalizedStatus) {
+			// Use normalizedStatus in error message to avoid log injection from original input
 			return &mcp.CallToolResult{
 				IsError: true,
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Invalid status tag: %q. Valid values: %v", *input.Status, ValidStatusTags)},
+					&mcp.TextContent{Text: fmt.Sprintf("Invalid status tag: %q. Valid values: %v", normalizedStatus, ValidStatusTags)},
 				},
 			}, ReplyToFindingOutput{Success: false, Message: "Invalid status tag"}, nil
 		}
