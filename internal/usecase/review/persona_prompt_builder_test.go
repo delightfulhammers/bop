@@ -401,6 +401,28 @@ func TestPersonaPromptBuilder_BuildWithSizeGuards(t *testing.T) {
 		assert.Greater(t, len(resultWithPersona.Prompt), len(resultMinimal.Prompt),
 			"prompt with persona should be longer")
 	})
+
+	t.Run("reserves token budget for persona content", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a tight token limit to verify budget reservation works
+		tightLimits := review.SizeGuardLimits{
+			WarnTokens: 1000,
+			MaxTokens:  2000,
+		}
+
+		result, truncResult, err := builder.BuildWithSizeGuards(
+			baseContext, baseDiff, baseReq, securityReviewer, estimator, tightLimits,
+		)
+
+		require.NoError(t, err)
+		assert.NotEmpty(t, result.Prompt)
+
+		// The final token count should not exceed the original MaxTokens
+		// This verifies that persona overhead was reserved from the budget
+		assert.LessOrEqual(t, truncResult.FinalTokens, tightLimits.MaxTokens,
+			"final token count should not exceed MaxTokens after persona injection")
+	})
 }
 
 // mockTokenEstimator is a simple mock for testing.
