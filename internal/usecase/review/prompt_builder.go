@@ -433,6 +433,9 @@ func fileTypePriority(path string) int {
 // formatPriorFindings converts triaged findings into a human-readable section for the LLM prompt.
 // Returns an empty string if there are no triaged findings.
 //
+// The output includes fingerprints to help the LLM identify exact duplicates, and the actual
+// reply rationale (when available) to provide context for why findings were addressed.
+//
 // Note: This function does not currently impose size limits on the output. Large PRs with many
 // rounds of feedback may generate substantial prior context. Future enhancements may add
 // intelligent summarization or truncation if token limits become a concern in practice.
@@ -448,14 +451,14 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 	if len(acknowledged) > 0 {
 		sb.WriteString("### Acknowledged Findings (do NOT re-raise)\n\n")
 		sb.WriteString("The following concerns have been reviewed and accepted by the author. ")
-		sb.WriteString("Do not raise similar findings:\n\n")
+		sb.WriteString("Do not raise similar findings or variations of these concerns:\n\n")
 		for i, f := range acknowledged {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
-				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
+			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint))
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
+			sb.WriteString(fmt.Sprintf("   - Rationale: %s\n\n", f.StatusReason))
 		}
 	}
 
@@ -464,14 +467,14 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 	if len(disputed) > 0 {
 		sb.WriteString("### Disputed Findings (do NOT re-raise)\n\n")
 		sb.WriteString("The following concerns were disputed as false positives or not applicable. ")
-		sb.WriteString("Do not raise similar findings:\n\n")
+		sb.WriteString("Do not raise similar findings or variations - the rationale below explains why:\n\n")
 		for i, f := range disputed {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
-				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
+			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint))
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
+			sb.WriteString(fmt.Sprintf("   - Rationale: %s\n\n", f.StatusReason))
 		}
 	}
 
@@ -482,8 +485,8 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		sb.WriteString("The following concerns were already raised in earlier review rounds. ")
 		sb.WriteString("Do not raise similar findings - they are already posted and awaiting response:\n\n")
 		for i, f := range open {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d)\n",
-				i+1, f.Category, f.File, f.LineStart, f.LineEnd))
+			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint))
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))

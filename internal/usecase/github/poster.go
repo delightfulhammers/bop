@@ -534,14 +534,22 @@ func extractBotFingerprints(comments []github.PullRequestComment, botUsername st
 	return fingerprints
 }
 
-// analyzeFindingStatuses analyzes bot comments and their replies to determine
-// the status of each existing finding (Issue #108).
-// Returns a map of fingerprint → status and counts for each status.
-func analyzeFindingStatuses(
+// FindingStatusInfo contains the status and rationale for a finding.
+// The rationale is the actual reply body that determined the status,
+// which provides context for why a finding was acknowledged or disputed.
+type FindingStatusInfo struct {
+	Status    domain.FindingStatus
+	Rationale string // The reply body that determined the status
+}
+
+// analyzeFindingStatusInfo analyzes bot comments and their replies to determine
+// the status and rationale for each existing finding.
+// Returns a map of fingerprint → status info (including reply body) and counts.
+func analyzeFindingStatusInfo(
 	comments []github.PullRequestComment,
 	botUsername string,
-) (map[domain.FindingFingerprint]domain.FindingStatus, StatusCounts) {
-	statuses := make(map[domain.FindingFingerprint]domain.FindingStatus)
+) (map[domain.FindingFingerprint]FindingStatusInfo, StatusCounts) {
+	statusInfo := make(map[domain.FindingFingerprint]FindingStatusInfo)
 	var counts StatusCounts
 
 	// Group comments by parent to get reply chains
@@ -554,15 +562,32 @@ func analyzeFindingStatuses(
 			continue // Skip comments without fingerprints (legacy)
 		}
 
-		// Collect reply texts
+		// Collect reply texts and find the determining reply
 		var replyTexts []string
+		var determiningReply string
 		for _, reply := range group.Replies {
 			replyTexts = append(replyTexts, reply.Body)
 		}
 
 		// Detect status from replies
 		status := domain.DetectStatusFromReplies(replyTexts)
-		statuses[fp] = status
+
+		// Find the reply that determined the status (first match)
+		// This mirrors the logic in DetectStatusFromReplies
+		if status != domain.StatusOpen {
+			for _, reply := range group.Replies {
+				replyStatus := domain.DetectStatusFromText(reply.Body)
+				if replyStatus == status {
+					determiningReply = reply.Body
+					break
+				}
+			}
+		}
+
+		statusInfo[fp] = FindingStatusInfo{
+			Status:    status,
+			Rationale: determiningReply,
+		}
 
 		// Update counts
 		switch status {
@@ -573,6 +598,24 @@ func analyzeFindingStatuses(
 		case domain.StatusOpen:
 			counts.Open++
 		}
+	}
+
+	return statusInfo, counts
+}
+
+// analyzeFindingStatuses analyzes bot comments and their replies to determine
+// the status of each existing finding (Issue #108).
+// Returns a map of fingerprint → status and counts for each status.
+func analyzeFindingStatuses(
+	comments []github.PullRequestComment,
+	botUsername string,
+) (map[domain.FindingFingerprint]domain.FindingStatus, StatusCounts) {
+	// Delegate to the richer function and extract just the status
+	statusInfo, counts := analyzeFindingStatusInfo(comments, botUsername)
+
+	statuses := make(map[domain.FindingFingerprint]domain.FindingStatus, len(statusInfo))
+	for fp, info := range statusInfo {
+		statuses[fp] = info.Status
 	}
 
 	return statuses, counts

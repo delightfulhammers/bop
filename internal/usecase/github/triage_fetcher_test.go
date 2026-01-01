@@ -115,6 +115,10 @@ func TestTriageContextFetcher_AcknowledgedFinding(t *testing.T) {
 	assert.Equal(t, domain.StatusAcknowledged, f.Status)
 	assert.Equal(t, "security", f.Category)
 	assert.Contains(t, f.Description, "Missing validation")
+
+	// Issue #189: StatusReason should contain the actual reply body, not generic text
+	assert.Contains(t, f.StatusReason, "tracking this in a separate issue",
+		"StatusReason should contain the actual reply rationale")
 }
 
 func TestTriageContextFetcher_DisputedFinding(t *testing.T) {
@@ -148,6 +152,10 @@ func TestTriageContextFetcher_DisputedFinding(t *testing.T) {
 	assert.Equal(t, "config.go", f.File)
 	assert.Equal(t, domain.StatusDisputed, f.Status)
 	assert.Equal(t, "performance", f.Category)
+
+	// Issue #189: StatusReason should contain the actual reply body, not generic text
+	assert.Contains(t, f.StatusReason, "O(1) amortized",
+		"StatusReason should contain the actual dispute rationale")
 }
 
 func TestTriageContextFetcher_MixedFindings(t *testing.T) {

@@ -55,14 +55,14 @@ func (f *TriageContextFetcher) FetchTriagedFindings(
 		return nil
 	}
 
-	// Analyze triage statuses using existing logic from poster.go
-	statuses, _ := analyzeFindingStatuses(comments, f.botUsername)
-	if len(statuses) == 0 {
+	// Analyze triage statuses with rationale using existing logic from poster.go
+	statusInfo, _ := analyzeFindingStatusInfo(comments, f.botUsername)
+	if len(statusInfo) == 0 {
 		return nil
 	}
 
-	// Extract triaged findings (acknowledged or disputed only)
-	findings := f.extractTriagedFindings(comments, statuses)
+	// Extract triaged findings with actual reply rationale
+	findings := f.extractTriagedFindings(comments, statusInfo)
 	if len(findings) == 0 {
 		return nil
 	}
@@ -75,9 +75,10 @@ func (f *TriageContextFetcher) FetchTriagedFindings(
 
 // extractTriagedFindings converts bot comments with acknowledged/disputed status
 // into TriagedFinding structs for prompt injection.
+// Uses the actual reply rationale when available for better LLM context.
 func (f *TriageContextFetcher) extractTriagedFindings(
 	comments []github.PullRequestComment,
-	statuses map[domain.FindingFingerprint]domain.FindingStatus,
+	statusInfo map[domain.FindingFingerprint]FindingStatusInfo,
 ) []domain.TriagedFinding {
 	var findings []domain.TriagedFinding
 
@@ -98,9 +99,9 @@ func (f *TriageContextFetcher) extractTriagedFindings(
 			continue // Not a structured finding comment
 		}
 
-		// Get status if available (may be empty for findings with no replies)
+		// Get status info if available (may be empty for findings with no replies)
 		// Include ALL bot findings regardless of status to prevent LLM from re-raising them
-		status := statuses[fp]
+		info := statusInfo[fp]
 
 		// Extract structured details
 		details := github.ExtractCommentDetails(comment.Body)
@@ -126,16 +127,24 @@ func (f *TriageContextFetcher) extractTriagedFindings(
 			Category:    details.Category,
 			Severity:    details.Severity,
 			Description: details.Description,
-			Status:      status,
+			Status:      info.Status,
 			Fingerprint: fp,
 		}
 
-		// Set status reason based on status
-		switch status {
+		// Set status reason - prefer actual rationale over generic text
+		switch info.Status {
 		case domain.StatusAcknowledged:
-			tf.StatusReason = domain.StatusReasonForAcknowledged()
+			if info.Rationale != "" {
+				tf.StatusReason = info.Rationale
+			} else {
+				tf.StatusReason = domain.StatusReasonForAcknowledged()
+			}
 		case domain.StatusDisputed:
-			tf.StatusReason = domain.StatusReasonForDisputed()
+			if info.Rationale != "" {
+				tf.StatusReason = info.Rationale
+			} else {
+				tf.StatusReason = domain.StatusReasonForDisputed()
+			}
 		default:
 			// StatusOpen or empty - finding was posted but not yet replied to
 			tf.Status = domain.StatusOpen
