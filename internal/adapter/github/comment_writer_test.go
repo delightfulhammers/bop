@@ -424,3 +424,69 @@ func TestClient_RequestReviewers(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
+
+func TestIsValidGitHubUsername(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		isValid bool
+	}{
+		// Valid usernames
+		{"simple alphanumeric", "user123", true},
+		{"single char", "a", true},
+		{"max length (39 chars)", "a23456789012345678901234567890123456789", true},
+		{"with single hyphen", "user-name", true},
+		{"multiple hyphens separated", "a-b-c-d", true},
+		{"hyphen in middle", "my-user", true},
+
+		// Invalid usernames
+		{"starts with hyphen", "-user", false},
+		{"ends with hyphen", "user-", false},
+		{"consecutive hyphens", "user--name", false},
+		{"too long (40 chars)", "a234567890123456789012345678901234567890", false},
+		{"contains underscore", "user_name", false},
+		{"empty string", "", false},
+		{"only hyphen", "-", false},
+		{"starts and ends with hyphen", "-user-", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidGitHubUsername(tt.input)
+			if got != tt.isValid {
+				t.Errorf("isValidGitHubUsername(%q) = %v, want %v", tt.input, got, tt.isValid)
+			}
+		})
+	}
+}
+
+func TestGitHubTeamSlugPattern(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		isValid bool
+	}{
+		// Valid team slugs
+		{"simple alphanumeric", "myteam", true},
+		{"single char", "a", true},
+		{"with hyphen", "my-team", true},
+		{"with underscore", "my_team", true},
+		{"mixed special chars", "my-team_name", true},
+
+		// Invalid team slugs
+		{"starts with hyphen", "-team", false},
+		{"ends with hyphen", "team-", false},
+		{"starts with underscore", "_team", false},
+		{"ends with underscore", "team_", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := githubTeamSlugPattern.MatchString(tt.input)
+			if got != tt.isValid {
+				t.Errorf("githubTeamSlugPattern.MatchString(%q) = %v, want %v", tt.input, got, tt.isValid)
+			}
+		})
+	}
+}
