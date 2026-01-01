@@ -88,6 +88,81 @@ func (e *Engine) CurrentBranch(ctx context.Context) (string, error) {
 	return "", fmt.Errorf("detached HEAD")
 }
 
+// GetRemoteURL returns the URL of the "origin" remote.
+// Returns an empty string and nil error if no origin remote exists.
+// Returns an error for other failures (e.g., repository corruption).
+func (e *Engine) GetRemoteURL(ctx context.Context) (string, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+
+	repo, err := goGit.PlainOpenWithOptions(e.repoDir, &goGit.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return "", fmt.Errorf("open repo: %w", err)
+	}
+
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		// Only treat ErrRemoteNotFound as "no remote configured"
+		// Other errors (corruption, etc.) should be surfaced
+		if err == goGit.ErrRemoteNotFound {
+			return "", nil
+		}
+		return "", fmt.Errorf("get remote: %w", err)
+	}
+
+	config := remote.Config()
+	if len(config.URLs) == 0 {
+		return "", nil
+	}
+
+	return config.URLs[0], nil
+}
+
+// BranchExistsLocal checks if a branch exists locally.
+func (e *Engine) BranchExistsLocal(ctx context.Context, branch string) (bool, error) {
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
+	repo, err := goGit.PlainOpenWithOptions(e.repoDir, &goGit.PlainOpenOptions{DetectDotGit: true})
+	if err != nil {
+		return false, fmt.Errorf("open repo: %w", err)
+	}
+
+	branchRef := plumbing.NewBranchReferenceName(branch)
+	_, err = repo.Reference(branchRef, true)
+	if err != nil {
+		if err == plumbing.ErrReferenceNotFound {
+			return false, nil
+		}
+		return false, fmt.Errorf("check branch %s: %w", branch, err)
+	}
+
+	return true, nil
+}
+
+// BranchExistsRemote checks if a branch exists on the origin remote.
+// This requires network access and may be slow.
+func (e *Engine) BranchExistsRemote(ctx context.Context, branch string) (bool, error) {
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
+	// Use git ls-remote with full ref path for exact matching.
+	// Using just the branch name would do partial matching (e.g., "main" matches "main-v2").
+	// The refs/heads/ prefix ensures we match only the exact branch.
+	fullRef := "refs/heads/" + branch
+	out, err := runGitCommand(ctx, e.repoDir, "ls-remote", "--heads", "origin", fullRef)
+	if err != nil {
+		// Network error or no remote - return false with error
+		return false, err
+	}
+
+	// If output is non-empty, the branch exists
+	return strings.TrimSpace(out) != "", nil
+}
+
 // GetIncrementalDiff creates a diff between two specific commits.
 // This is used for incremental reviews where we only want changes since the last reviewed commit.
 // Note: go-git operations don't support context cancellation internally, so cancellation

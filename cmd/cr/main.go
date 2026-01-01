@@ -38,8 +38,11 @@ import (
 	usecasegithub "github.com/bkyoung/code-reviewer/internal/usecase/github"
 	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	usecasesession "github.com/bkyoung/code-reviewer/internal/usecase/session"
 	usecaseverify "github.com/bkyoung/code-reviewer/internal/usecase/verify"
 	"github.com/bkyoung/code-reviewer/internal/version"
+
+	sessionstore "github.com/bkyoung/code-reviewer/internal/adapter/session"
 )
 
 func main() {
@@ -273,9 +276,19 @@ func run() error {
 		RemoteGitHubClient:     remoteGitHubClient, // Phase 3.5: Remote PR review
 	})
 
+	// Phase 3.5b: Create session manager for local session storage
+	var sessionManager cli.SessionManager
+	sessionStore, err := sessionstore.NewFileStore("")
+	if err != nil {
+		log.Printf("Warning: Failed to initialize session storage: %v. Session commands will be unavailable.", err)
+	} else {
+		sessionManager = usecasesession.NewService(sessionStore, gitEngine, repoDir)
+	}
+
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
 		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
+		SessionManager:      sessionManager,
 		DefaultOutput:       cfg.Output.Directory,
 		DefaultRepo:         repoName,
 		DefaultInstructions: cfg.Review.Instructions,

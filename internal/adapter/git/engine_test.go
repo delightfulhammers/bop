@@ -9,6 +9,7 @@ import (
 	"time"
 
 	goGit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
@@ -425,6 +426,107 @@ func TestEngine_GetIncrementalDiff(t *testing.T) {
 		_, err := engine.GetIncrementalDiff(ctx, commit1.String(), "0000000000000000000000000000000000000000")
 		if err == nil {
 			t.Error("expected error for invalid to commit")
+		}
+	})
+}
+
+func TestEngineGetRemoteURL(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	repo, err := goGit.PlainInit(tmp, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	engine := git.NewEngine(tmp)
+
+	t.Run("no remote returns empty string", func(t *testing.T) {
+		url, err := engine.GetRemoteURL(ctx)
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if url != "" {
+			t.Errorf("expected empty string, got %q", url)
+		}
+	})
+
+	t.Run("with origin remote returns URL", func(t *testing.T) {
+		_, err := repo.CreateRemote(&config.RemoteConfig{
+			Name: "origin",
+			URLs: []string{"https://github.com/owner/repo.git"},
+		})
+		if err != nil {
+			t.Fatalf("create remote error: %v", err)
+		}
+
+		url, err := engine.GetRemoteURL(ctx)
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if url != "https://github.com/owner/repo.git" {
+			t.Errorf("expected https://github.com/owner/repo.git, got %q", url)
+		}
+	})
+}
+
+func TestEngineBranchExistsLocal(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	repo, err := goGit.PlainInit(tmp, false)
+	if err != nil {
+		t.Fatalf("failed to init repo: %v", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get worktree: %v", err)
+	}
+
+	// Create initial commit on master
+	writeFile(t, tmp, "main.go", "package main\n")
+	if _, err := worktree.Add("main.go"); err != nil {
+		t.Fatalf("add error: %v", err)
+	}
+	if _, err := worktree.Commit("initial", &goGit.CommitOptions{Author: defaultSignature()}); err != nil {
+		t.Fatalf("commit error: %v", err)
+	}
+
+	// Create a feature branch
+	if err := checkoutBranch(worktree, "feature"); err != nil {
+		t.Fatalf("checkout error: %v", err)
+	}
+
+	engine := git.NewEngine(tmp)
+
+	t.Run("existing branch returns true", func(t *testing.T) {
+		exists, err := engine.BranchExistsLocal(ctx, "feature")
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if !exists {
+			t.Error("expected feature branch to exist")
+		}
+	})
+
+	t.Run("master branch exists", func(t *testing.T) {
+		exists, err := engine.BranchExistsLocal(ctx, "master")
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if !exists {
+			t.Error("expected master branch to exist")
+		}
+	})
+
+	t.Run("non-existing branch returns false", func(t *testing.T) {
+		exists, err := engine.BranchExistsLocal(ctx, "nonexistent")
+		if err != nil {
+			t.Errorf("expected no error, got %v", err)
+		}
+		if exists {
+			t.Error("expected nonexistent branch to not exist")
 		}
 	})
 }
