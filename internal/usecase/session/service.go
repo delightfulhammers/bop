@@ -26,14 +26,19 @@ func NewService(store LocalSessionStore, gitChecker GitBranchChecker, repoRootDi
 // GetOrCreateSession retrieves an existing session or creates a new one.
 // The repository is normalized from the git remote URL.
 func (s *Service) GetOrCreateSession(ctx context.Context, branch string) (*domain.LocalSession, error) {
-	remoteURL, err := s.gitChecker.GetRemoteURL(ctx)
-	if err != nil {
-		return nil, err
+	var repository string
+
+	// Guard against nil gitChecker (can happen in tests or alternative wiring)
+	if s.gitChecker != nil {
+		remoteURL, err := s.gitChecker.GetRemoteURL(ctx)
+		if err != nil {
+			return nil, err
+		}
+		repository = NormalizeRemoteURL(remoteURL)
 	}
 
-	repository := NormalizeRemoteURL(remoteURL)
 	if repository == "" {
-		// No remote configured - use local path as fallback
+		// No remote configured or no gitChecker - use local path as fallback
 		repository = s.repoRootDir
 	}
 

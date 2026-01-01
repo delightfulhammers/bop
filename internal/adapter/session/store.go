@@ -206,6 +206,15 @@ func (s *FileStore) SaveReview(ctx context.Context, review *domain.LocalReview) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Verify session exists BEFORE writing review file to prevent orphaned reviews
+	session, err := s.readSessionMeta(review.SessionID)
+	if err != nil {
+		return fmt.Errorf("read session meta: %w", err)
+	}
+	if session == nil {
+		return fmt.Errorf("save review: %w", ErrSessionNotFound)
+	}
+
 	reviewDir := filepath.Dir(reviewPath)
 	if err := os.MkdirAll(reviewDir, 0o755); err != nil {
 		return fmt.Errorf("create reviews directory: %w", err)
@@ -221,14 +230,6 @@ func (s *FileStore) SaveReview(ctx context.Context, review *domain.LocalReview) 
 	}
 
 	// Update session metadata
-	session, err := s.readSessionMeta(review.SessionID)
-	if err != nil {
-		return fmt.Errorf("read session meta: %w", err)
-	}
-	if session == nil {
-		return fmt.Errorf("save review: %w", ErrSessionNotFound)
-	}
-
 	session.LastReviewAt = review.CreatedAt
 	session.ReviewCount++
 
@@ -365,10 +366,13 @@ func isValidSessionID(id string) bool {
 	return true
 }
 
+// Maximum length for review IDs to prevent DoS via long filenames.
+const maxReviewIDLength = 255
+
 // isValidReviewID validates that a review ID doesn't contain path traversal characters.
-// Review IDs can be alphanumeric with hyphens and underscores.
+// Review IDs can be alphanumeric with hyphens and underscores, max 255 chars.
 func isValidReviewID(id string) bool {
-	if id == "" {
+	if id == "" || len(id) > maxReviewIDLength {
 		return false
 	}
 	for _, c := range id {

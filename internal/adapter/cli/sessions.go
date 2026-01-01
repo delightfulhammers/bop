@@ -221,6 +221,9 @@ func outputPruneResult(cmd *cobra.Command, result *session.PruneResult) error {
 	return nil
 }
 
+// Maximum duration for prune operations (5 years).
+const maxPruneDuration = 5 * 365 * 24 * time.Hour
+
 // parseDuration parses a duration string like "7d", "30d", "2w" into a time.Duration.
 func parseDuration(s string) (time.Duration, error) {
 	if len(s) < 2 {
@@ -254,14 +257,20 @@ func parseDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("duration must be positive: %s", s)
 	}
 
-	return time.Duration(n) * multiplier, nil
+	duration := time.Duration(n) * multiplier
+	if duration > maxPruneDuration {
+		return 0, fmt.Errorf("duration exceeds maximum of 5 years: %s", s)
+	}
+
+	return duration, nil
 }
 
 func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen-3] + "..."
+	return string(runes[:maxLen-3]) + "..."
 }
 
 func formatRelativeTime(t time.Time) string {
