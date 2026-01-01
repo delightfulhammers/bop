@@ -112,7 +112,7 @@ For findings you're addressing:
 1. Use `get_suggestion` to extract the proposed fix
 2. Apply the fix using standard file editing
 3. Run validation: `go test ./... && go build -o cr ./cmd/cr`
-4. Commit locally (don't push yet)
+4. Commit locally (**don't push yet** - respond to findings first!)
 
 ### Step 5: Respond to Findings
 
@@ -287,6 +287,15 @@ Group operations by type for efficiency:
 4. **Fourth:** Post all responses
 5. **Fifth:** Mark threads resolved
 6. **Last:** Push and request re-review
+
+> ⚠️ **CRITICAL: Respond BEFORE Push**
+>
+> Always post responses to findings (step 4) BEFORE pushing code (step 6). Pushing triggers CI which may start a new review cycle. If your responses aren't posted yet, there's a race condition where:
+> 1. You push → CI triggers code-reviewer
+> 2. Code-reviewer runs and posts new findings
+> 3. Your responses to OLD findings finally post (too late!)
+>
+> The correct flow: **fix locally → respond to findings → push → re-review**
 
 ### Use Native Tools Together with MCP
 

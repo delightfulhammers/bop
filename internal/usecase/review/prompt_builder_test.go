@@ -1058,3 +1058,228 @@ func TestRenderTemplate_WithPriorFindings(t *testing.T) {
 		t.Error("prompt should contain the triaged finding file")
 	}
 }
+
+// Tests for sanitizeRationale (Issue #191)
+
+func TestSanitizeRationale_EmptyString(t *testing.T) {
+	result := sanitizeRationale("", "")
+	if result != "" {
+		t.Errorf("expected empty string for empty input, got: %q", result)
+	}
+}
+
+func TestSanitizeRationale_ShortRationale(t *testing.T) {
+	input := "This is a valid rationale."
+	result := sanitizeRationale(input, "")
+
+	// Should be wrapped in quote block
+	if !strings.HasPrefix(result, "> ") {
+		t.Error("expected rationale to be wrapped in markdown quote block")
+	}
+	if !strings.Contains(result, input) {
+		t.Error("expected full rationale to be preserved")
+	}
+	// Should not be truncated
+	if strings.Contains(result, "[truncated]") {
+		t.Error("short rationale should not be truncated")
+	}
+}
+
+func TestSanitizeRationale_MultilineRationale(t *testing.T) {
+	input := "Line one\nLine two\nLine three"
+	result := sanitizeRationale(input, "")
+
+	// Each line should have quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "> ") {
+			t.Errorf("line %d should start with '> ', got: %q", i, line)
+		}
+	}
+}
+
+func TestSanitizeRationale_WithIndent(t *testing.T) {
+	input := "Line one\nLine two"
+	result := sanitizeRationale(input, "     ") // 5 spaces for markdown list
+
+	// Each line should have indent + quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "     > ") {
+			t.Errorf("line %d should start with '     > ', got: %q", i, line)
+		}
+	}
+}
+
+func TestSanitizeRationale_ExceedsMaxLength(t *testing.T) {
+	// Create a rationale that exceeds MaxRationaleLength
+	longRationale := strings.Repeat("a", MaxRationaleLength+100)
+	result := sanitizeRationale(longRationale, "")
+
+	// Should be truncated
+	if !strings.Contains(result, "[truncated]") {
+		t.Error("long rationale should be truncated with marker")
+	}
+
+	// The content (without quote markers) should not exceed max length + truncation suffix
+	// Remove quote prefixes to check content length
+	content := strings.ReplaceAll(result, "> ", "")
+	content = strings.TrimSpace(content)
+
+	maxExpected := MaxRationaleLength + len("... [truncated]")
+	if len(content) > maxExpected {
+		t.Errorf("truncated content too long: got %d, max expected %d", len(content), maxExpected)
+	}
+}
+
+func TestSanitizeRationale_ExactlyMaxLength(t *testing.T) {
+	// Create a rationale that is exactly MaxRationaleLength
+	exactRationale := strings.Repeat("b", MaxRationaleLength)
+	result := sanitizeRationale(exactRationale, "")
+
+	// Should NOT be truncated (boundary case)
+	if strings.Contains(result, "[truncated]") {
+		t.Error("rationale exactly at max length should not be truncated")
+	}
+}
+
+func TestSanitizeRationale_UTF8Safe(t *testing.T) {
+	// Create a rationale with multi-byte UTF-8 characters near the truncation boundary
+	// Using emoji (4 bytes each) to test UTF-8 safety
+	emoji := "🔥" // 4 bytes, 1 rune
+	longRationale := strings.Repeat(emoji, MaxRationaleLength+10)
+	result := sanitizeRationale(longRationale, "")
+
+	// Should be truncated
+	if !strings.Contains(result, "[truncated]") {
+		t.Error("long rationale should be truncated with marker")
+	}
+
+	// Result should be valid UTF-8 (no broken characters)
+	content := strings.ReplaceAll(result, "> ", "")
+	content = strings.TrimSpace(content)
+	content = strings.TrimSuffix(content, "... [truncated]")
+
+	// Each remaining character should be a complete emoji
+	for _, r := range content {
+		if r == '�' { // Unicode replacement character indicates broken UTF-8
+			t.Error("truncation produced invalid UTF-8 (broken multi-byte character)")
+		}
+	}
+}
+
+func TestSanitizeRationale_WindowsNewlines(t *testing.T) {
+	// Windows-style \r\n newlines should be normalized to \n
+	input := "Line one\r\nLine two\r\nLine three"
+	result := sanitizeRationale(input, "")
+
+	// Should NOT contain any \r characters
+	if strings.Contains(result, "\r") {
+		t.Error("result should not contain carriage return characters")
+	}
+
+	// Should have 3 lines, each with quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 lines, got %d", len(lines))
+	}
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "> ") {
+			t.Errorf("line %d should start with '> ', got: %q", i, line)
+		}
+	}
+}
+
+func TestSanitizeRationale_OldMacNewlines(t *testing.T) {
+	// Old Mac-style \r newlines should be normalized to \n
+	input := "Line one\rLine two\rLine three"
+	result := sanitizeRationale(input, "")
+
+	// Should NOT contain any \r characters
+	if strings.Contains(result, "\r") {
+		t.Error("result should not contain carriage return characters")
+	}
+
+	// Should have 3 lines, each with quote prefix
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Errorf("expected 3 lines, got %d", len(lines))
+	}
+}
+
+func TestSanitizeRationale_MixedNewlines(t *testing.T) {
+	// Mixed newline styles should all be normalized
+	input := "Unix line\nWindows line\r\nOld Mac line\rFinal line"
+	result := sanitizeRationale(input, "")
+
+	// Should NOT contain any \r characters
+	if strings.Contains(result, "\r") {
+		t.Error("result should not contain carriage return characters")
+	}
+
+	// Should have 4 lines
+	lines := strings.Split(strings.TrimSuffix(result, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Errorf("expected 4 lines, got %d", len(lines))
+	}
+}
+
+func TestFormatPriorFindings_SanitizesRationale(t *testing.T) {
+	// Issue #191: User-provided rationales should be sanitized
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:         "auth.go",
+				LineStart:    20,
+				LineEnd:      25,
+				Category:     "security",
+				Description:  "Test finding",
+				Status:       domain.StatusAcknowledged,
+				StatusReason: "User provided rationale",
+			},
+		},
+	}
+	result := formatPriorFindings(ctx)
+
+	// Rationale should be in indented quote block format (5 spaces for markdown list structure)
+	if !strings.Contains(result, "     > User provided rationale") {
+		t.Error("expected rationale to be wrapped in indented quote block")
+	}
+
+	// Should have the "(user-provided)" label
+	if !strings.Contains(result, "user-provided") {
+		t.Error("expected rationale label to indicate user-provided content")
+	}
+}
+
+func TestFormatPriorFindings_TruncatesLongRationale(t *testing.T) {
+	// Issue #191: Long rationales should be truncated
+	longRationale := strings.Repeat("x", MaxRationaleLength+500)
+
+	ctx := &domain.TriagedFindingContext{
+		PRNumber: 123,
+		Findings: []domain.TriagedFinding{
+			{
+				File:         "auth.go",
+				LineStart:    20,
+				LineEnd:      25,
+				Category:     "security",
+				Description:  "Test finding",
+				Status:       domain.StatusDisputed,
+				StatusReason: longRationale,
+			},
+		},
+	}
+	result := formatPriorFindings(ctx)
+
+	// Should contain truncation marker
+	if !strings.Contains(result, "[truncated]") {
+		t.Error("expected long rationale to be truncated")
+	}
+
+	// Full original rationale should NOT be present
+	if strings.Contains(result, longRationale) {
+		t.Error("full long rationale should not appear in output")
+	}
+}
