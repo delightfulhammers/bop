@@ -112,20 +112,21 @@ func (s *Service) Prune(ctx context.Context, opts PruneOptions) (*PruneResult, e
 
 	var candidateSessions []domain.LocalSession
 
-	// Get sessions to consider for pruning
-	if opts.OlderThan > 0 {
-		stale, err := s.store.ListSessionsByAge(ctx, opts.OlderThan)
-		if err != nil {
-			return nil, err
-		}
-		candidateSessions = append(candidateSessions, stale...)
-	} else if opts.PruneOrphans {
-		// If only pruning orphans, get all sessions
+	// Get sessions to consider for pruning.
+	// When checking orphans, we need all sessions since any could be orphaned.
+	// When only checking age, we can optimize by fetching just stale sessions.
+	if opts.PruneOrphans {
 		all, err := s.store.ListSessions(ctx)
 		if err != nil {
 			return nil, err
 		}
 		candidateSessions = all
+	} else if opts.OlderThan > 0 {
+		stale, err := s.store.ListSessionsByAge(ctx, opts.OlderThan)
+		if err != nil {
+			return nil, err
+		}
+		candidateSessions = stale
 	}
 
 	// Remove duplicates (in case a session matches multiple criteria)

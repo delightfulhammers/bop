@@ -79,6 +79,10 @@ func (s *FileStore) SaveSession(ctx context.Context, session *domain.LocalSessio
 }
 
 // GetSession retrieves a session by ID.
+// Note: A read lock is sufficient here because the only creation path
+// (SaveSession) uses a write lock. Concurrent GetSession calls during
+// GetOrCreateSession are safe - duplicate creation attempts are prevented
+// by SaveSession's write lock, and the session will be found on retry.
 func (s *FileStore) GetSession(ctx context.Context, sessionID string) (*domain.LocalSession, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
