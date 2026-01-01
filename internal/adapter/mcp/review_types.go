@@ -132,6 +132,34 @@ type PostFindingsOutput struct {
 }
 
 // =============================================================================
+// review_branch Tool Types
+// =============================================================================
+
+// ReviewBranchInput is the input for the review_branch tool.
+type ReviewBranchInput struct {
+	BaseRef            string   `json:"base_ref" jsonschema:"Base ref to diff against (e.g. main),required"`
+	TargetRef          string   `json:"target_ref,omitempty" jsonschema:"Target branch to review (defaults to current branch)"`
+	IncludeUncommitted bool     `json:"include_uncommitted,omitempty" jsonschema:"Include uncommitted working tree changes in the review"`
+	Reviewers          []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from cr.yaml config)"`
+}
+
+// ReviewBranchOutput is the output for the review_branch tool.
+type ReviewBranchOutput struct {
+	Findings      []FindingOutput `json:"findings"`
+	Summary       string          `json:"summary"`
+	TotalFindings int             `json:"total_findings"`
+	BySeverity    map[string]int  `json:"by_severity"`
+	ByCategory    map[string]int  `json:"by_category"`
+	ReviewerStats []ReviewerStat  `json:"reviewer_stats,omitempty"`
+	TokensIn      int             `json:"tokens_in"`
+	TokensOut     int             `json:"tokens_out"`
+	Cost          float64         `json:"cost"`
+	Message       string          `json:"message"`
+	BaseRef       string          `json:"base_ref"`
+	TargetRef     string          `json:"target_ref"`
+}
+
+// =============================================================================
 // Severity and Category Constants
 // =============================================================================
 
