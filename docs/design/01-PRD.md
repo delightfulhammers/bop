@@ -342,6 +342,8 @@ Generate prompts dynamically based on what changed in the diff.
 | Self-hosted LLM training | Out of scope entirely |
 | Real-time collaborative triage | Complex UX, uncertain value |
 
+**Note on Phase 4:** Enterprise features (multi-platform, cross-repo learning) are aspirational. The tool's current scope — GitHub-only, per-repo — is sufficient for solo developers and small teams. No roadmap exists for Phase 4.
+
 ---
 
 ## 7. Constraints & Dependencies

@@ -37,7 +37,7 @@
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 | Phase 3.3: Model Selection | Deferred | Right-size models to change characteristics |
-| Phase 4: Enterprise | Planned | Multi-platform, org-wide learning |
+| Phase 4: Enterprise | Aspirational | Multi-platform, org-wide learning |
 
 ### Phase 3 Focus Areas
 
