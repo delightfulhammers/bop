@@ -246,6 +246,11 @@ type OrchestratorDeps struct {
 	// MaxConcurrentReviewers limits concurrent reviewer dispatch.
 	// 0 means unlimited (all reviewers run in parallel).
 	MaxConcurrentReviewers int
+
+	// Phase 3.5: Remote PR Review
+	// RemoteGitHubClient enables reviewing PRs without a local clone.
+	// Optional: only required for cr review pr command.
+	RemoteGitHubClient RemoteGitHubClient
 }
 
 // ProviderRequest describes the payload the LLM provider expects.
@@ -977,6 +982,482 @@ func (o *Orchestrator) CurrentBranch(ctx context.Context) (string, error) {
 		return "", errors.New("orchestrator dependencies missing")
 	}
 	return o.deps.Git.CurrentBranch(ctx)
+}
+
+// ReviewBranchWithDiff executes a multi-provider review with a pre-computed diff and context.
+// This is the core review logic shared between ReviewBranch (local) and ReviewPR (remote).
+// The diff and projectContext must be pre-computed by the caller.
+func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchRequest, diff domain.Diff, projectContext ProjectContext) (Result, error) {
+	// Validate core dependencies (subset of validateDependencies - we don't require Git or DiffComputer)
+	if len(o.deps.Providers) == 0 {
+		return Result{}, errors.New("at least one provider is required")
+	}
+	if o.deps.Merger == nil {
+		return Result{}, errors.New("merger is required")
+	}
+	if o.deps.Markdown == nil {
+		return Result{}, errors.New("markdown writer is required")
+	}
+	if o.deps.JSON == nil {
+		return Result{}, errors.New("json writer is required")
+	}
+	if o.deps.SARIF == nil {
+		return Result{}, errors.New("sarif writer is required")
+	}
+	if o.deps.PersonaPromptBuilder == nil {
+		return Result{}, errors.New("persona prompt builder is required")
+	}
+	if o.deps.SeedGenerator == nil {
+		return Result{}, errors.New("seed generator is required")
+	}
+
+	// Validate minimal request fields (we don't require BaseRef/TargetRef for pre-computed diffs)
+	if strings.TrimSpace(req.OutputDir) == "" {
+		return Result{}, errors.New("output directory is required")
+	}
+
+	// Fetch prior triage context if posting to GitHub and fetcher is configured
+	if req.PostToGitHub && o.deps.TriageContextFetcher != nil {
+		triageCtx := o.deps.TriageContextFetcher.FetchTriagedFindings(
+			ctx, req.GitHubOwner, req.GitHubRepo, req.PRNumber,
+		)
+		if triageCtx != nil && triageCtx.HasFindings() {
+			projectContext.TriagedFindings = triageCtx
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogInfo(ctx, "loaded prior triage context", map[string]interface{}{
+					"prNumber":     req.PRNumber,
+					"acknowledged": len(triageCtx.AcknowledgedFindings()),
+					"disputed":     len(triageCtx.DisputedFindings()),
+				})
+			} else {
+				log.Printf("Loaded prior triage context: %d acknowledged, %d disputed findings\n",
+					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
+			}
+		}
+	}
+
+	// Generate run ID for potential store usage
+	now := time.Now()
+	var runID string
+	if o.deps.Store != nil {
+		runID = generateRunID(now, req.BaseRef, req.TargetRef)
+	}
+
+	seed := o.deps.SeedGenerator(req.BaseRef, req.TargetRef)
+
+	// Create run record BEFORE launching provider goroutines
+	if o.deps.Store != nil && runID != "" {
+		run := StoreRun{
+			RunID:      runID,
+			Timestamp:  now,
+			Scope:      fmt.Sprintf("%s..%s", req.BaseRef, req.TargetRef),
+			ConfigHash: calculateConfigHash(req),
+			TotalCost:  0.0,
+			BaseRef:    req.BaseRef,
+			TargetRef:  req.TargetRef,
+			Repository: req.Repository,
+		}
+
+		if err := o.deps.Store.CreateRun(ctx, run); err != nil {
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogWarning(ctx, "failed to create run record", map[string]interface{}{
+					"runID": runID,
+					"error": err.Error(),
+				})
+			} else {
+				log.Printf("warning: failed to create run record: %v\n", err)
+			}
+		}
+	}
+
+	// Resolve reviewers
+	var reviewers []domain.Reviewer
+	var err error
+	if o.deps.ReviewerRegistry != nil {
+		reviewers, err = o.deps.ReviewerRegistry.Resolve(req.Reviewers)
+		if err != nil {
+			return Result{}, fmt.Errorf("resolving reviewers: %w", err)
+		}
+	} else {
+		reviewers = synthesizeReviewersFromProviders(o.deps.Providers)
+		if len(reviewers) == 0 {
+			return Result{}, errors.New("no providers configured")
+		}
+	}
+
+	// Filter binary files before dispatching to reviewers
+	textDiff, binaryFiles := FilterBinaryFiles(diff)
+	if len(binaryFiles) > 0 {
+		log.Printf("Filtered %d binary file(s) from review", len(binaryFiles))
+	}
+
+	// Dispatch reviewers (same logic as ReviewBranch)
+	type dispatchResult struct {
+		review       domain.Review
+		reviewerName string
+		path         string
+		jsonPath     string
+		sarifPath    string
+		err          error
+	}
+
+	var wg sync.WaitGroup
+	resultsChan := make(chan dispatchResult, len(reviewers))
+
+	var sem chan struct{}
+	if o.deps.MaxConcurrentReviewers > 0 {
+		sem = make(chan struct{}, o.deps.MaxConcurrentReviewers)
+	}
+
+	var dispatchCancelled bool
+	for _, reviewer := range reviewers {
+		if ctx.Err() != nil {
+			dispatchCancelled = true
+			break
+		}
+
+		if sem != nil {
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				dispatchCancelled = true
+			}
+		}
+		if dispatchCancelled {
+			break
+		}
+
+		wg.Add(1)
+		go func(reviewer domain.Reviewer, runID string) {
+			defer func() {
+				if sem != nil {
+					<-sem
+				}
+				if r := recover(); r != nil {
+					resultsChan <- dispatchResult{err: fmt.Errorf("reviewer %s panicked: %v", reviewer.Name, r)}
+				}
+				wg.Done()
+			}()
+
+			provider, ok := o.deps.Providers[reviewer.Provider]
+			if !ok {
+				resultsChan <- dispatchResult{err: fmt.Errorf("provider %q not found for reviewer %q", reviewer.Provider, reviewer.Name)}
+				return
+			}
+
+			providerReq, err := o.deps.PersonaPromptBuilder.Build(projectContext, textDiff, req, reviewer)
+			if err != nil {
+				resultsChan <- dispatchResult{err: fmt.Errorf("prompt building failed for reviewer %s: %w", reviewer.Name, err)}
+				return
+			}
+			if providerReq.Seed == 0 {
+				providerReq.Seed = seed
+			}
+
+			if maxTokens, ok := o.deps.ProviderMaxTokens[reviewer.Provider]; ok && maxTokens > 0 {
+				providerReq.MaxSize = maxTokens
+			}
+
+			if o.deps.Redactor != nil {
+				redactedPrompt, err := o.deps.Redactor.Redact(providerReq.Prompt)
+				if err != nil {
+					resultsChan <- dispatchResult{err: fmt.Errorf("redaction failed for reviewer %s: %w", reviewer.Name, err)}
+					return
+				}
+				providerReq.Prompt = redactedPrompt
+			}
+
+			review, err := provider.Review(ctx, providerReq)
+			if err != nil {
+				resultsChan <- dispatchResult{err: fmt.Errorf("reviewer %s failed: %w", reviewer.Name, err)}
+				return
+			}
+
+			for i := range review.Findings {
+				review.Findings[i].ReviewerName = reviewer.Name
+				review.Findings[i].ReviewerWeight = reviewer.Weight
+			}
+
+			outputName := reviewer.Name
+			if outputName == "" {
+				outputName = review.ProviderName
+			}
+
+			markdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+				OutputDir:    req.OutputDir,
+				Repository:   req.Repository,
+				BaseRef:      req.BaseRef,
+				TargetRef:    req.TargetRef,
+				Diff:         diff,
+				Review:       review,
+				ProviderName: outputName,
+			})
+			if err != nil {
+				resultsChan <- dispatchResult{err: fmt.Errorf("markdown write failed for reviewer %s: %w", reviewer.Name, err)}
+				return
+			}
+
+			jsonPath, err := o.deps.JSON.Write(ctx, domain.JSONArtifact{
+				OutputDir:    req.OutputDir,
+				Repository:   req.Repository,
+				BaseRef:      req.BaseRef,
+				TargetRef:    req.TargetRef,
+				Review:       review,
+				ProviderName: outputName,
+			})
+			if err != nil {
+				resultsChan <- dispatchResult{err: fmt.Errorf("json write failed for reviewer %s: %w", reviewer.Name, err)}
+				return
+			}
+
+			sarifPath, err := o.deps.SARIF.Write(ctx, SARIFArtifact{
+				OutputDir:    req.OutputDir,
+				Repository:   req.Repository,
+				BaseRef:      req.BaseRef,
+				TargetRef:    req.TargetRef,
+				Review:       review,
+				ProviderName: outputName,
+			})
+			if err != nil {
+				resultsChan <- dispatchResult{err: fmt.Errorf("sarif write failed for reviewer %s: %w", reviewer.Name, err)}
+				return
+			}
+
+			if runID != "" {
+				if err := o.SaveReviewToStore(ctx, runID, review); err != nil {
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogWarning(ctx, "failed to save review to store", map[string]interface{}{
+							"runID":    runID,
+							"reviewer": reviewer.Name,
+							"error":    err.Error(),
+						})
+					} else {
+						log.Printf("warning: failed to save review to store: %v\n", err)
+					}
+				}
+			}
+
+			resultsChan <- dispatchResult{review: review, reviewerName: outputName, path: markdownPath, jsonPath: jsonPath, sarifPath: sarifPath}
+		}(reviewer, runID)
+	}
+
+	wg.Wait()
+	close(resultsChan)
+
+	var reviews []domain.Review
+	markdownPaths := make(map[string]string)
+	jsonPaths := make(map[string]string)
+	sarifPaths := make(map[string]string)
+	var errs []error
+	var totalCost float64
+
+	for res := range resultsChan {
+		if res.err != nil {
+			errs = append(errs, res.err)
+		} else {
+			reviews = append(reviews, res.review)
+			markdownPaths[res.reviewerName] = res.path
+			jsonPaths[res.reviewerName] = res.jsonPath
+			sarifPaths[res.reviewerName] = res.sarifPath
+			totalCost += res.review.Cost
+		}
+	}
+
+	if len(errs) > 0 {
+		var errMsgs []string
+		for _, err := range errs {
+			errMsgs = append(errMsgs, err.Error())
+		}
+		return Result{}, fmt.Errorf("%d provider(s) failed: %s", len(errs), strings.Join(errMsgs, "; "))
+	}
+
+	if dispatchCancelled {
+		return Result{}, ctx.Err()
+	}
+
+	if o.deps.Store != nil && runID != "" {
+		if err := o.deps.Store.UpdateRunCost(ctx, runID, totalCost); err != nil {
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogWarning(ctx, "failed to update run cost", map[string]interface{}{
+					"runID":     runID,
+					"totalCost": totalCost,
+					"error":     err.Error(),
+				})
+			} else {
+				log.Printf("warning: failed to update run cost: %v\n", err)
+			}
+		}
+	}
+
+	mergedReview := o.deps.Merger.Merge(ctx, reviews)
+	mergedReview.Cost = totalCost
+
+	// Verification stage
+	if o.deps.Verifier != nil && !req.SkipVerification && len(mergedReview.Findings) > 0 {
+		candidates, verified, reportable, verifyErr := o.verifyFindings(
+			ctx,
+			mergedReview.Findings,
+			mergedReview.ProviderName,
+			req.VerificationConfig,
+		)
+
+		if verifyErr != nil {
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogWarning(ctx, "verification failed, using unverified findings", map[string]interface{}{
+					"error":    verifyErr.Error(),
+					"findings": len(mergedReview.Findings),
+				})
+			} else {
+				log.Printf("warning: verification failed, using unverified findings: %v\n", verifyErr)
+			}
+		} else {
+			mergedReview.DiscoveryFindings = candidates
+			mergedReview.VerifiedFindings = verified
+			mergedReview.ReportableFindings = reportable
+			mergedReview.Findings = convertVerifiedToFindings(reportable)
+			logVerificationDetails(ctx, verified, reportable, req.VerificationConfig, o.deps.Logger)
+
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogInfo(ctx, "verification complete", map[string]interface{}{
+					"candidates": len(candidates),
+					"verified":   len(verified),
+					"reportable": len(reportable),
+				})
+			}
+		}
+	}
+
+	mergedMarkdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+		OutputDir:    req.OutputDir,
+		Repository:   req.Repository,
+		BaseRef:      req.BaseRef,
+		TargetRef:    req.TargetRef,
+		Diff:         diff,
+		Review:       mergedReview,
+		ProviderName: mergedReview.ProviderName,
+	})
+	if err != nil {
+		return Result{}, fmt.Errorf("markdown write failed for merged review: %w", err)
+	}
+
+	mergedJSONPath, err := o.deps.JSON.Write(ctx, domain.JSONArtifact{
+		OutputDir:    req.OutputDir,
+		Repository:   req.Repository,
+		BaseRef:      req.BaseRef,
+		TargetRef:    req.TargetRef,
+		Review:       mergedReview,
+		ProviderName: mergedReview.ProviderName,
+	})
+	if err != nil {
+		return Result{}, fmt.Errorf("json write failed for merged review: %w", err)
+	}
+
+	mergedSARIFPath, err := o.deps.SARIF.Write(ctx, SARIFArtifact{
+		OutputDir:    req.OutputDir,
+		Repository:   req.Repository,
+		BaseRef:      req.BaseRef,
+		TargetRef:    req.TargetRef,
+		Review:       mergedReview,
+		ProviderName: mergedReview.ProviderName,
+	})
+	if err != nil {
+		return Result{}, fmt.Errorf("sarif write failed for merged review: %w", err)
+	}
+
+	if runID != "" {
+		if err := o.SaveReviewToStore(ctx, runID, mergedReview); err != nil {
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogWarning(ctx, "failed to save merged review to store", map[string]interface{}{
+					"runID":    runID,
+					"provider": "merged",
+					"error":    err.Error(),
+				})
+			} else {
+				log.Printf("warning: failed to save merged review to store: %v\n", err)
+			}
+		}
+	}
+
+	markdownPaths["merged"] = mergedMarkdownPath
+	jsonPaths["merged"] = mergedJSONPath
+	sarifPaths["merged"] = mergedSARIFPath
+
+	// Post review to GitHub if enabled
+	var githubResult *GitHubPostResult
+	if req.PostToGitHub && o.deps.GitHubPoster != nil {
+		result, err := o.deps.GitHubPoster.PostReview(ctx, GitHubPostRequest{
+			Owner:                 req.GitHubOwner,
+			Repo:                  req.GitHubRepo,
+			PRNumber:              req.PRNumber,
+			CommitSHA:             req.CommitSHA,
+			Review:                mergedReview,
+			Diff:                  diff,
+			ActionOnCritical:      req.ActionOnCritical,
+			ActionOnHigh:          req.ActionOnHigh,
+			ActionOnMedium:        req.ActionOnMedium,
+			ActionOnLow:           req.ActionOnLow,
+			ActionOnClean:         req.ActionOnClean,
+			ActionOnNonBlocking:   req.ActionOnNonBlocking,
+			AlwaysBlockCategories: req.AlwaysBlockCategories,
+			BotUsername:           req.BotUsername,
+			Cost:                  mergedReview.Cost,
+		})
+		if err != nil {
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogWarning(ctx, "failed to post review to GitHub", map[string]interface{}{
+					"owner":    req.GitHubOwner,
+					"repo":     req.GitHubRepo,
+					"prNumber": req.PRNumber,
+					"error":    err.Error(),
+				})
+			} else {
+				log.Printf("warning: failed to post review to GitHub: %v\n", err)
+			}
+		} else {
+			githubResult = result
+			if o.deps.Logger != nil {
+				o.deps.Logger.LogInfo(ctx, "posted review to GitHub", map[string]interface{}{
+					"reviewID":              result.ReviewID,
+					"newComments":           result.CommentsPosted,
+					"notInDiff":             result.CommentsSkipped,
+					"fingerprintDuplicates": result.DuplicatesSkipped,
+					"semanticDuplicates":    result.SemanticDuplicatesSkipped,
+					"url":                   result.HTMLURL,
+				})
+			} else {
+				log.Printf("Posted review to GitHub: %d new comments (%d not in diff, %d fingerprint dups, %d semantic dups) - %s\n",
+					result.CommentsPosted, result.CommentsSkipped,
+					result.DuplicatesSkipped, result.SemanticDuplicatesSkipped,
+					result.HTMLURL)
+			}
+		}
+	}
+
+	// Log review summary
+	findingsCount := len(mergedReview.Findings)
+	if githubResult != nil {
+		findingsCount = githubResult.CommentsPosted
+	}
+	if o.deps.Logger != nil {
+		o.deps.Logger.LogInfo(ctx, "review complete", map[string]interface{}{
+			"reviewers":    len(reviews),
+			"findings":     findingsCount,
+			"total_cost":   totalCost,
+			"output_dir":   req.OutputDir,
+			"posted_to_gh": githubResult != nil,
+		})
+	} else {
+		log.Printf("[INFO] Review complete: %d reviewers, %d findings, cost=$%.4f\n",
+			len(reviews), findingsCount, totalCost)
+	}
+
+	return Result{
+		MarkdownPaths: markdownPaths,
+		JSONPaths:     jsonPaths,
+		SARIFPaths:    sarifPaths,
+		Reviews:       append(reviews, mergedReview),
+		GitHubResult:  githubResult,
+	}, nil
 }
 
 func validateRequest(req BranchRequest) error {

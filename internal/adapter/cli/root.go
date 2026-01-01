@@ -22,6 +22,11 @@ type BranchReviewer interface {
 	CurrentBranch(ctx context.Context) (string, error)
 }
 
+// PRReviewer defines the dependency required to run the pr command.
+type PRReviewer interface {
+	ReviewPR(ctx context.Context, req review.PRRequest) (review.Result, error)
+}
+
 // Arguments encapsulates IO writers injected from the host process.
 type Arguments struct {
 	OutWriter io.Writer
@@ -63,6 +68,7 @@ type DefaultVerification struct {
 // Dependencies captures the collaborators for the CLI.
 type Dependencies struct {
 	BranchReviewer       BranchReviewer
+	PRReviewer           PRReviewer // Optional: only required for cr review pr
 	Args                 Arguments
 	DefaultOutput        string
 	DefaultRepo          string
@@ -103,6 +109,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		Short: "Run a code review",
 	}
 	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification))
+	if deps.PRReviewer != nil {
+		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification))
+	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())
 
