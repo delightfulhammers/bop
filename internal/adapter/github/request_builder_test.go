@@ -66,6 +66,7 @@ func TestFormatFindingComment(t *testing.T) {
 
 	assert.Contains(t, comment, "**Severity:** high")
 	assert.Contains(t, comment, "**Category:** security")
+	assert.Contains(t, comment, "**Blocking:** yes") // high severity = blocking
 	assert.Contains(t, comment, "SQL injection vulnerability")
 	assert.Contains(t, comment, "Use parameterized queries instead")
 }
@@ -77,6 +78,7 @@ func TestFormatFindingComment_NoSuggestion(t *testing.T) {
 	comment := github.FormatFindingComment(finding)
 
 	assert.Contains(t, comment, "Minor style issue")
+	assert.Contains(t, comment, "**Blocking:** no") // low severity = non-blocking
 	assert.NotContains(t, comment, "**Suggestion:**")
 }
 
@@ -107,6 +109,41 @@ func TestFormatFindingComment_SingleLine(t *testing.T) {
 
 	assert.Contains(t, comment, "Line 42")
 	assert.NotContains(t, comment, "Lines")
+}
+
+func TestFormatFindingComment_BlockingIndicator(t *testing.T) {
+	tests := []struct {
+		severity        string
+		expectedBlocked bool
+	}{
+		{"critical", true},
+		{"high", true},
+		{"medium", false},
+		{"low", false},
+		{"unknown", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.severity, func(t *testing.T) {
+			finding := domain.Finding{
+				File:        "test.go",
+				LineStart:   1,
+				Severity:    tt.severity,
+				Description: "Test finding",
+			}
+
+			comment := github.FormatFindingComment(finding)
+
+			if tt.expectedBlocked {
+				assert.Contains(t, comment, "**Blocking:** yes",
+					"severity %q should be blocking", tt.severity)
+			} else {
+				assert.Contains(t, comment, "**Blocking:** no",
+					"severity %q should not be blocking", tt.severity)
+			}
+		})
+	}
 }
 
 func TestDetermineReviewEvent_RequestChangesOnHighSeverity(t *testing.T) {

@@ -78,6 +78,11 @@ var defaultBlockingSeverities = map[string]bool{
 	"low":      false,
 }
 
+// isBlockingSeverity returns true if the severity level blocks PR approval by default.
+func isBlockingSeverity(severity string) bool {
+	return defaultBlockingSeverities[strings.ToLower(severity)]
+}
+
 // BuildReviewComments converts positioned findings to GitHub review comments.
 // Only findings with a valid DiffPosition (InDiff() == true) are included.
 // Each comment includes an embedded fingerprint for linking replies to findings.
@@ -105,13 +110,22 @@ func BuildReviewComments(findings []PositionedFinding) []ReviewComment {
 }
 
 // FormatFindingComment formats a domain.Finding as a GitHub-flavored Markdown comment.
+// The blocking indicator is determined by severity (critical/high = blocking by default).
 func FormatFindingComment(f domain.Finding) string {
 	var sb strings.Builder
 
-	// Header with severity and category
+	// Determine if finding is blocking based on severity
+	blocking := isBlockingSeverity(f.Severity)
+
+	// Header with severity, category, and blocking indicator
 	sb.WriteString(fmt.Sprintf("**Severity:** %s", f.Severity))
 	if f.Category != "" {
 		sb.WriteString(fmt.Sprintf(" | **Category:** %s", f.Category))
+	}
+	if blocking {
+		sb.WriteString(" | **Blocking:** yes")
+	} else {
+		sb.WriteString(" | **Blocking:** no")
 	}
 	sb.WriteString("\n\n")
 
