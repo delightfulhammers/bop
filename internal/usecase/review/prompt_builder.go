@@ -430,15 +430,49 @@ func fileTypePriority(path string) int {
 	return 3
 }
 
+// MaxRationaleLength is the maximum character length for user-provided rationales.
+// Rationales exceeding this limit are truncated to prevent prompt bloat and
+// reduce the impact of potential prompt injection attempts.
+const MaxRationaleLength = 1000
+
+// sanitizeRationale sanitizes and truncates user-provided rationale for safe inclusion in LLM prompts.
+// This protects against:
+// 1. Prompt bloat from excessively long rationales eating token budget
+// 2. Prompt injection attempts through crafted user content
+//
+// The output wraps the rationale in a markdown quote block to visually separate it from
+// the structured prompt, and truncates to MaxRationaleLength characters if needed.
+func sanitizeRationale(rationale string) string {
+	if rationale == "" {
+		return ""
+	}
+
+	// Truncate if needed
+	if len(rationale) > MaxRationaleLength {
+		rationale = rationale[:MaxRationaleLength] + "... [truncated]"
+	}
+
+	// Wrap in quote block to visually separate user content
+	// This helps both human readers and LLMs distinguish user input from structured prompt
+	lines := strings.Split(rationale, "\n")
+	var sb strings.Builder
+	for _, line := range lines {
+		sb.WriteString("> ")
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
 // formatPriorFindings converts triaged findings into a human-readable section for the LLM prompt.
 // Returns an empty string if there are no triaged findings.
 //
 // The output includes fingerprints to help the LLM identify exact duplicates, and the actual
 // reply rationale (when available) to provide context for why findings were addressed.
 //
-// Note: This function does not currently impose size limits on the output. Large PRs with many
-// rounds of feedback may generate substantial prior context. Future enhancements may add
-// intelligent summarization or truncation if token limits become a concern in practice.
+// User-provided rationales are sanitized and truncated via sanitizeRationale() to prevent
+// prompt injection and token budget exhaustion.
 func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 	if ctx == nil || !ctx.HasFindings() {
 		return ""
@@ -458,7 +492,9 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString(fmt.Sprintf("   - Rationale: %s\n\n", f.StatusReason))
+			sb.WriteString("   - Rationale (user-provided):\n")
+			sb.WriteString(sanitizeRationale(f.StatusReason))
+			sb.WriteString("\n")
 		}
 	}
 
@@ -474,7 +510,9 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString(fmt.Sprintf("   - Rationale: %s\n\n", f.StatusReason))
+			sb.WriteString("   - Rationale (user-provided):\n")
+			sb.WriteString(sanitizeRationale(f.StatusReason))
+			sb.WriteString("\n")
 		}
 	}
 
@@ -490,7 +528,9 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
 			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
-			sb.WriteString(fmt.Sprintf("   - Status: %s\n\n", f.StatusReason))
+			sb.WriteString("   - Status:\n")
+			sb.WriteString(sanitizeRationale(f.StatusReason))
+			sb.WriteString("\n")
 		}
 	}
 
