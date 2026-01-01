@@ -44,7 +44,7 @@ func NewFileStore(baseDir string) (*FileStore, error) {
 		baseDir = filepath.Join(home, ".cache", "code-reviewer", "sessions")
 	}
 
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	if err := os.MkdirAll(baseDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create base directory: %w", err)
 	}
 
@@ -65,13 +65,13 @@ func (s *FileStore) SaveSession(ctx context.Context, session *domain.LocalSessio
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
 		return fmt.Errorf("create session directory: %w", err)
 	}
 
 	// Create reviews directory
 	reviewsDir := filepath.Join(sessionDir, "reviews")
-	if err := os.MkdirAll(reviewsDir, 0o755); err != nil {
+	if err := os.MkdirAll(reviewsDir, 0o700); err != nil {
 		return fmt.Errorf("create reviews directory: %w", err)
 	}
 
@@ -220,7 +220,7 @@ func (s *FileStore) SaveReview(ctx context.Context, review *domain.LocalReview) 
 	}
 
 	reviewDir := filepath.Dir(reviewPath)
-	if err := os.MkdirAll(reviewDir, 0o755); err != nil {
+	if err := os.MkdirAll(reviewDir, 0o700); err != nil {
 		return fmt.Errorf("create reviews directory: %w", err)
 	}
 
@@ -229,7 +229,7 @@ func (s *FileStore) SaveReview(ctx context.Context, review *domain.LocalReview) 
 		return fmt.Errorf("marshal review: %w", err)
 	}
 
-	if err := os.WriteFile(reviewPath, data, 0o644); err != nil {
+	if err := os.WriteFile(reviewPath, data, 0o600); err != nil {
 		return fmt.Errorf("write review file: %w", err)
 	}
 
@@ -413,7 +413,7 @@ func (s *FileStore) writeSessionMeta(session *domain.LocalSession) error {
 	}
 
 	metaPath := filepath.Join(sessionDir, "meta.json")
-	if err := os.WriteFile(metaPath, data, 0o644); err != nil {
+	if err := os.WriteFile(metaPath, data, 0o600); err != nil {
 		return fmt.Errorf("write meta file: %w", err)
 	}
 
