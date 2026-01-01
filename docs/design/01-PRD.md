@@ -24,7 +24,8 @@ Code-reviewer provides high-quality, automated code reviews using the LLM-as-jud
 | **3.1** | Triage Automation | MCP server, skill for triage workflow | P0 | ✅ Complete | v0.5.0 |
 | **3.2** | Reviewer Personas | Specialized reviewers with distinct prompts | P0 | ✅ Complete | v0.6.0 |
 | **—** | GitHub Action | CI/CD integration for automated reviews | P0 | ✅ Complete | v0.6.2 |
-| **3.3** | Dynamic Model Selection | Right-size models to change characteristics | P1 | Deferred | — |
+| **3.3** | Dynamic Model Selection | Right-size models to change characteristics | P2 | Deferred | — |
+| **3.5** | Local Mode | On-demand PR review, TUI, session storage | P0 | Design | — |
 
 ### v0.6.x Releases
 

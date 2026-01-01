@@ -37,6 +37,7 @@
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 | Phase 3.3: Model Selection | Deferred | Right-size models to change characteristics |
+| Phase 3.5: Local Mode | Design | On-demand PR review, TUI, session storage, MCP review tools |
 | Phase 4: Enterprise | Aspirational | Multi-platform, org-wide learning |
 
 ### Phase 3 Focus Areas
@@ -46,6 +47,7 @@
 | **3.1 Triage Automation** | MCP server, CLI, skill for triage workflow | P0 | ✅ Complete |
 | **3.2 Reviewer Personas** | Specialized reviewers with distinct prompts | P0 | ✅ Complete |
 | **3.3 Dynamic Model Selection** | Right-size models to change characteristics | P2 | Deferred |
+| **3.5 Local Mode** | On-demand PR review, TUI, sessions, MCP review tools | P0 | Design |
 
 ### Phase 3.1 Deliverables (Triage MCP Server)
 
@@ -69,10 +71,20 @@
 | Output formatters (MD/JSON/SARIF) | ✅ Complete |
 | CLI `--reviewers` flag | ✅ Complete |
 
+### Phase 3.5 Deliverables (Local Mode)
+
+| Component | Status |
+|-----------|--------|
+| `cr review pr` command | 🚧 Planned |
+| Session-based local storage | 🚧 Planned |
+| Interactive TUI (Bubble Tea) | 🚧 Planned |
+| MCP `review_pr` / `post_findings` tools | 🚧 Planned |
+
 ### Key Documents
 
 - **Phase 3 PRD:** `docs/design/01-PRD.md`
 - **Phase 3 Architecture:** `docs/design/02-ARCHITECTURE.md`
+- **Phase 3.5 Design:** `docs/design/05-PHASE-3.5-LOCAL-MODE.md`
 - **Security:** `docs/SECURITY.md`
 - **Archived Docs:** `docs/archive/` (roadmaps, TDDs, historical reference)
 
