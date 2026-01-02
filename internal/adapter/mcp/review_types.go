@@ -168,8 +168,8 @@ type ReviewBranchOutput struct {
 // This tool reviews files in a directory without requiring git.
 type ReviewFilesInput struct {
 	Path      string   `json:"path" jsonschema:"Directory to review,required"`
-	Patterns  []string `json:"patterns,omitempty" jsonschema:"Glob patterns to include (e.g., **/*.go, **/*.ts). If empty, reviews all files."`
-	Exclude   []string `json:"exclude,omitempty" jsonschema:"Glob patterns to exclude (e.g., *_test.go, vendor/**)"`
+	Patterns  []string `json:"patterns,omitempty" jsonschema:"Glob patterns to include (e.g., *.go, *.ts). Matches against filename. If empty, reviews all non-binary files."`
+	Exclude   []string `json:"exclude,omitempty" jsonschema:"Glob patterns to exclude (e.g., *_test.go, *.min.js). Matches against filename."`
 	Reviewers []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from cr.yaml config)"`
 }
 

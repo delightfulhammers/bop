@@ -891,8 +891,30 @@ func (s *Server) handleReviewFiles(ctx context.Context, req *mcp.CallToolRequest
 		}, ReviewFilesOutput{}, nil
 	}
 
+	// Resolve to absolute path for consistency
+	absPath, err := filepath.Abs(input.Path)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("invalid path: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Resolve symlinks to get the real path
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("cannot resolve path: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
 	// Validate path exists and is a directory
-	info, err := os.Stat(input.Path)
+	info, err := os.Stat(realPath)
 	if err != nil {
 		return &mcp.CallToolResult{
 			IsError: true,
@@ -909,6 +931,9 @@ func (s *Server) handleReviewFiles(ctx context.Context, req *mcp.CallToolRequest
 			},
 		}, ReviewFilesOutput{}, nil
 	}
+
+	// Use the resolved real path from here on
+	input.Path = realPath
 
 	// Collect files matching patterns
 	files, err := collectFiles(input.Path, input.Patterns, input.Exclude)
@@ -1064,12 +1089,18 @@ func (s *Server) handleReviewFiles(ctx context.Context, req *mcp.CallToolRequest
 // collectFiles walks a directory and collects files matching the patterns.
 // If patterns is empty, all non-binary files are included.
 // Files matching exclude patterns are skipped.
+// Symlinks are skipped to prevent directory escape.
 func collectFiles(root string, patterns, exclude []string) ([]string, error) {
 	var files []string
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Skip symlinks to prevent directory escape
+		if d.Type()&os.ModeSymlink != 0 {
+			return nil
 		}
 
 		// Skip directories
