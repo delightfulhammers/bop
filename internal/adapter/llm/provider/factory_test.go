@@ -2,7 +2,6 @@ package provider_test
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
@@ -52,8 +51,8 @@ func (m *mockSession) InitializeParams() *mcp.InitializeParams {
 
 func TestNewFactory_NoProviders(t *testing.T) {
 	// Clear any existing API keys
-	os.Unsetenv("ANTHROPIC_API_KEY")
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -64,11 +63,9 @@ func TestNewFactory_NoProviders(t *testing.T) {
 }
 
 func TestNewFactory_WithAnthropicKey(t *testing.T) {
-	// Set up test environment
-	originalKey := os.Getenv("ANTHROPIC_API_KEY")
-	defer os.Setenv("ANTHROPIC_API_KEY", originalKey)
-	os.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	os.Unsetenv("OPENAI_API_KEY")
+	// Set up test environment using t.Setenv for automatic cleanup
+	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -80,11 +77,9 @@ func TestNewFactory_WithAnthropicKey(t *testing.T) {
 }
 
 func TestNewFactory_WithOpenAIKey(t *testing.T) {
-	// Set up test environment
-	originalKey := os.Getenv("OPENAI_API_KEY")
-	defer os.Setenv("OPENAI_API_KEY", originalKey)
-	os.Setenv("OPENAI_API_KEY", "test-openai-key")
-	os.Unsetenv("ANTHROPIC_API_KEY")
+	// Set up test environment using t.Setenv for automatic cleanup
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
+	t.Setenv("ANTHROPIC_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -96,15 +91,9 @@ func TestNewFactory_WithOpenAIKey(t *testing.T) {
 }
 
 func TestNewFactory_WithBothKeys(t *testing.T) {
-	// Set up test environment
-	originalAnthropicKey := os.Getenv("ANTHROPIC_API_KEY")
-	originalOpenAIKey := os.Getenv("OPENAI_API_KEY")
-	defer func() {
-		os.Setenv("ANTHROPIC_API_KEY", originalAnthropicKey)
-		os.Setenv("OPENAI_API_KEY", originalOpenAIKey)
-	}()
-	os.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	os.Setenv("OPENAI_API_KEY", "test-openai-key")
+	// Set up test environment using t.Setenv for automatic cleanup
+	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -168,18 +157,18 @@ func (n *nilParamsSession) InitializeParams() *mcp.InitializeParams {
 // =============================================================================
 
 func TestFactory_CreateSamplingProvider_Success(t *testing.T) {
-	os.Unsetenv("ANTHROPIC_API_KEY")
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
 	})
 
 	session := &mockSession{supportsSampling: true}
-	provider, err := factory.CreateSamplingProvider(session)
+	p, err := factory.CreateSamplingProvider(session)
 
 	require.NoError(t, err)
-	assert.NotNil(t, provider)
+	assert.NotNil(t, p)
 }
 
 func TestFactory_CreateSamplingProvider_NilSession(t *testing.T) {
@@ -210,11 +199,9 @@ func TestFactory_CreateSamplingProvider_NoSamplingSupport(t *testing.T) {
 // =============================================================================
 
 func TestFactory_EffectiveProviders_DirectProvidersAvailable(t *testing.T) {
-	// Set up test environment with an API key
-	originalKey := os.Getenv("ANTHROPIC_API_KEY")
-	defer os.Setenv("ANTHROPIC_API_KEY", originalKey)
-	os.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	os.Unsetenv("OPENAI_API_KEY")
+	// Set up test environment with an API key using t.Setenv for automatic cleanup
+	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -233,8 +220,8 @@ func TestFactory_EffectiveProviders_DirectProvidersAvailable(t *testing.T) {
 
 func TestFactory_EffectiveProviders_FallbackToSampling(t *testing.T) {
 	// Clear API keys
-	os.Unsetenv("ANTHROPIC_API_KEY")
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -250,8 +237,8 @@ func TestFactory_EffectiveProviders_FallbackToSampling(t *testing.T) {
 
 func TestFactory_EffectiveProviders_NoProvidersAvailable(t *testing.T) {
 	// Clear API keys
-	os.Unsetenv("ANTHROPIC_API_KEY")
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -267,8 +254,8 @@ func TestFactory_EffectiveProviders_NoProvidersAvailable(t *testing.T) {
 
 func TestFactory_EffectiveProviders_NilSession_NoDirectProviders(t *testing.T) {
 	// Clear API keys
-	os.Unsetenv("ANTHROPIC_API_KEY")
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -281,10 +268,9 @@ func TestFactory_EffectiveProviders_NilSession_NoDirectProviders(t *testing.T) {
 }
 
 func TestFactory_EffectiveProviders_NilSession_DirectProvidersAvailable(t *testing.T) {
-	// Set up test environment with an API key
-	originalKey := os.Getenv("ANTHROPIC_API_KEY")
-	defer os.Setenv("ANTHROPIC_API_KEY", originalKey)
-	os.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	// Set up test environment with an API key using t.Setenv for automatic cleanup
+	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
@@ -303,17 +289,17 @@ func TestFactory_EffectiveProviders_NilSession_DirectProvidersAvailable(t *testi
 // =============================================================================
 
 func TestFactory_SamplingProvider_ImplementsInterface(t *testing.T) {
-	os.Unsetenv("ANTHROPIC_API_KEY")
-	os.Unsetenv("OPENAI_API_KEY")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENAI_API_KEY", "")
 
 	factory := provider.NewFactory(provider.FactoryOptions{
 		Config: &config.Config{},
 	})
 
 	session := &mockSession{supportsSampling: true}
-	provider, err := factory.CreateSamplingProvider(session)
+	p, err := factory.CreateSamplingProvider(session)
 
 	require.NoError(t, err)
 	// Verify it implements review.Provider
-	var _ review.Provider = provider
+	_ = review.Provider(p)
 }

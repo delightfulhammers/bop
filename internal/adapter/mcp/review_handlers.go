@@ -161,6 +161,9 @@ func (s *Server) registerReviewPRTool() {
 This tool invokes code reviewers on a PR's diff and returns findings WITHOUT posting to GitHub.
 The caller can then filter/modify findings using edit_finding and post selected ones using post_findings.
 
+Uses configured LLM providers (via ANTHROPIC_API_KEY or OPENAI_API_KEY).
+Falls back to MCP sampling if no API keys configured and client supports it.
+
 Use this for:
 - Running code review on any accessible PR
 - Getting findings for human review before posting
@@ -198,7 +201,7 @@ func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, i
 	// Determine which reviewer to use:
 	// 1. Prefer direct PRReviewer if available (from API keys)
 	// 2. Fall back to per-request orchestrator with factory providers
-	var reviewer PRReviewer = s.deps.PRReviewer
+	reviewer := s.deps.PRReviewer
 	if reviewer == nil {
 		// Try to create a per-request orchestrator using the factory
 		perRequestReviewer, err := s.createPerRequestReviewer(req)
@@ -572,6 +575,9 @@ func (s *Server) registerReviewBranchTool() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name: "review_branch",
 		Description: `Review a local git branch against a base reference. Returns findings without posting to any remote service.
+
+Uses configured LLM providers (via ANTHROPIC_API_KEY or OPENAI_API_KEY).
+Falls back to MCP sampling if no API keys configured and client supports it.
 
 Use this for:
 - Running code review on local changes before pushing
