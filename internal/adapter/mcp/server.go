@@ -3,7 +3,7 @@ package mcp
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/config"
+	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
@@ -78,11 +78,14 @@ type ServerDeps struct {
 	// Optional: only required for review_branch tool when direct API keys are available.
 	BranchReviewer BranchReviewer
 
-	// === Sampling Fallback Dependencies ===
-	// These are used to create a per-request orchestrator when BranchReviewer is nil
-	// but the client supports MCP sampling.
+	// === Provider Factory and Dependencies ===
+	// These support per-request provider creation with sampling fallback.
 
-	// Git provides git operations for branch reviews via sampling fallback.
+	// ProviderFactory creates LLM providers (direct or sampling-based).
+	// Used when BranchReviewer/PRReviewer is nil to create per-request orchestrators.
+	ProviderFactory *provider.Factory
+
+	// Git provides git operations for branch/PR reviews.
 	Git GitEngine
 
 	// Merger merges findings from multiple providers.
@@ -90,9 +93,6 @@ type ServerDeps struct {
 
 	// ReviewerRegistry provides reviewer configurations for persona support.
 	ReviewerRegistry review.ReviewerRegistry
-
-	// Config provides configuration for reviewers and other settings.
-	Config *config.Config
 }
 
 // Server wraps the MCP server and provides triage tools.

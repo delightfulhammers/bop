@@ -10,8 +10,7 @@ import (
 
 	"github.com/bkyoung/code-reviewer/internal/adapter/git"
 	"github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/anthropic"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/openai"
+	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
 	mcpadapter "github.com/bkyoung/code-reviewer/internal/adapter/mcp"
 	"github.com/bkyoung/code-reviewer/internal/config"
 	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
@@ -89,52 +88,55 @@ func run() error {
 	})
 
 	// Load config for reviewer and provider settings.
-	// Config is optional - failure just means review_branch won't be available.
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
 		FileName:    "cr",
 		EnvPrefix:   "CR",
 	})
 	if err != nil {
-		log.Printf("warning: config load failed, review_branch will be unavailable: %v", err)
+		log.Printf("warning: config load failed: %v", err)
 		cfg = config.Config{}
 	}
 
-	// Build LLM providers from environment variables.
-	providers := buildProvidersFromEnv(&cfg)
+	// Create provider factory - builds direct providers from environment variables
+	// and supports sampling fallback for zero-config usage.
+	providerFactory := provider.NewFactory(provider.FactoryOptions{
+		Config: &cfg,
+	})
 
-	// Create merger and reviewer registry for branch reviews.
-	// These are needed for both direct providers and sampling fallback.
+	// Create merger and reviewer registry for reviews.
 	merger := merge.NewIntelligentMerger(nil)
 	reviewerRegistry, err := review.NewReviewerRegistry(&cfg)
 	if err != nil {
 		log.Printf("warning: reviewer registry creation failed, using defaults: %v", err)
 	}
 
-	// Create branch reviewer if providers are available (direct API access).
+	// Create branch/PR reviewer if direct providers are available.
+	// If not available, the server will fall back to per-request creation using
+	// the factory (which may use sampling if the client supports it).
 	var branchReviewer mcpadapter.BranchReviewer
-	if len(providers) > 0 {
+	var prReviewer mcpadapter.PRReviewer
+	if providerFactory.HasDirectProviders() {
 		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 			Git:              gitEngine,
-			Providers:        providers,
+			Providers:        providerFactory.DirectProviders(),
 			Merger:           merger,
 			ReviewerRegistry: reviewerRegistry,
 		})
 		branchReviewer = orchestrator
+		prReviewer = orchestrator
 	}
 
 	// Create and configure the MCP server.
-	// Even if branchReviewer is nil, the server can fall back to sampling
-	// if the Git/Merger/ReviewerRegistry deps are provided.
 	server := mcpadapter.NewServer(mcpadapter.ServerDeps{
-		PRService:      prService,
-		TriageService:  triageService,
-		BranchReviewer: branchReviewer,
-		// Sampling fallback dependencies
+		PRService:        prService,
+		TriageService:    triageService,
+		BranchReviewer:   branchReviewer,
+		PRReviewer:       prReviewer,
+		ProviderFactory:  providerFactory,
 		Git:              gitEngine,
 		Merger:           merger,
 		ReviewerRegistry: reviewerRegistry,
-		Config:           &cfg,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).
@@ -145,44 +147,4 @@ func run() error {
 func defaultConfigPaths() []string {
 	home, _ := os.UserHomeDir()
 	return []string{".", home + "/.config/cr"}
-}
-
-// buildProvidersFromEnv creates LLM providers from environment variables.
-// Returns an empty map if no API keys are configured.
-func buildProvidersFromEnv(cfg *config.Config) map[string]review.Provider {
-	providers := make(map[string]review.Provider)
-
-	// Anthropic provider
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		model := "claude-sonnet-4-20250514" // default
-		providerCfg := config.ProviderConfig{}
-		if cfg != nil {
-			if pc, ok := cfg.Providers["anthropic"]; ok {
-				providerCfg = pc
-				if pc.Model != "" {
-					model = pc.Model
-				}
-			}
-		}
-		client := anthropic.NewHTTPClient(key, model, providerCfg, cfg.HTTP)
-		providers["anthropic"] = anthropic.NewProvider(model, client)
-	}
-
-	// OpenAI provider
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		model := "gpt-4o" // default
-		providerCfg := config.ProviderConfig{}
-		if cfg != nil {
-			if pc, ok := cfg.Providers["openai"]; ok {
-				providerCfg = pc
-				if pc.Model != "" {
-					model = pc.Model
-				}
-			}
-		}
-		client := openai.NewHTTPClient(key, model, providerCfg, cfg.HTTP)
-		providers["openai"] = openai.NewProvider(model, client)
-	}
-
-	return providers
 }
