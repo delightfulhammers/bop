@@ -1264,7 +1264,7 @@ func isBinaryFile(path string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Read just the first 512 bytes to check for binary content
 	header := make([]byte, 512)

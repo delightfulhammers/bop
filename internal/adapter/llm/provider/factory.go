@@ -26,6 +26,22 @@ type SamplingSession interface {
 	InitializeParams() *mcp.InitializeParams
 }
 
+// providerMeta holds metadata about each supported LLM provider.
+// This enables provider-specific behavior like keyless authentication.
+type providerMeta struct {
+	requiresAPIKey bool
+	defaultModel   string
+}
+
+// providerMetadata defines characteristics for each supported provider.
+// Keyless providers (like Ollama) can be enabled without an API key.
+var providerMetadata = map[string]providerMeta{
+	"openai":    {requiresAPIKey: true, defaultModel: "gpt-5.2"},
+	"anthropic": {requiresAPIKey: true, defaultModel: "claude-sonnet-4-5"},
+	"gemini":    {requiresAPIKey: true, defaultModel: "gemini-3-pro-preview"},
+	"ollama":    {requiresAPIKey: false, defaultModel: "codellama"},
+}
+
 // FactoryOptions configures the provider factory.
 type FactoryOptions struct {
 	// Config provides provider-specific settings (models, timeouts, etc.)
@@ -67,10 +83,10 @@ func (f *Factory) buildDirectProviders() {
 	}
 
 	// OpenAI provider
-	if cfg, ok := f.config.Providers["openai"]; ok && isProviderEnabled(cfg) {
+	if cfg, ok := f.config.Providers["openai"]; ok && isProviderEnabled("openai", cfg) {
 		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "gpt-5.2"
+			model = providerMetadata["openai"].defaultModel
 		}
 		apiKey := cfg.APIKey
 		if apiKey != "" {
@@ -80,10 +96,10 @@ func (f *Factory) buildDirectProviders() {
 	}
 
 	// Anthropic provider
-	if cfg, ok := f.config.Providers["anthropic"]; ok && isProviderEnabled(cfg) {
+	if cfg, ok := f.config.Providers["anthropic"]; ok && isProviderEnabled("anthropic", cfg) {
 		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "claude-sonnet-4-5"
+			model = providerMetadata["anthropic"].defaultModel
 		}
 		apiKey := cfg.APIKey
 		if apiKey != "" {
@@ -93,10 +109,10 @@ func (f *Factory) buildDirectProviders() {
 	}
 
 	// Gemini provider
-	if cfg, ok := f.config.Providers["gemini"]; ok && isProviderEnabled(cfg) {
+	if cfg, ok := f.config.Providers["gemini"]; ok && isProviderEnabled("gemini", cfg) {
 		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "gemini-3-pro-preview"
+			model = providerMetadata["gemini"].defaultModel
 		}
 		apiKey := cfg.APIKey
 		if apiKey != "" {
@@ -105,11 +121,11 @@ func (f *Factory) buildDirectProviders() {
 		}
 	}
 
-	// Ollama provider (local LLM)
-	if cfg, ok := f.config.Providers["ollama"]; ok && isProviderEnabled(cfg) {
+	// Ollama provider (local LLM, no API key required)
+	if cfg, ok := f.config.Providers["ollama"]; ok && isProviderEnabled("ollama", cfg) {
 		model := cfg.GetDefaultModel()
 		if model == "" {
-			model = "codellama"
+			model = providerMetadata["ollama"].defaultModel
 		}
 		host := os.Getenv("OLLAMA_HOST")
 		if host == "" {
@@ -120,15 +136,31 @@ func (f *Factory) buildDirectProviders() {
 	}
 }
 
-// isProviderEnabled checks if a provider should be enabled based on its config.
-// A provider is enabled if:
+// isProviderEnabled checks if a provider should be enabled based on its config
+// and provider metadata. A provider is enabled if:
 //   - Enabled is explicitly true, OR
-//   - Enabled is nil (not set) AND APIKey is non-empty
-func isProviderEnabled(cfg config.ProviderConfig) bool {
+//   - Enabled is nil (not set) AND:
+//   - For providers requiring API keys: APIKey is non-empty
+//   - For keyless providers (e.g., Ollama): always enabled when in config
+func isProviderEnabled(providerName string, cfg config.ProviderConfig) bool {
+	// Explicit enabled/disabled takes precedence
 	if cfg.Enabled != nil {
 		return *cfg.Enabled
 	}
-	return cfg.APIKey != ""
+
+	// Check if this provider requires an API key
+	meta, known := providerMetadata[providerName]
+	if !known {
+		// Unknown providers require API key by default (safe fallback)
+		return cfg.APIKey != ""
+	}
+
+	if meta.requiresAPIKey {
+		return cfg.APIKey != ""
+	}
+
+	// Keyless provider: enabled by presence in config
+	return true
 }
 
 // DirectProviders returns a copy of the providers built from API keys.
