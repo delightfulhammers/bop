@@ -312,6 +312,12 @@ func TestHandleReviewPR(t *testing.T) {
 		require.NotNil(t, result)
 		assert.True(t, result.IsError)
 		assert.Empty(t, output.Findings)
+
+		// Verify output has properly initialized maps (not nil) for schema validation
+		assert.NotNil(t, output.BySeverity, "BySeverity should be initialized, not nil")
+		assert.NotNil(t, output.ByCategory, "ByCategory should be initialized, not nil")
+		assert.NotNil(t, output.Findings, "Findings should be initialized, not nil")
+		assert.NotNil(t, output.ReviewerStats, "ReviewerStats should be initialized, not nil")
 	})
 
 	t.Run("validates required inputs", func(t *testing.T) {
@@ -981,6 +987,12 @@ func TestHandleReviewBranch(t *testing.T) {
 		require.True(t, ok)
 		assert.Contains(t, textContent.Text, "LLM API keys")
 		assert.Contains(t, textContent.Text, "sampling")
+
+		// Verify output has properly initialized maps (not nil) for schema validation
+		assert.NotNil(t, output.BySeverity, "BySeverity should be initialized, not nil")
+		assert.NotNil(t, output.ByCategory, "ByCategory should be initialized, not nil")
+		assert.NotNil(t, output.Findings, "Findings should be initialized, not nil")
+		assert.NotNil(t, output.ReviewerStats, "ReviewerStats should be initialized, not nil")
 	})
 
 	t.Run("validates required base_ref", func(t *testing.T) {
