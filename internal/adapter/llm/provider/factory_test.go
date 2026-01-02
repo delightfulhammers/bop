@@ -63,12 +63,12 @@ func TestNewFactory_NoProviders(t *testing.T) {
 }
 
 func TestNewFactory_WithAnthropicKey(t *testing.T) {
-	// Set up test environment using t.Setenv for automatic cleanup
-	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	t.Setenv("OPENAI_API_KEY", "")
-
 	factory := provider.NewFactory(provider.FactoryOptions{
-		Config: &config.Config{},
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"anthropic": {APIKey: "test-anthropic-key"},
+			},
+		},
 	})
 
 	providers := factory.DirectProviders()
@@ -77,12 +77,12 @@ func TestNewFactory_WithAnthropicKey(t *testing.T) {
 }
 
 func TestNewFactory_WithOpenAIKey(t *testing.T) {
-	// Set up test environment using t.Setenv for automatic cleanup
-	t.Setenv("OPENAI_API_KEY", "test-openai-key")
-	t.Setenv("ANTHROPIC_API_KEY", "")
-
 	factory := provider.NewFactory(provider.FactoryOptions{
-		Config: &config.Config{},
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"openai": {APIKey: "test-openai-key"},
+			},
+		},
 	})
 
 	providers := factory.DirectProviders()
@@ -91,12 +91,13 @@ func TestNewFactory_WithOpenAIKey(t *testing.T) {
 }
 
 func TestNewFactory_WithBothKeys(t *testing.T) {
-	// Set up test environment using t.Setenv for automatic cleanup
-	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	t.Setenv("OPENAI_API_KEY", "test-openai-key")
-
 	factory := provider.NewFactory(provider.FactoryOptions{
-		Config: &config.Config{},
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"anthropic": {APIKey: "test-anthropic-key"},
+				"openai":    {APIKey: "test-openai-key"},
+			},
+		},
 	})
 
 	providers := factory.DirectProviders()
@@ -198,12 +199,12 @@ func TestFactory_CreateSamplingProvider_NoSamplingSupport(t *testing.T) {
 // =============================================================================
 
 func TestFactory_EffectiveProviders_DirectProvidersAvailable(t *testing.T) {
-	// Set up test environment with an API key using t.Setenv for automatic cleanup
-	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	t.Setenv("OPENAI_API_KEY", "")
-
 	factory := provider.NewFactory(provider.FactoryOptions{
-		Config: &config.Config{},
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"anthropic": {APIKey: "test-anthropic-key"},
+			},
+		},
 	})
 
 	// Even with sampling support, should prefer direct providers
@@ -267,12 +268,12 @@ func TestFactory_EffectiveProviders_NilSession_NoDirectProviders(t *testing.T) {
 }
 
 func TestFactory_EffectiveProviders_NilSession_DirectProvidersAvailable(t *testing.T) {
-	// Set up test environment with an API key using t.Setenv for automatic cleanup
-	t.Setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
-	t.Setenv("OPENAI_API_KEY", "")
-
 	factory := provider.NewFactory(provider.FactoryOptions{
-		Config: &config.Config{},
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"anthropic": {APIKey: "test-anthropic-key"},
+			},
+		},
 	})
 
 	// Nil session but direct providers available - should work

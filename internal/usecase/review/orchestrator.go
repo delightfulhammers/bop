@@ -1007,15 +1007,9 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 	if o.deps.Merger == nil {
 		return Result{}, errors.New("merger is required")
 	}
-	if o.deps.Markdown == nil {
-		return Result{}, errors.New("markdown writer is required")
-	}
-	if o.deps.JSON == nil {
-		return Result{}, errors.New("json writer is required")
-	}
-	if o.deps.SARIF == nil {
-		return Result{}, errors.New("sarif writer is required")
-	}
+	// Markdown, JSON, SARIF writers are optional - only needed when OutputDir is set
+	// This matches validateDependencies and supports MCP usage where findings are
+	// returned directly without file output
 	if o.deps.PersonaPromptBuilder == nil {
 		return Result{}, errors.New("persona prompt builder is required")
 	}
@@ -1023,10 +1017,8 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 		return Result{}, errors.New("seed generator is required")
 	}
 
-	// Validate minimal request fields (we don't require BaseRef/TargetRef for pre-computed diffs)
-	if strings.TrimSpace(req.OutputDir) == "" {
-		return Result{}, errors.New("output directory is required")
-	}
+	// Note: OutputDir is optional - when empty, output artifacts are not written
+	// This supports MCP usage where findings are returned directly without file output
 
 	// Fetch prior triage context if posting to GitHub and fetcher is configured
 	if req.PostToGitHub && o.deps.TriageContextFetcher != nil {
@@ -1431,9 +1423,8 @@ func validateRequest(req BranchRequest) error {
 	if strings.TrimSpace(req.TargetRef) == "" {
 		return errors.New("target ref is required")
 	}
-	if strings.TrimSpace(req.OutputDir) == "" {
-		return errors.New("output directory is required")
-	}
+	// OutputDir is optional - when empty, output artifacts are not written
+	// This supports MCP usage where findings are returned directly without file output
 	return nil
 }
 

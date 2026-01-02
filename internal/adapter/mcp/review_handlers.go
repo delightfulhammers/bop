@@ -3,8 +3,12 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/bkyoung/code-reviewer/internal/adapter/git"
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
@@ -586,7 +590,11 @@ Falls back to MCP sampling if no API keys configured and client supports it.
 Use this for:
 - Running code review on local changes before pushing
 - Reviewing uncommitted changes in working tree
-- Getting findings for manual triage before PR creation`,
+- Getting findings for manual triage before PR creation
+
+Parameters:
+- repo_dir: Repository directory to review. If omitted, uses the server's working directory.
+- target_ref: Branch to review. If omitted, auto-detects the current branch.`,
 	}, s.handleReviewBranch)
 }
 
@@ -601,13 +609,58 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 		}, ReviewBranchOutput{}, nil
 	}
 
+	// Determine which git engine to use:
+	// 1. If repo_dir is provided, create a per-request git engine for that directory
+	// 2. Otherwise, use the server's default git engine
+	var gitEngine review.GitEngine = s.deps.Git
+	repoDir := input.RepoDir
+	if repoDir != "" {
+		gitEngine = git.NewEngine(repoDir)
+	}
+
+	// Auto-detect current branch if target_ref not provided
+	targetRef := input.TargetRef
+	if targetRef == "" {
+		if gitEngine == nil {
+			return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: "target_ref is required (no git engine available for auto-detection; provide repo_dir or target_ref)"},
+					},
+				}, ReviewBranchOutput{
+					Findings:      []FindingOutput{},
+					BySeverity:    make(map[string]int),
+					ByCategory:    make(map[string]int),
+					ReviewerStats: []ReviewerStat{},
+				}, nil
+		}
+		detected, err := gitEngine.CurrentBranch(ctx)
+		if err != nil {
+			return &mcp.CallToolResult{
+					IsError: true,
+					Content: []mcp.Content{
+						&mcp.TextContent{Text: fmt.Sprintf("failed to detect current branch: %v", err)},
+					},
+				}, ReviewBranchOutput{
+					Findings:      []FindingOutput{},
+					BySeverity:    make(map[string]int),
+					ByCategory:    make(map[string]int),
+					ReviewerStats: []ReviewerStat{},
+				}, nil
+		}
+		targetRef = detected
+	}
+
 	// Determine which reviewer to use:
-	// 1. Prefer direct BranchReviewer if available (from API keys)
+	// 1. Prefer direct BranchReviewer if available (from API keys) AND no custom repo_dir
 	// 2. Fall back to per-request orchestrator with factory providers
+	//
+	// Note: If repo_dir is provided, we must create a per-request orchestrator
+	// because the server's BranchReviewer is configured for the server's repo_dir
 	reviewer := s.deps.BranchReviewer
-	if reviewer == nil {
+	if reviewer == nil || repoDir != "" {
 		// Try to create a per-request orchestrator using the factory
-		perRequestReviewer, err := s.createPerRequestReviewer(req)
+		perRequestReviewer, err := s.createPerRequestReviewerWithGit(req, gitEngine, repoDir)
 		if err != nil {
 			return notImplementedResult(fmt.Sprintf(
 					"review_branch requires LLM API keys (ANTHROPIC_API_KEY or OPENAI_API_KEY). "+
@@ -625,7 +678,7 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 	// Build BranchRequest
 	branchReq := review.BranchRequest{
 		BaseRef:            input.BaseRef,
-		TargetRef:          input.TargetRef,
+		TargetRef:          targetRef, // May be auto-detected from current branch
 		IncludeUncommitted: input.IncludeUncommitted,
 		Reviewers:          input.Reviewers,
 		PostToGitHub:       false, // Never post from this tool
@@ -747,6 +800,53 @@ func (s *Server) createPerRequestReviewer(req *mcp.CallToolRequest) (Reviewer, e
 	return orchestrator, nil
 }
 
+// createPerRequestReviewerWithGit creates a per-request orchestrator with a specific git engine.
+// This is used when repo_dir is provided by the caller, allowing the tool to work with
+// a different repository than the server's default.
+func (s *Server) createPerRequestReviewerWithGit(req *mcp.CallToolRequest, gitEngine review.GitEngine, repoDir string) (Reviewer, error) {
+	// Check for required dependencies
+	if s.deps.ProviderFactory == nil {
+		return nil, fmt.Errorf("provider factory not configured")
+	}
+	if gitEngine == nil {
+		return nil, fmt.Errorf("git engine not available")
+	}
+	if s.deps.Merger == nil {
+		return nil, fmt.Errorf("merger not configured")
+	}
+	if s.deps.PersonaPromptBuilder == nil {
+		return nil, fmt.Errorf("persona prompt builder not configured")
+	}
+	if s.deps.SeedGenerator == nil {
+		return nil, fmt.Errorf("seed generator not configured")
+	}
+
+	// Get the session from the request (for sampling fallback)
+	var session provider.SamplingSession
+	if req != nil && req.Session != nil {
+		session = &serverSessionAdapter{req.Session}
+	}
+
+	// Get effective providers from factory (direct or sampling)
+	providers, err := s.deps.ProviderFactory.EffectiveProviders(session)
+	if err != nil {
+		return nil, fmt.Errorf("no providers available: %w", err)
+	}
+
+	// Create orchestrator with the provided git engine and repo dir
+	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+		Git:                  gitEngine,
+		Providers:            providers,
+		Merger:               s.deps.Merger,
+		ReviewerRegistry:     s.deps.ReviewerRegistry,
+		PersonaPromptBuilder: s.deps.PersonaPromptBuilder,
+		SeedGenerator:        s.deps.SeedGenerator,
+		RepoDir:              repoDir, // Set the repo dir for context gathering
+	})
+
+	return orchestrator, nil
+}
+
 // serverSessionAdapter adapts mcp.ServerSession to provider.SamplingSession.
 type serverSessionAdapter struct {
 	session *mcp.ServerSession
@@ -758,4 +858,361 @@ func (a *serverSessionAdapter) CreateMessage(ctx context.Context, params *mcp.Cr
 
 func (a *serverSessionAdapter) InitializeParams() *mcp.InitializeParams {
 	return a.session.InitializeParams()
+}
+
+// =============================================================================
+// review_files Tool
+// =============================================================================
+
+// registerReviewFilesTool registers the review_files tool.
+func (s *Server) registerReviewFilesTool() {
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name: "review_files",
+		Description: `Review files in a directory without requiring git. Returns findings for static code analysis.
+
+This tool is useful for:
+- Reviewing code that is not under version control
+- Analyzing a directory of files without git history
+- Quick code quality checks on arbitrary directories
+
+Note: This reviews entire files (not diffs), so reviews may be less focused than diff-based reviews.
+Patterns support simple wildcards (*.go, *.ts) but not recursive ** patterns.`,
+	}, s.handleReviewFiles)
+}
+
+func (s *Server) handleReviewFiles(ctx context.Context, req *mcp.CallToolRequest, input ReviewFilesInput) (*mcp.CallToolResult, ReviewFilesOutput, error) {
+	// Validate input
+	if input.Path == "" {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "path is required"},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Validate path exists and is a directory
+	info, err := os.Stat(input.Path)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("cannot access path: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+	if !info.IsDir() {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "path must be a directory"},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Collect files matching patterns
+	files, err := collectFiles(input.Path, input.Patterns, input.Exclude)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("failed to collect files: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	if len(files) == 0 {
+		return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: "No files found matching the specified patterns"},
+				},
+			}, ReviewFilesOutput{
+				Message:       "No files found matching the specified patterns",
+				Path:          input.Path,
+				FilesReviewed: 0,
+				BySeverity:    make(map[string]int),
+				ByCategory:    make(map[string]int),
+			}, nil
+	}
+
+	// Create synthetic diff with all files as additions
+	diff, err := createSyntheticDiff(input.Path, files)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("failed to read files: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Create orchestrator for the review
+	reviewer, err := s.createPerRequestReviewer(req)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("failed to create reviewer: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Cast to *review.Orchestrator to access ReviewBranchWithDiff
+	orchestrator, ok := reviewer.(*review.Orchestrator)
+	if !ok {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: "internal error: reviewer is not an orchestrator"},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Build request - use "files" as pseudo-refs to indicate file-based review
+	reviewReq := review.BranchRequest{
+		BaseRef:            "none",
+		TargetRef:          "files",
+		OutputDir:          "", // No file output
+		CustomInstructions: "You are reviewing entire files (not a diff). Focus on code quality, bugs, security issues, and maintainability. Line numbers refer to positions in the actual files.",
+		Reviewers:          input.Reviewers,
+	}
+
+	// Create empty project context (no git history for non-repo directories)
+	projectContext := review.ProjectContext{}
+
+	// Run the review using ReviewBranchWithDiff
+	result, err := orchestrator.ReviewBranchWithDiff(ctx, reviewReq, diff, projectContext)
+	if err != nil {
+		return &mcp.CallToolResult{
+			IsError: true,
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: fmt.Sprintf("review failed: %v", err)},
+			},
+		}, ReviewFilesOutput{}, nil
+	}
+
+	// Aggregate findings from all reviews
+	var allFindings []domain.Finding
+	var totalTokensIn, totalTokensOut int
+	var totalCost float64
+
+	for _, r := range result.Reviews {
+		allFindings = append(allFindings, r.Findings...)
+		totalTokensIn += r.TokensIn
+		totalTokensOut += r.TokensOut
+		totalCost += r.Cost
+	}
+
+	// Convert findings to output format
+	findings := make([]FindingOutput, 0, len(allFindings))
+	bySeverity := make(map[string]int)
+	byCategory := make(map[string]int)
+
+	for _, f := range allFindings {
+		findings = append(findings, FindingOutput{
+			ID:             f.ID,
+			Fingerprint:    string(f.Fingerprint()),
+			File:           f.File,
+			LineStart:      f.LineStart,
+			LineEnd:        f.LineEnd,
+			Severity:       f.Severity,
+			Category:       f.Category,
+			Description:    f.Description,
+			Suggestion:     f.Suggestion,
+			ReviewerName:   f.ReviewerName,
+			ReviewerWeight: f.ReviewerWeight,
+		})
+		bySeverity[f.Severity]++
+		byCategory[f.Category]++
+	}
+
+	// Build reviewer stats
+	reviewerStats := buildReviewerStats(result.Reviews)
+
+	// Build summary
+	var summary, message string
+	if len(allFindings) == 0 {
+		summary = "No findings detected"
+		message = "File review complete: no issues found"
+	} else {
+		summary = buildFindingsSummary(allFindings)
+		message = fmt.Sprintf("File review complete: %d findings in %d files", len(allFindings), len(files))
+	}
+
+	output := ReviewFilesOutput{
+		Findings:      findings,
+		Summary:       summary,
+		TotalFindings: len(findings),
+		BySeverity:    bySeverity,
+		ByCategory:    byCategory,
+		ReviewerStats: reviewerStats,
+		TokensIn:      totalTokensIn,
+		TokensOut:     totalTokensOut,
+		Cost:          totalCost,
+		Message:       message,
+		Path:          input.Path,
+		FilesReviewed: len(files),
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: output.Message},
+		},
+	}, output, nil
+}
+
+// collectFiles walks a directory and collects files matching the patterns.
+// If patterns is empty, all non-binary files are included.
+// Files matching exclude patterns are skipped.
+func collectFiles(root string, patterns, exclude []string) ([]string, error) {
+	var files []string
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if d.IsDir() {
+			// Skip common non-code directories
+			base := d.Name()
+			if base == ".git" || base == "node_modules" || base == "vendor" || base == "__pycache__" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Get relative path for pattern matching
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+
+		// Check exclude patterns first
+		for _, pattern := range exclude {
+			if matchPattern(relPath, pattern) {
+				return nil
+			}
+		}
+
+		// Check include patterns (if any)
+		if len(patterns) > 0 {
+			matched := false
+			for _, pattern := range patterns {
+				if matchPattern(relPath, pattern) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				return nil
+			}
+		} else {
+			// No patterns specified - skip binary files by extension
+			if isBinaryExtension(filepath.Ext(path)) {
+				return nil
+			}
+		}
+
+		files = append(files, path)
+		return nil
+	})
+
+	return files, err
+}
+
+// matchPattern matches a path against a pattern.
+// Supports simple wildcards like *.go, test_*.py
+func matchPattern(path, pattern string) bool {
+	// Try matching against the full path
+	if matched, _ := filepath.Match(pattern, path); matched {
+		return true
+	}
+	// Try matching against just the filename
+	if matched, _ := filepath.Match(pattern, filepath.Base(path)); matched {
+		return true
+	}
+	// Try matching against the extension (e.g., pattern "*.go" matches "foo/bar.go")
+	if strings.HasPrefix(pattern, "*.") {
+		ext := pattern[1:] // ".go"
+		if strings.HasSuffix(path, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// isBinaryExtension returns true for common binary file extensions.
+func isBinaryExtension(ext string) bool {
+	binaryExts := map[string]bool{
+		".exe": true, ".dll": true, ".so": true, ".dylib": true,
+		".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
+		".pdf": true, ".zip": true, ".tar": true, ".gz": true,
+		".bin": true, ".dat": true, ".db": true, ".sqlite": true,
+		".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
+		".mp3": true, ".mp4": true, ".wav": true, ".avi": true,
+	}
+	return binaryExts[strings.ToLower(ext)]
+}
+
+// createSyntheticDiff creates a domain.Diff from files as if they were all added.
+func createSyntheticDiff(root string, files []string) (domain.Diff, error) {
+	fileDiffs := make([]domain.FileDiff, 0, len(files))
+
+	for _, path := range files {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return domain.Diff{}, fmt.Errorf("read %s: %w", path, err)
+		}
+
+		// Skip binary content (check for null bytes)
+		if isBinaryContent(content) {
+			continue
+		}
+
+		// Get relative path for the diff
+		relPath, err := filepath.Rel(root, path)
+		if err != nil {
+			relPath = path
+		}
+
+		// Create a patch-like format for the file content
+		lines := strings.Split(string(content), "\n")
+		var patchBuilder strings.Builder
+		patchBuilder.WriteString(fmt.Sprintf("--- /dev/null\n+++ %s\n", relPath))
+		patchBuilder.WriteString(fmt.Sprintf("@@ -0,0 +1,%d @@\n", len(lines)))
+		for _, line := range lines {
+			patchBuilder.WriteString("+")
+			patchBuilder.WriteString(line)
+			patchBuilder.WriteString("\n")
+		}
+
+		fileDiffs = append(fileDiffs, domain.FileDiff{
+			Path:     relPath,
+			Status:   domain.FileStatusAdded,
+			Patch:    patchBuilder.String(),
+			IsBinary: false,
+		})
+	}
+
+	return domain.Diff{
+		FromCommitHash: "none",
+		ToCommitHash:   "files",
+		Files:          fileDiffs,
+	}, nil
+}
+
+// isBinaryContent checks if content appears to be binary (contains null bytes).
+func isBinaryContent(content []byte) bool {
+	// Check first 8KB for null bytes
+	checkLen := 8192
+	if len(content) < checkLen {
+		checkLen = len(content)
+	}
+	for i := 0; i < checkLen; i++ {
+		if content[i] == 0 {
+			return true
+		}
+	}
+	return false
 }

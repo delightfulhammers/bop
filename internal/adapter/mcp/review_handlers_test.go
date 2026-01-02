@@ -974,7 +974,8 @@ func TestHandleReviewBranch(t *testing.T) {
 		s := &Server{deps: ServerDeps{}}
 
 		input := ReviewBranchInput{
-			BaseRef: "main",
+			BaseRef:   "main",
+			TargetRef: "feature/no-provider",
 		}
 
 		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
@@ -1098,7 +1099,8 @@ func TestHandleReviewBranch(t *testing.T) {
 		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
 
 		input := ReviewBranchInput{
-			BaseRef: "main",
+			BaseRef:   "main",
+			TargetRef: "feature/multi-reviewer",
 		}
 
 		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
@@ -1122,7 +1124,8 @@ func TestHandleReviewBranch(t *testing.T) {
 		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
 
 		input := ReviewBranchInput{
-			BaseRef: "main",
+			BaseRef:   "main",
+			TargetRef: "feature/no-issues",
 		}
 
 		result, output, err := s.handleReviewBranch(context.Background(), nil, input)
@@ -1141,7 +1144,8 @@ func TestHandleReviewBranch(t *testing.T) {
 		s := &Server{deps: ServerDeps{BranchReviewer: mock}}
 
 		input := ReviewBranchInput{
-			BaseRef: "nonexistent-branch",
+			BaseRef:   "nonexistent-branch",
+			TargetRef: "feature/error-test",
 		}
 
 		_, _, err := s.handleReviewBranch(context.Background(), nil, input)
@@ -1162,6 +1166,7 @@ func TestHandleReviewBranch(t *testing.T) {
 
 		input := ReviewBranchInput{
 			BaseRef:            "main",
+			TargetRef:          "feature/uncommitted-test",
 			IncludeUncommitted: true,
 		}
 
@@ -1181,6 +1186,7 @@ func TestHandleReviewBranch(t *testing.T) {
 
 		input := ReviewBranchInput{
 			BaseRef:   "main",
+			TargetRef: "feature/reviewers-test",
 			Reviewers: []string{"security", "architecture"},
 		}
 
@@ -1198,7 +1204,8 @@ func TestHandleReviewBranch(t *testing.T) {
 		}}}
 
 		input := ReviewBranchInput{
-			BaseRef: "main",
+			BaseRef:   "main",
+			TargetRef: "feature/no-github-post",
 		}
 
 		_, _, err := s.handleReviewBranch(context.Background(), nil, input)
