@@ -69,6 +69,7 @@ type DefaultVerification struct {
 type Dependencies struct {
 	BranchReviewer       BranchReviewer
 	PRReviewer           PRReviewer     // Optional: only required for cr review pr
+	FindingsPoster       FindingsPoster // Optional: only required for cr post
 	SessionManager       SessionManager // Optional: only required for cr sessions
 	Args                 Arguments
 	DefaultOutput        string
@@ -115,6 +116,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())
+	if deps.FindingsPoster != nil {
+		root.AddCommand(PostCommand(deps.FindingsPoster))
+	}
 	if deps.SessionManager != nil {
 		root.AddCommand(SessionsCommand(deps.SessionManager))
 	}

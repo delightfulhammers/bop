@@ -37,6 +37,7 @@ import (
 	usecasedeup "github.com/bkyoung/code-reviewer/internal/usecase/dedup"
 	usecasegithub "github.com/bkyoung/code-reviewer/internal/usecase/github"
 	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
+	"github.com/bkyoung/code-reviewer/internal/usecase/post"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	usecasesession "github.com/bkyoung/code-reviewer/internal/usecase/session"
 	usecaseverify "github.com/bkyoung/code-reviewer/internal/usecase/verify"
@@ -285,9 +286,16 @@ func run() error {
 		sessionManager = usecasesession.NewService(sessionStore, gitEngine, repoDir)
 	}
 
+	// Create post service for 'cr post' command (requires GitHub token)
+	var findingsPoster cli.FindingsPoster
+	if remoteGitHubClient != nil && githubPoster != nil {
+		findingsPoster = post.NewService(remoteGitHubClient, githubPoster)
+	}
+
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
 		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
+		FindingsPoster:      findingsPoster,
 		SessionManager:      sessionManager,
 		DefaultOutput:       cfg.Output.Directory,
 		DefaultRepo:         repoName,
