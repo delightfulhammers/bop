@@ -1174,17 +1174,20 @@ func matchPattern(path, pattern string) bool {
 	return false
 }
 
+// binaryExtensions contains common binary file extensions.
+// Package-level to avoid allocation on every isBinaryExtension call.
+var binaryExtensions = map[string]bool{
+	".exe": true, ".dll": true, ".so": true, ".dylib": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
+	".pdf": true, ".zip": true, ".tar": true, ".gz": true,
+	".bin": true, ".dat": true, ".db": true, ".sqlite": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
+	".mp3": true, ".mp4": true, ".wav": true, ".avi": true,
+}
+
 // isBinaryExtension returns true for common binary file extensions.
 func isBinaryExtension(ext string) bool {
-	binaryExts := map[string]bool{
-		".exe": true, ".dll": true, ".so": true, ".dylib": true,
-		".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".ico": true,
-		".pdf": true, ".zip": true, ".tar": true, ".gz": true,
-		".bin": true, ".dat": true, ".db": true, ".sqlite": true,
-		".woff": true, ".woff2": true, ".ttf": true, ".eot": true,
-		".mp3": true, ".mp4": true, ".wav": true, ".avi": true,
-	}
-	return binaryExts[strings.ToLower(ext)]
+	return binaryExtensions[strings.ToLower(ext)]
 }
 
 // createSyntheticDiff creates a domain.Diff from files as if they were all added.
