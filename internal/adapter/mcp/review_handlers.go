@@ -1111,6 +1111,16 @@ func collectFiles(root string, patterns, exclude []string) ([]string, error) {
 			if base == ".git" || base == "node_modules" || base == "vendor" || base == "__pycache__" {
 				return filepath.SkipDir
 			}
+			// Check exclude patterns on directories to avoid descending into excluded trees
+			// This saves I/O by pruning the traversal early
+			relPath, err := filepath.Rel(root, path)
+			if err == nil && relPath != "." {
+				for _, pattern := range exclude {
+					if matchPattern(relPath, pattern) || matchPattern(base, pattern) {
+						return filepath.SkipDir
+					}
+				}
+			}
 			return nil
 		}
 
