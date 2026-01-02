@@ -1,9 +1,9 @@
 # Code Reviewer - Claude Context
 
 **Project:** AI-Powered Code Review Tool
-**Status:** Phase 3.1 & 3.2 Complete, v0.6.x Stable
-**Version:** v0.6.3
-**Last Updated:** 2025-12-31
+**Status:** Phase 3.5 Complete, v0.7.x Stable
+**Version:** v0.7.0
+**Last Updated:** 2026-01-02
 
 ---
 
@@ -19,7 +19,7 @@
 ### GitHub Action (CI/CD)
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: bkyoung/code-reviewer/action@v0.7.0
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -37,7 +37,7 @@
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 | Phase 3.3: Model Selection | Deferred | Right-size models to change characteristics |
-| Phase 3.5: Local Mode | Design | On-demand PR review, TUI, session storage, MCP review tools |
+| Phase 3.5: Local Mode | ✅ Complete | On-demand PR review, TUI, session storage, MCP review tools |
 | Phase 4: Enterprise | Aspirational | Multi-platform, org-wide learning |
 
 ### Phase 3 Focus Areas
@@ -77,20 +77,20 @@
 |-----------|--------|
 | MCP `review_branch` tool | ✅ Complete |
 | MCP `review_pr` tool | ✅ Complete |
+| MCP `review_files` tool | ✅ Complete |
 | MCP `post_findings` tool | ✅ Complete |
 | MCP sampling fallback | ✅ Complete |
-| `cr review pr` command | 🚧 Planned |
-| Session-based local storage | 🚧 Planned |
+| `cr review pr` command | ✅ Complete |
+| `cr post` command | ✅ Complete |
+| Session-based local storage | ✅ Complete |
 | Interactive TUI (Bubble Tea) | 🚧 Planned |
 
 ### Key Documents
 
 - **Phase 3 PRD:** `docs/design/01-PRD.md`
 - **Phase 3 Architecture:** `docs/design/02-ARCHITECTURE.md`
-- **Phase 3.5 Design:** `docs/design/05-PHASE-3.5-LOCAL-MODE.md`
-- **MCP Sampling Fallback:** `docs/design/06-MCP-SAMPLING-FALLBACK.md`
 - **Security:** `docs/SECURITY.md`
-- **Archived Docs:** `docs/archive/` (roadmaps, TDDs, historical reference)
+- **Archived Docs:** `docs/archive/` (roadmaps, TDDs, phase designs)
 
 ---
 
