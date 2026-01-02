@@ -1,8 +1,9 @@
 # Phase 3.5e: MCP Sampling Fallback
 
-**Status:** Design
+**Status:** Implemented
 **Author:** Claude (with Brandon)
 **Created:** 2026-01-01
+**Implemented:** 2026-01-02
 **Epic:** #195
 **Sub-issues:** #196, #197, #198, #199, #200
 
@@ -533,15 +534,35 @@ Cache sampling responses for identical diffs to reduce client load.
 
 ---
 
+## Implementation Notes
+
+The implementation followed the design with the following actual file structure:
+
+| File | Description |
+|------|-------------|
+| `internal/adapter/llm/sampling/provider.go` | Sampling-based provider using MCP CreateMessage |
+| `internal/adapter/llm/sampling/provider_test.go` | Unit tests for sampling provider |
+| `internal/adapter/llm/provider/factory.go` | Provider factory (in `provider` subpackage to avoid import cycles) |
+| `internal/adapter/llm/provider/factory_test.go` | Factory unit tests |
+| `internal/adapter/mcp/review_handlers.go` | Per-request orchestrator creation with `createPerRequestReviewer()` |
+| `internal/adapter/mcp/sampling_integration_test.go` | Integration tests for sampling fallback |
+
+**Key implementation decisions:**
+- Factory placed in `internal/adapter/llm/provider/` subpackage to avoid import cycles
+- Both `review_branch` and `review_pr` share the same fallback mechanism via `createPerRequestReviewer()`
+- Tool descriptions updated to document sampling fallback behavior
+
+---
+
 ## Acceptance Criteria
 
-- [ ] `review_branch` works without any API keys when client supports sampling
-- [ ] `review_branch` prefers direct providers when API keys are available
-- [ ] Reviewer personas work via sampling (system prompt passed)
-- [ ] Clear error message when neither API keys nor sampling available
-- [ ] Unit tests for sampling provider
-- [ ] Integration test with mock MCP client
-- [ ] Documentation updated
+- [x] `review_branch` works without any API keys when client supports sampling
+- [x] `review_branch` prefers direct providers when API keys are available
+- [x] Reviewer personas work via sampling (system prompt passed)
+- [x] Clear error message when neither API keys nor sampling available
+- [x] Unit tests for sampling provider
+- [x] Integration test with mock MCP client
+- [x] Documentation updated
 
 ---
 

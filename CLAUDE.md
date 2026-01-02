@@ -75,16 +75,20 @@
 
 | Component | Status |
 |-----------|--------|
+| MCP `review_branch` tool | ✅ Complete |
+| MCP `review_pr` tool | ✅ Complete |
+| MCP `post_findings` tool | ✅ Complete |
+| MCP sampling fallback | ✅ Complete |
 | `cr review pr` command | 🚧 Planned |
 | Session-based local storage | 🚧 Planned |
 | Interactive TUI (Bubble Tea) | 🚧 Planned |
-| MCP `review_pr` / `post_findings` tools | 🚧 Planned |
 
 ### Key Documents
 
 - **Phase 3 PRD:** `docs/design/01-PRD.md`
 - **Phase 3 Architecture:** `docs/design/02-ARCHITECTURE.md`
 - **Phase 3.5 Design:** `docs/design/05-PHASE-3.5-LOCAL-MODE.md`
+- **MCP Sampling Fallback:** `docs/design/06-MCP-SAMPLING-FALLBACK.md`
 - **Security:** `docs/SECURITY.md`
 - **Archived Docs:** `docs/archive/` (roadmaps, TDDs, historical reference)
 
@@ -94,7 +98,7 @@
 
 - **Language:** Go 1.21+
 - **Architecture:** Clean Architecture (domain → usecase → adapter)
-- **LLM Providers:** OpenAI, Anthropic, Gemini, Ollama
+- **LLM Providers:** OpenAI, Anthropic, Gemini, Ollama, MCP Sampling (fallback)
 - **Output Formats:** Markdown, JSON, SARIF
 - **Persistence:** SQLite
 - **Build System:** Mage (preferred)
