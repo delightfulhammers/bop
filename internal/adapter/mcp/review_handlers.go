@@ -685,6 +685,12 @@ type Reviewer interface {
 // It uses effective providers (direct or sampling fallback) to create an
 // orchestrator per-request, enabling zero-config usage via MCP sampling.
 //
+// Thread Safety:
+// This function is safe for concurrent calls. It only reads from immutable
+// Server.deps fields (set at construction), EffectiveProviders returns a
+// defensive copy of the provider map, and a new Orchestrator is created
+// for each request with no shared mutable state.
+//
 // Returns an error if:
 // - The factory is not configured
 // - Required dependencies (Git, Merger) are not configured

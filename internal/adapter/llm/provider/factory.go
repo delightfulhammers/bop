@@ -91,10 +91,15 @@ func (f *Factory) buildDirectProviders() {
 	}
 }
 
-// DirectProviders returns the providers built from API keys.
+// DirectProviders returns a copy of the providers built from API keys.
 // Returns an empty map if no API keys were configured.
+// The returned map is a defensive copy safe for external modification.
 func (f *Factory) DirectProviders() map[string]review.Provider {
-	return f.directProviders
+	result := make(map[string]review.Provider, len(f.directProviders))
+	for k, v := range f.directProviders {
+		result[k] = v
+	}
+	return result
 }
 
 // HasDirectProviders returns true if any direct providers are available.
@@ -129,10 +134,11 @@ func (f *Factory) CreateSamplingProvider(session SamplingSession) (review.Provid
 //  2. Sampling provider (from MCP session) - used as fallback when no API keys
 //
 // Returns an error if no providers are available (no API keys and no sampling support).
+// The returned map is a defensive copy safe for external modification.
 func (f *Factory) EffectiveProviders(session SamplingSession) (map[string]review.Provider, error) {
 	// Prefer direct providers
 	if f.HasDirectProviders() {
-		return f.directProviders, nil
+		return f.DirectProviders(), nil
 	}
 
 	// Fall back to sampling

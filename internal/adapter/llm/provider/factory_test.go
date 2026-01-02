@@ -133,15 +133,14 @@ func TestClientSupportsSampling_NilCapabilities(t *testing.T) {
 }
 
 func TestClientSupportsSampling_NilInitializeParams(t *testing.T) {
-	session := &mockSession{
-		initializeParams: nil,
-	}
-	// When initializeParams returns nil explicitly
-	session.initializeParams = nil
-	// Need to override the default behavior
-	assert.False(t, provider.ClientSupportsSampling(&nilParamsSession{}))
+	// nilParamsSession returns nil from InitializeParams(), unlike mockSession
+	// which returns an empty InitializeParams when initializeParams field is nil
+	session := &nilParamsSession{}
+	assert.False(t, provider.ClientSupportsSampling(session))
 }
 
+// nilParamsSession is a session that returns nil from InitializeParams().
+// This is distinct from mockSession which returns an empty InitializeParams.
 type nilParamsSession struct{}
 
 func (n *nilParamsSession) CreateMessage(ctx context.Context, params *mcp.CreateMessageParams) (*mcp.CreateMessageResult, error) {
