@@ -1268,18 +1268,3 @@ func isBinaryFile(path string) (bool, error) {
 	}
 	return false, nil
 }
-
-// isBinaryContent checks if content appears to be binary (contains null bytes).
-func isBinaryContent(content []byte) bool {
-	// Check first 8KB for null bytes
-	checkLen := 8192
-	if len(content) < checkLen {
-		checkLen = len(content)
-	}
-	for i := 0; i < checkLen; i++ {
-		if content[i] == 0 {
-			return true
-		}
-	}
-	return false
-}
