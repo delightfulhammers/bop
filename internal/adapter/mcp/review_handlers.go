@@ -206,10 +206,9 @@ func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, i
 		// Try to create a per-request orchestrator using the factory
 		perRequestReviewer, err := s.createPerRequestReviewer(req)
 		if err != nil {
-			return notImplementedResult(
-					"review_pr requires either: " +
-						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
-						"(2) an MCP client that supports sampling"),
+			return notImplementedResult(fmt.Sprintf(
+					"review_pr requires LLM API keys (ANTHROPIC_API_KEY or OPENAI_API_KEY). "+
+						"No sampling fallback: %v", err)),
 				ReviewPROutput{
 					Findings:      []FindingOutput{},
 					BySeverity:    make(map[string]int),
@@ -610,10 +609,9 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 		// Try to create a per-request orchestrator using the factory
 		perRequestReviewer, err := s.createPerRequestReviewer(req)
 		if err != nil {
-			return notImplementedResult(
-					"review_branch requires either: " +
-						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
-						"(2) an MCP client that supports sampling"),
+			return notImplementedResult(fmt.Sprintf(
+					"review_branch requires LLM API keys (ANTHROPIC_API_KEY or OPENAI_API_KEY). "+
+						"No sampling fallback: %v", err)),
 				ReviewBranchOutput{
 					Findings:      []FindingOutput{},
 					BySeverity:    make(map[string]int),
