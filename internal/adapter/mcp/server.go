@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 
+	"github.com/bkyoung/code-reviewer/internal/config"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
@@ -31,6 +32,18 @@ type PRMetadataFetcher interface {
 // This is implemented by review.Orchestrator.
 type BranchReviewer interface {
 	ReviewBranch(ctx context.Context, req review.BranchRequest) (review.Result, error)
+}
+
+// GitEngine provides git operations for branch reviews.
+// This is implemented by git.Engine.
+type GitEngine interface {
+	review.GitEngine
+}
+
+// Merger merges findings from multiple providers.
+// This is implemented by merge.IntelligentMerger.
+type Merger interface {
+	review.Merger
 }
 
 const (
@@ -62,8 +75,24 @@ type ServerDeps struct {
 	RemoteGitHubClient PRMetadataFetcher
 
 	// BranchReviewer reviews local git branches.
-	// Optional: only required for review_branch tool.
+	// Optional: only required for review_branch tool when direct API keys are available.
 	BranchReviewer BranchReviewer
+
+	// === Sampling Fallback Dependencies ===
+	// These are used to create a per-request orchestrator when BranchReviewer is nil
+	// but the client supports MCP sampling.
+
+	// Git provides git operations for branch reviews via sampling fallback.
+	Git GitEngine
+
+	// Merger merges findings from multiple providers.
+	Merger Merger
+
+	// ReviewerRegistry provides reviewer configurations for persona support.
+	ReviewerRegistry review.ReviewerRegistry
+
+	// Config provides configuration for reviewers and other settings.
+	Config *config.Config
 }
 
 // Server wraps the MCP server and provides triage tools.
