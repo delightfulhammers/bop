@@ -210,7 +210,12 @@ func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, i
 					"review_pr requires either: " +
 						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
 						"(2) an MCP client that supports sampling"),
-				ReviewPROutput{}, nil
+				ReviewPROutput{
+					Findings:      []FindingOutput{},
+					BySeverity:    make(map[string]int),
+					ByCategory:    make(map[string]int),
+					ReviewerStats: []ReviewerStat{},
+				}, nil
 		}
 		reviewer = perRequestReviewer
 	}
@@ -609,7 +614,12 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 					"review_branch requires either: " +
 						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
 						"(2) an MCP client that supports sampling"),
-				ReviewBranchOutput{}, nil
+				ReviewBranchOutput{
+					Findings:      []FindingOutput{},
+					BySeverity:    make(map[string]int),
+					ByCategory:    make(map[string]int),
+					ReviewerStats: []ReviewerStat{},
+				}, nil
 		}
 		reviewer = perRequestReviewer
 	}
