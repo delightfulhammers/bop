@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -1187,17 +1188,27 @@ func isBinaryExtension(ext string) bool {
 }
 
 // createSyntheticDiff creates a domain.Diff from files as if they were all added.
+// Skips binary files and unreadable files gracefully.
 func createSyntheticDiff(root string, files []string) (domain.Diff, error) {
 	fileDiffs := make([]domain.FileDiff, 0, len(files))
 
 	for _, path := range files {
-		content, err := os.ReadFile(path)
+		// Check for binary content by reading just the header first
+		// This avoids reading large binary files fully into memory
+		isBinary, err := isBinaryFile(path)
 		if err != nil {
-			return domain.Diff{}, fmt.Errorf("read %s: %w", path, err)
+			// Skip unreadable files (permissions, race conditions, etc.)
+			// rather than failing the entire review
+			continue
+		}
+		if isBinary {
+			continue
 		}
 
-		// Skip binary content (check for null bytes)
-		if isBinaryContent(content) {
+		// Now read the full file for text content
+		content, err := os.ReadFile(path)
+		if err != nil {
+			// Skip unreadable files gracefully
 			continue
 		}
 
@@ -1231,6 +1242,31 @@ func createSyntheticDiff(root string, files []string) (domain.Diff, error) {
 		ToCommitHash:   "files",
 		Files:          fileDiffs,
 	}, nil
+}
+
+// isBinaryFile checks if a file appears to be binary by reading just the header.
+// This avoids reading large binary files fully into memory.
+func isBinaryFile(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	// Read just the first 512 bytes to check for binary content
+	header := make([]byte, 512)
+	n, err := f.Read(header)
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+
+	// Check for null bytes in the header
+	for i := 0; i < n; i++ {
+		if header[i] == 0 {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // isBinaryContent checks if content appears to be binary (contains null bytes).
