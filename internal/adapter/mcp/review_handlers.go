@@ -701,7 +701,7 @@ type Reviewer interface {
 //
 // Returns an error if:
 // - The factory is not configured
-// - Required dependencies (Git, Merger) are not configured
+// - Required dependencies (Git, Merger, PersonaPromptBuilder, SeedGenerator) are not configured
 // - No providers are available (no API keys and no sampling support)
 func (s *Server) createPerRequestReviewer(req *mcp.CallToolRequest) (Reviewer, error) {
 	// Check for required dependencies
@@ -713,6 +713,12 @@ func (s *Server) createPerRequestReviewer(req *mcp.CallToolRequest) (Reviewer, e
 	}
 	if s.deps.Merger == nil {
 		return nil, fmt.Errorf("merger not configured")
+	}
+	if s.deps.PersonaPromptBuilder == nil {
+		return nil, fmt.Errorf("persona prompt builder not configured")
+	}
+	if s.deps.SeedGenerator == nil {
+		return nil, fmt.Errorf("seed generator not configured")
 	}
 
 	// Get the session from the request (for sampling fallback)
@@ -728,11 +734,14 @@ func (s *Server) createPerRequestReviewer(req *mcp.CallToolRequest) (Reviewer, e
 	}
 
 	// Create orchestrator with effective providers
+	// Note: Output writers (Markdown, JSON, SARIF) are optional - MCP tools don't write files
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
-		Git:              s.deps.Git,
-		Providers:        providers,
-		Merger:           s.deps.Merger,
-		ReviewerRegistry: s.deps.ReviewerRegistry,
+		Git:                  s.deps.Git,
+		Providers:            providers,
+		Merger:               s.deps.Merger,
+		ReviewerRegistry:     s.deps.ReviewerRegistry,
+		PersonaPromptBuilder: s.deps.PersonaPromptBuilder,
+		SeedGenerator:        s.deps.SeedGenerator,
 	})
 
 	return orchestrator, nil

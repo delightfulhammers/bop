@@ -13,6 +13,7 @@ import (
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
 	mcpadapter "github.com/bkyoung/code-reviewer/internal/adapter/mcp"
 	"github.com/bkyoung/code-reviewer/internal/config"
+	"github.com/bkyoung/code-reviewer/internal/determinism"
 	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
@@ -111,6 +112,10 @@ func run() error {
 		log.Printf("warning: reviewer registry creation failed, using defaults: %v", err)
 	}
 
+	// Create persona prompt builder for reviewer personas.
+	basePromptBuilder := review.NewEnhancedPromptBuilder()
+	personaPromptBuilder := review.NewPersonaPromptBuilder(basePromptBuilder)
+
 	// Create branch/PR reviewer if direct providers are available.
 	// If not available, the server will fall back to per-request creation using
 	// the factory (which may use sampling if the client supports it).
@@ -118,10 +123,12 @@ func run() error {
 	var prReviewer mcpadapter.PRReviewer
 	if providerFactory.HasDirectProviders() {
 		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
-			Git:              gitEngine,
-			Providers:        providerFactory.DirectProviders(),
-			Merger:           merger,
-			ReviewerRegistry: reviewerRegistry,
+			Git:                  gitEngine,
+			Providers:            providerFactory.DirectProviders(),
+			Merger:               merger,
+			ReviewerRegistry:     reviewerRegistry,
+			PersonaPromptBuilder: personaPromptBuilder,
+			SeedGenerator:        determinism.GenerateSeed,
 		})
 		branchReviewer = orchestrator
 		prReviewer = orchestrator
@@ -129,14 +136,16 @@ func run() error {
 
 	// Create and configure the MCP server.
 	server := mcpadapter.NewServer(mcpadapter.ServerDeps{
-		PRService:        prService,
-		TriageService:    triageService,
-		BranchReviewer:   branchReviewer,
-		PRReviewer:       prReviewer,
-		ProviderFactory:  providerFactory,
-		Git:              gitEngine,
-		Merger:           merger,
-		ReviewerRegistry: reviewerRegistry,
+		PRService:            prService,
+		TriageService:        triageService,
+		BranchReviewer:       branchReviewer,
+		PRReviewer:           prReviewer,
+		ProviderFactory:      providerFactory,
+		Git:                  gitEngine,
+		Merger:               merger,
+		ReviewerRegistry:     reviewerRegistry,
+		PersonaPromptBuilder: personaPromptBuilder,
+		SeedGenerator:        determinism.GenerateSeed,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).

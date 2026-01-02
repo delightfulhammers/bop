@@ -380,15 +380,7 @@ func (o *Orchestrator) validateDependencies() error {
 	if o.deps.Merger == nil {
 		return errors.New("merger is required")
 	}
-	if o.deps.Markdown == nil {
-		return errors.New("markdown writer is required")
-	}
-	if o.deps.JSON == nil {
-		return errors.New("json writer is required")
-	}
-	if o.deps.SARIF == nil {
-		return errors.New("sarif writer is required")
-	}
+	// Markdown, JSON, SARIF writers are optional - only needed when OutputDir is set
 	// ReviewerRegistry is optional - nil means use provider-based dispatch
 	if o.deps.PersonaPromptBuilder == nil {
 		return errors.New("persona prompt builder is required")
@@ -402,6 +394,74 @@ func (o *Orchestrator) validateDependencies() error {
 	// Redactor is optional
 	// Store is optional
 	return nil
+}
+
+// writeOutputArtifacts writes markdown, JSON, and SARIF output files if writers are configured.
+// Returns the paths (empty strings if writer is nil or OutputDir is empty).
+func (o *Orchestrator) writeOutputArtifacts(
+	ctx context.Context,
+	req outputRequest,
+) (markdownPath, jsonPath, sarifPath string, err error) {
+	// Skip all writing if no output directory specified
+	if req.OutputDir == "" {
+		return "", "", "", nil
+	}
+
+	if o.deps.Markdown != nil {
+		markdownPath, err = o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+			OutputDir:    req.OutputDir,
+			Repository:   req.Repository,
+			BaseRef:      req.BaseRef,
+			TargetRef:    req.TargetRef,
+			Diff:         req.Diff,
+			Review:       req.Review,
+			ProviderName: req.ProviderName,
+		})
+		if err != nil {
+			return "", "", "", fmt.Errorf("markdown write: %w", err)
+		}
+	}
+
+	if o.deps.JSON != nil {
+		jsonPath, err = o.deps.JSON.Write(ctx, domain.JSONArtifact{
+			OutputDir:    req.OutputDir,
+			Repository:   req.Repository,
+			BaseRef:      req.BaseRef,
+			TargetRef:    req.TargetRef,
+			Review:       req.Review,
+			ProviderName: req.ProviderName,
+		})
+		if err != nil {
+			return "", "", "", fmt.Errorf("json write: %w", err)
+		}
+	}
+
+	if o.deps.SARIF != nil {
+		sarifPath, err = o.deps.SARIF.Write(ctx, SARIFArtifact{
+			OutputDir:    req.OutputDir,
+			Repository:   req.Repository,
+			BaseRef:      req.BaseRef,
+			TargetRef:    req.TargetRef,
+			Review:       req.Review,
+			ProviderName: req.ProviderName,
+		})
+		if err != nil {
+			return "", "", "", fmt.Errorf("sarif write: %w", err)
+		}
+	}
+
+	return markdownPath, jsonPath, sarifPath, nil
+}
+
+// outputRequest holds parameters for writing output artifacts.
+type outputRequest struct {
+	OutputDir    string
+	Repository   string
+	BaseRef      string
+	TargetRef    string
+	Diff         domain.Diff
+	Review       domain.Review
+	ProviderName string
 }
 
 // ReviewBranch executes a multi-provider review for a Git branch diff.
@@ -683,7 +743,8 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				outputName = review.ProviderName
 			}
 
-			markdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+			// Write output artifacts (skipped if writers not configured or no OutputDir)
+			markdownPath, jsonPath, sarifPath, err := o.writeOutputArtifacts(ctx, outputRequest{
 				OutputDir:    req.OutputDir,
 				Repository:   req.Repository,
 				BaseRef:      req.BaseRef,
@@ -693,33 +754,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 				ProviderName: outputName,
 			})
 			if err != nil {
-				resultsChan <- dispatchResult{err: fmt.Errorf("markdown write failed for reviewer %s: %w", reviewer.Name, err)}
-				return
-			}
-
-			jsonPath, err := o.deps.JSON.Write(ctx, domain.JSONArtifact{
-				OutputDir:    req.OutputDir,
-				Repository:   req.Repository,
-				BaseRef:      req.BaseRef,
-				TargetRef:    req.TargetRef,
-				Review:       review,
-				ProviderName: outputName,
-			})
-			if err != nil {
-				resultsChan <- dispatchResult{err: fmt.Errorf("json write failed for reviewer %s: %w", reviewer.Name, err)}
-				return
-			}
-
-			sarifPath, err := o.deps.SARIF.Write(ctx, SARIFArtifact{
-				OutputDir:    req.OutputDir,
-				Repository:   req.Repository,
-				BaseRef:      req.BaseRef,
-				TargetRef:    req.TargetRef,
-				Review:       review,
-				ProviderName: outputName,
-			})
-			if err != nil {
-				resultsChan <- dispatchResult{err: fmt.Errorf("sarif write failed for reviewer %s: %w", reviewer.Name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("output write failed for reviewer %s: %w", reviewer.Name, err)}
 				return
 			}
 
@@ -839,7 +874,8 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 		}
 	}
 
-	mergedMarkdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+	// Write merged review output artifacts
+	mergedMarkdownPath, mergedJSONPath, mergedSARIFPath, err := o.writeOutputArtifacts(ctx, outputRequest{
 		OutputDir:    req.OutputDir,
 		Repository:   req.Repository,
 		BaseRef:      req.BaseRef,
@@ -849,31 +885,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 		ProviderName: mergedReview.ProviderName,
 	})
 	if err != nil {
-		return Result{}, fmt.Errorf("markdown write failed for merged review: %w", err)
-	}
-
-	mergedJSONPath, err := o.deps.JSON.Write(ctx, domain.JSONArtifact{
-		OutputDir:    req.OutputDir,
-		Repository:   req.Repository,
-		BaseRef:      req.BaseRef,
-		TargetRef:    req.TargetRef,
-		Review:       mergedReview,
-		ProviderName: mergedReview.ProviderName,
-	})
-	if err != nil {
-		return Result{}, fmt.Errorf("json write failed for merged review: %w", err)
-	}
-
-	mergedSARIFPath, err := o.deps.SARIF.Write(ctx, SARIFArtifact{
-		OutputDir:    req.OutputDir,
-		Repository:   req.Repository,
-		BaseRef:      req.BaseRef,
-		TargetRef:    req.TargetRef,
-		Review:       mergedReview,
-		ProviderName: mergedReview.ProviderName,
-	})
-	if err != nil {
-		return Result{}, fmt.Errorf("sarif write failed for merged review: %w", err)
+		return Result{}, fmt.Errorf("output write failed for merged review: %w", err)
 	}
 
 	// Save merged review to store if available
@@ -1183,7 +1195,8 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 				outputName = review.ProviderName
 			}
 
-			markdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+			// Write output artifacts (skipped if writers not configured or no OutputDir)
+			markdownPath, jsonPath, sarifPath, err := o.writeOutputArtifacts(ctx, outputRequest{
 				OutputDir:    req.OutputDir,
 				Repository:   req.Repository,
 				BaseRef:      req.BaseRef,
@@ -1193,33 +1206,7 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 				ProviderName: outputName,
 			})
 			if err != nil {
-				resultsChan <- dispatchResult{err: fmt.Errorf("markdown write failed for reviewer %s: %w", reviewer.Name, err)}
-				return
-			}
-
-			jsonPath, err := o.deps.JSON.Write(ctx, domain.JSONArtifact{
-				OutputDir:    req.OutputDir,
-				Repository:   req.Repository,
-				BaseRef:      req.BaseRef,
-				TargetRef:    req.TargetRef,
-				Review:       review,
-				ProviderName: outputName,
-			})
-			if err != nil {
-				resultsChan <- dispatchResult{err: fmt.Errorf("json write failed for reviewer %s: %w", reviewer.Name, err)}
-				return
-			}
-
-			sarifPath, err := o.deps.SARIF.Write(ctx, SARIFArtifact{
-				OutputDir:    req.OutputDir,
-				Repository:   req.Repository,
-				BaseRef:      req.BaseRef,
-				TargetRef:    req.TargetRef,
-				Review:       review,
-				ProviderName: outputName,
-			})
-			if err != nil {
-				resultsChan <- dispatchResult{err: fmt.Errorf("sarif write failed for reviewer %s: %w", reviewer.Name, err)}
+				resultsChan <- dispatchResult{err: fmt.Errorf("output write failed for reviewer %s: %w", reviewer.Name, err)}
 				return
 			}
 
@@ -1327,7 +1314,8 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 		}
 	}
 
-	mergedMarkdownPath, err := o.deps.Markdown.Write(ctx, domain.MarkdownArtifact{
+	// Write merged review output artifacts
+	mergedMarkdownPath, mergedJSONPath, mergedSARIFPath, err := o.writeOutputArtifacts(ctx, outputRequest{
 		OutputDir:    req.OutputDir,
 		Repository:   req.Repository,
 		BaseRef:      req.BaseRef,
@@ -1337,31 +1325,7 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 		ProviderName: mergedReview.ProviderName,
 	})
 	if err != nil {
-		return Result{}, fmt.Errorf("markdown write failed for merged review: %w", err)
-	}
-
-	mergedJSONPath, err := o.deps.JSON.Write(ctx, domain.JSONArtifact{
-		OutputDir:    req.OutputDir,
-		Repository:   req.Repository,
-		BaseRef:      req.BaseRef,
-		TargetRef:    req.TargetRef,
-		Review:       mergedReview,
-		ProviderName: mergedReview.ProviderName,
-	})
-	if err != nil {
-		return Result{}, fmt.Errorf("json write failed for merged review: %w", err)
-	}
-
-	mergedSARIFPath, err := o.deps.SARIF.Write(ctx, SARIFArtifact{
-		OutputDir:    req.OutputDir,
-		Repository:   req.Repository,
-		BaseRef:      req.BaseRef,
-		TargetRef:    req.TargetRef,
-		Review:       mergedReview,
-		ProviderName: mergedReview.ProviderName,
-	})
-	if err != nil {
-		return Result{}, fmt.Errorf("sarif write failed for merged review: %w", err)
+		return Result{}, fmt.Errorf("output write failed for merged review: %w", err)
 	}
 
 	if runID != "" {

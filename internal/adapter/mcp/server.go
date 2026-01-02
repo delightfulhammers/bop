@@ -93,6 +93,14 @@ type ServerDeps struct {
 
 	// ReviewerRegistry provides reviewer configurations for persona support.
 	ReviewerRegistry review.ReviewerRegistry
+
+	// PersonaPromptBuilder builds prompts for reviewer personas.
+	// Required for per-request orchestrators.
+	PersonaPromptBuilder *review.PersonaPromptBuilder
+
+	// SeedGenerator generates deterministic seeds for reproducible reviews.
+	// Required for per-request orchestrators.
+	SeedGenerator review.SeedFunc
 }
 
 // Server wraps the MCP server and provides triage tools.
