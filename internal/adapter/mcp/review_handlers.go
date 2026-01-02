@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/sampling"
+	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -169,11 +169,7 @@ Use this for:
 }
 
 func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, input ReviewPRInput) (*mcp.CallToolResult, ReviewPROutput, error) {
-	if s.deps.PRReviewer == nil {
-		return notImplementedResult("review_pr - PRReviewer not configured"), ReviewPROutput{}, nil
-	}
-
-	// Validate inputs
+	// Validate inputs first (before checking dependencies)
 	if input.Owner == "" {
 		return &mcp.CallToolResult{
 			IsError: true,
@@ -199,6 +195,23 @@ func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, i
 		}, ReviewPROutput{}, nil
 	}
 
+	// Determine which reviewer to use:
+	// 1. Prefer direct PRReviewer if available (from API keys)
+	// 2. Fall back to per-request orchestrator with factory providers
+	var reviewer PRReviewer = s.deps.PRReviewer
+	if reviewer == nil {
+		// Try to create a per-request orchestrator using the factory
+		perRequestReviewer, err := s.createPerRequestReviewer(req)
+		if err != nil {
+			return notImplementedResult(
+					"review_pr requires either: " +
+						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
+						"(2) an MCP client that supports sampling"),
+				ReviewPROutput{}, nil
+		}
+		reviewer = perRequestReviewer
+	}
+
 	// Build PRRequest
 	prReq := review.PRRequest{
 		Owner:        input.Owner,
@@ -209,7 +222,7 @@ func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, i
 	}
 
 	// Invoke review
-	result, err := s.deps.PRReviewer.ReviewPR(ctx, prReq)
+	result, err := reviewer.ReviewPR(ctx, prReq)
 	if err != nil {
 		return nil, ReviewPROutput{}, fmt.Errorf("review PR: %w", err)
 	}
@@ -580,24 +593,19 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 
 	// Determine which reviewer to use:
 	// 1. Prefer direct BranchReviewer if available (from API keys)
-	// 2. Fall back to sampling if client supports it
+	// 2. Fall back to per-request orchestrator with factory providers
 	reviewer := s.deps.BranchReviewer
 	if reviewer == nil {
-		// Try to create a sampling-based reviewer
-		var session *mcp.ServerSession
-		if req != nil {
-			session = req.Session
-		}
-		samplingReviewer, err := s.createSamplingReviewer(session)
+		// Try to create a per-request orchestrator using the factory
+		perRequestReviewer, err := s.createPerRequestReviewer(req)
 		if err != nil {
-			// Provide helpful error message based on what's missing
 			return notImplementedResult(
 					"review_branch requires either: " +
 						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
 						"(2) an MCP client that supports sampling"),
 				ReviewBranchOutput{}, nil
 		}
-		reviewer = samplingReviewer
+		reviewer = perRequestReviewer
 	}
 
 	// Build BranchRequest
@@ -657,16 +665,29 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 }
 
 // =============================================================================
-// Sampling Fallback Support
+// Per-Request Reviewer Support
 // =============================================================================
 
-// createSamplingReviewer creates a branch reviewer that uses MCP sampling.
-// It returns an error if:
-// - The session is nil
-// - The client doesn't support sampling
+// Reviewer is the common interface for both branch and PR reviewers.
+// This allows the same per-request creation logic to be used for both tools.
+type Reviewer interface {
+	BranchReviewer
+	PRReviewer
+}
+
+// createPerRequestReviewer creates a reviewer using the provider factory.
+// It uses effective providers (direct or sampling fallback) to create an
+// orchestrator per-request, enabling zero-config usage via MCP sampling.
+//
+// Returns an error if:
+// - The factory is not configured
 // - Required dependencies (Git, Merger) are not configured
-func (s *Server) createSamplingReviewer(session *mcp.ServerSession) (BranchReviewer, error) {
+// - No providers are available (no API keys and no sampling support)
+func (s *Server) createPerRequestReviewer(req *mcp.CallToolRequest) (Reviewer, error) {
 	// Check for required dependencies
+	if s.deps.ProviderFactory == nil {
+		return nil, fmt.Errorf("provider factory not configured")
+	}
 	if s.deps.Git == nil {
 		return nil, fmt.Errorf("git engine not configured")
 	}
@@ -674,27 +695,22 @@ func (s *Server) createSamplingReviewer(session *mcp.ServerSession) (BranchRevie
 		return nil, fmt.Errorf("merger not configured")
 	}
 
-	// Check session availability
-	if session == nil {
-		return nil, fmt.Errorf("no session available")
+	// Get the session from the request (for sampling fallback)
+	var session provider.SamplingSession
+	if req != nil && req.Session != nil {
+		session = &serverSessionAdapter{req.Session}
 	}
 
-	// Check if client supports sampling
-	if !clientSupportsSampling(session) {
-		return nil, fmt.Errorf("client does not support sampling")
+	// Get effective providers from factory (direct or sampling)
+	providers, err := s.deps.ProviderFactory.EffectiveProviders(session)
+	if err != nil {
+		return nil, fmt.Errorf("no providers available: %w", err)
 	}
 
-	// Create sampling provider with session
-	// Note: We capture the session in a closure so the provider can use it
-	sessionProvider := func() sampling.Session {
-		return &serverSessionAdapter{session}
-	}
-	samplingProvider := sampling.NewProvider(sessionProvider)
-
-	// Create orchestrator with sampling provider
+	// Create orchestrator with effective providers
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git:              s.deps.Git,
-		Providers:        map[string]review.Provider{"sampling": samplingProvider},
+		Providers:        providers,
 		Merger:           s.deps.Merger,
 		ReviewerRegistry: s.deps.ReviewerRegistry,
 	})
@@ -702,25 +718,15 @@ func (s *Server) createSamplingReviewer(session *mcp.ServerSession) (BranchRevie
 	return orchestrator, nil
 }
 
-// clientSupportsSampling checks if the connected MCP client supports sampling.
-// Sampling is indicated by the presence of the sampling capability in client info.
-func clientSupportsSampling(session *mcp.ServerSession) bool {
-	if session == nil {
-		return false
-	}
-	params := session.InitializeParams()
-	if params == nil || params.Capabilities == nil {
-		return false
-	}
-	return params.Capabilities.Sampling != nil
-}
-
-// serverSessionAdapter adapts mcp.ServerSession to sampling.Session interface.
-// This allows the sampling provider to use the MCP session without importing the mcp package.
+// serverSessionAdapter adapts mcp.ServerSession to provider.SamplingSession.
 type serverSessionAdapter struct {
 	session *mcp.ServerSession
 }
 
 func (a *serverSessionAdapter) CreateMessage(ctx context.Context, params *mcp.CreateMessageParams) (*mcp.CreateMessageResult, error) {
 	return a.session.CreateMessage(ctx, params)
+}
+
+func (a *serverSessionAdapter) InitializeParams() *mcp.InitializeParams {
+	return a.session.InitializeParams()
 }
