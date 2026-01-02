@@ -62,7 +62,14 @@ type Service struct {
 }
 
 // NewService creates a new post service.
+// Panics if prClient or poster is nil (programming error).
 func NewService(prClient PRClient, poster Poster) *Service {
+	if prClient == nil {
+		panic("post.NewService: prClient is nil")
+	}
+	if poster == nil {
+		panic("post.NewService: poster is nil")
+	}
 	return &Service{
 		prClient: prClient,
 		poster:   poster,

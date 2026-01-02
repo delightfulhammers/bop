@@ -297,6 +297,58 @@ func TestPostCommand_SkippedAndDuplicates(t *testing.T) {
 // parseFindings Tests (exported for testing via command)
 // =============================================================================
 
+func TestPostCommand_NilPoster(t *testing.T) {
+	tmpDir := t.TempDir()
+	findingsFile := filepath.Join(tmpDir, "findings.json")
+	err := os.WriteFile(findingsFile, []byte(`{"findings": []}`), 0644)
+	require.NoError(t, err)
+
+	cmd := cli.PostCommand(nil) // nil poster
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{findingsFile, "--owner", "owner", "--repo", "repo", "--pr", "1"})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not available")
+	assert.Contains(t, err.Error(), "GitHub")
+}
+
+func TestPostCommand_JSONMissingFindingsField(t *testing.T) {
+	tmpDir := t.TempDir()
+	findingsFile := filepath.Join(tmpDir, "config.json")
+	// Valid JSON object but without "findings" field
+	err := os.WriteFile(findingsFile, []byte(`{"name": "test", "value": 123}`), 0644)
+	require.NoError(t, err)
+
+	poster := &mockFindingsPoster{}
+	cmd := cli.PostCommand(poster)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{findingsFile, "--owner", "owner", "--repo", "repo", "--pr", "1"})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing 'findings' field")
+}
+
+func TestPostCommand_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	findingsFile := filepath.Join(tmpDir, "empty.json")
+	err := os.WriteFile(findingsFile, []byte(``), 0644)
+	require.NoError(t, err)
+
+	poster := &mockFindingsPoster{}
+	cmd := cli.PostCommand(poster)
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{findingsFile, "--owner", "owner", "--repo", "repo", "--pr", "1"})
+
+	err = cmd.Execute()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty")
+}
+
 func TestParseFindings_FullReviewOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	findingsFile := filepath.Join(tmpDir, "review.json")

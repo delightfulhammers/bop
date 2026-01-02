@@ -43,6 +43,11 @@ Examples:
   cr post ./review.json --owner owner --repo repo --pr 123 --review-action COMMENT`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate dependency (fail fast if not properly wired)
+			if poster == nil {
+				return fmt.Errorf("post command is not available: GitHub integration not configured (missing GITHUB_TOKEN)")
+			}
+
 			filePath := args[0]
 			ctx := cmd.Context()
 
@@ -115,9 +120,9 @@ Examples:
 	return cmd
 }
 
-// jsonOutput mirrors the structure from internal/adapter/output/json for parsing.
-type jsonOutput struct {
-	Findings []domain.Finding `json:"findings"`
+// jsonOutputWithRaw uses json.RawMessage to detect presence of "findings" field.
+type jsonOutputWithRaw struct {
+	Findings json.RawMessage `json:"findings"`
 }
 
 // parseFindings reads a JSON file and extracts findings.
@@ -128,23 +133,51 @@ func parseFindings(filePath string) ([]domain.Finding, error) {
 		return nil, fmt.Errorf("failed to read file %s: %w", filePath, err)
 	}
 
-	// First, try to parse as full review output
-	var output jsonOutput
-	if err := json.Unmarshal(data, &output); err == nil && len(output.Findings) > 0 {
-		return output.Findings, nil
+	// Detect JSON shape by first byte
+	trimmed := trimLeadingWhitespace(data)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("failed to parse findings from %s: file is empty", filePath)
 	}
 
-	// Try to parse as raw findings array
-	var findings []domain.Finding
-	if err := json.Unmarshal(data, &findings); err == nil && len(findings) > 0 {
+	switch trimmed[0] {
+	case '[':
+		// Raw array of findings
+		var findings []domain.Finding
+		if err := json.Unmarshal(data, &findings); err != nil {
+			return nil, fmt.Errorf("failed to parse findings from %s: %w", filePath, err)
+		}
 		return findings, nil
-	}
 
-	// Check if it's a valid JSON object with empty findings
-	var output2 jsonOutput
-	if err := json.Unmarshal(data, &output2); err == nil {
-		return output2.Findings, nil // May be empty, that's OK
-	}
+	case '{':
+		// JSON object - check for "findings" field
+		var raw jsonOutputWithRaw
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("failed to parse findings from %s: %w", filePath, err)
+		}
 
-	return nil, fmt.Errorf("failed to parse findings from %s: expected JSON object with 'findings' field or array of findings", filePath)
+		// Check if "findings" field exists
+		if raw.Findings == nil {
+			return nil, fmt.Errorf("failed to parse findings from %s: JSON object missing 'findings' field", filePath)
+		}
+
+		// Parse the findings array
+		var findings []domain.Finding
+		if err := json.Unmarshal(raw.Findings, &findings); err != nil {
+			return nil, fmt.Errorf("failed to parse findings from %s: invalid 'findings' array: %w", filePath, err)
+		}
+		return findings, nil // May be empty, that's OK
+
+	default:
+		return nil, fmt.Errorf("failed to parse findings from %s: expected JSON array or object, got unexpected character %q", filePath, trimmed[0])
+	}
+}
+
+// trimLeadingWhitespace returns data with leading whitespace removed.
+func trimLeadingWhitespace(data []byte) []byte {
+	for i, b := range data {
+		if b != ' ' && b != '\t' && b != '\n' && b != '\r' {
+			return data[i:]
+		}
+	}
+	return nil
 }
