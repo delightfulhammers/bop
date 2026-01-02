@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/bkyoung/code-reviewer/internal/adapter/llm/sampling"
 	"github.com/bkyoung/code-reviewer/internal/domain"
 	"github.com/bkyoung/code-reviewer/internal/usecase/review"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -567,13 +568,7 @@ Use this for:
 }
 
 func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolRequest, input ReviewBranchInput) (*mcp.CallToolResult, ReviewBranchOutput, error) {
-	// Check dependency availability
-	if s.deps.BranchReviewer == nil {
-		return notImplementedResult("review_branch requires LLM providers - set ANTHROPIC_API_KEY or OPENAI_API_KEY"),
-			ReviewBranchOutput{}, nil
-	}
-
-	// Validate input
+	// Validate input first (before checking dependencies)
 	if input.BaseRef == "" {
 		return &mcp.CallToolResult{
 			IsError: true,
@@ -581,6 +576,28 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 				&mcp.TextContent{Text: "base_ref is required"},
 			},
 		}, ReviewBranchOutput{}, nil
+	}
+
+	// Determine which reviewer to use:
+	// 1. Prefer direct BranchReviewer if available (from API keys)
+	// 2. Fall back to sampling if client supports it
+	reviewer := s.deps.BranchReviewer
+	if reviewer == nil {
+		// Try to create a sampling-based reviewer
+		var session *mcp.ServerSession
+		if req != nil {
+			session = req.Session
+		}
+		samplingReviewer, err := s.createSamplingReviewer(session)
+		if err != nil {
+			// Provide helpful error message based on what's missing
+			return notImplementedResult(
+					"review_branch requires either: " +
+						"(1) LLM API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY), or " +
+						"(2) an MCP client that supports sampling"),
+				ReviewBranchOutput{}, nil
+		}
+		reviewer = samplingReviewer
 	}
 
 	// Build BranchRequest
@@ -593,7 +610,7 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	// Execute review
-	result, err := s.deps.BranchReviewer.ReviewBranch(ctx, branchReq)
+	result, err := reviewer.ReviewBranch(ctx, branchReq)
 	if err != nil {
 		return nil, ReviewBranchOutput{}, fmt.Errorf("review branch: %w", err)
 	}
@@ -637,4 +654,73 @@ func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolReques
 			&mcp.TextContent{Text: output.Message},
 		},
 	}, output, nil
+}
+
+// =============================================================================
+// Sampling Fallback Support
+// =============================================================================
+
+// createSamplingReviewer creates a branch reviewer that uses MCP sampling.
+// It returns an error if:
+// - The session is nil
+// - The client doesn't support sampling
+// - Required dependencies (Git, Merger) are not configured
+func (s *Server) createSamplingReviewer(session *mcp.ServerSession) (BranchReviewer, error) {
+	// Check for required dependencies
+	if s.deps.Git == nil {
+		return nil, fmt.Errorf("git engine not configured")
+	}
+	if s.deps.Merger == nil {
+		return nil, fmt.Errorf("merger not configured")
+	}
+
+	// Check session availability
+	if session == nil {
+		return nil, fmt.Errorf("no session available")
+	}
+
+	// Check if client supports sampling
+	if !clientSupportsSampling(session) {
+		return nil, fmt.Errorf("client does not support sampling")
+	}
+
+	// Create sampling provider with session
+	// Note: We capture the session in a closure so the provider can use it
+	sessionProvider := func() sampling.Session {
+		return &serverSessionAdapter{session}
+	}
+	samplingProvider := sampling.NewProvider(sessionProvider)
+
+	// Create orchestrator with sampling provider
+	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+		Git:              s.deps.Git,
+		Providers:        map[string]review.Provider{"sampling": samplingProvider},
+		Merger:           s.deps.Merger,
+		ReviewerRegistry: s.deps.ReviewerRegistry,
+	})
+
+	return orchestrator, nil
+}
+
+// clientSupportsSampling checks if the connected MCP client supports sampling.
+// Sampling is indicated by the presence of the sampling capability in client info.
+func clientSupportsSampling(session *mcp.ServerSession) bool {
+	if session == nil {
+		return false
+	}
+	params := session.InitializeParams()
+	if params == nil || params.Capabilities == nil {
+		return false
+	}
+	return params.Capabilities.Sampling != nil
+}
+
+// serverSessionAdapter adapts mcp.ServerSession to sampling.Session interface.
+// This allows the sampling provider to use the MCP session without importing the mcp package.
+type serverSessionAdapter struct {
+	session *mcp.ServerSession
+}
+
+func (a *serverSessionAdapter) CreateMessage(ctx context.Context, params *mcp.CreateMessageParams) (*mcp.CreateMessageResult, error) {
+	return a.session.CreateMessage(ctx, params)
 }

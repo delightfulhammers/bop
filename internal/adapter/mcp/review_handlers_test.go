@@ -964,7 +964,7 @@ func (m *mockBranchReviewer) ReviewBranch(ctx context.Context, req review.Branch
 }
 
 func TestHandleReviewBranch(t *testing.T) {
-	t.Run("returns not implemented when BranchReviewer is nil", func(t *testing.T) {
+	t.Run("returns not implemented when BranchReviewer is nil and no sampling", func(t *testing.T) {
 		s := &Server{deps: ServerDeps{}}
 
 		input := ReviewBranchInput{
@@ -976,10 +976,11 @@ func TestHandleReviewBranch(t *testing.T) {
 		require.NotNil(t, result)
 		assert.True(t, result.IsError)
 		assert.Empty(t, output.Findings)
-		// Should provide helpful message about API keys
+		// Should provide helpful message about API keys or sampling
 		textContent, ok := result.Content[0].(*mcp.TextContent)
 		require.True(t, ok)
-		assert.Contains(t, textContent.Text, "LLM providers")
+		assert.Contains(t, textContent.Text, "LLM API keys")
+		assert.Contains(t, textContent.Text, "sampling")
 	})
 
 	t.Run("validates required base_ref", func(t *testing.T) {
