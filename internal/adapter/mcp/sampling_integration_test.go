@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,10 +52,6 @@ func (m *mockSamplingSession) InitializeParams() *mcp.InitializeParams {
 // =============================================================================
 
 func TestIntegration_SamplingFallback_FactoryBehavior(t *testing.T) {
-	// Save and clear environment for consistent testing
-	origAnthropicKey := os.Getenv("ANTHROPIC_API_KEY")
-	origOpenAIKey := os.Getenv("OPENAI_API_KEY")
-
 	t.Run("creates sampling provider when no API keys", func(t *testing.T) {
 		// Temporarily clear API keys
 		t.Setenv("ANTHROPIC_API_KEY", "")
@@ -93,26 +88,26 @@ func TestIntegration_SamplingFallback_FactoryBehavior(t *testing.T) {
 	})
 
 	t.Run("prefers direct providers over sampling when API keys present", func(t *testing.T) {
-		// Skip if we actually have API keys (we'll test with mock factory behavior)
-		if origAnthropicKey != "" || origOpenAIKey != "" {
-			// Test the behavior: when HasDirectProviders returns true, sampling is not used
-			factory := provider.NewFactory(provider.FactoryOptions{
-				Config: &config.Config{},
-			})
+		// Test the behavior: when HasDirectProviders returns true, sampling is not used
+		// Use config with API keys (Factory now uses config, not raw env vars)
+		factory := provider.NewFactory(provider.FactoryOptions{
+			Config: &config.Config{
+				Providers: map[string]config.ProviderConfig{
+					"anthropic": {APIKey: "test-anthropic-key"},
+				},
+			},
+		})
 
-			mockSession := &mockSamplingSession{supportsSampling: true}
+		mockSession := &mockSamplingSession{supportsSampling: true}
 
-			// Since we have API keys, EffectiveProviders should return direct providers
-			providers, err := factory.EffectiveProviders(mockSession)
-			require.NoError(t, err)
+		// Since we have API keys in config, EffectiveProviders should return direct providers
+		providers, err := factory.EffectiveProviders(mockSession)
+		require.NoError(t, err)
 
-			// Should NOT contain sampling when direct providers available
-			assert.NotContains(t, providers, "sampling")
-			// Should contain at least one direct provider
-			assert.True(t, len(providers) > 0, "expected at least one direct provider")
-		} else {
-			t.Skip("Skipping test - requires API keys in environment to test priority")
-		}
+		// Should NOT contain sampling when direct providers available
+		assert.NotContains(t, providers, "sampling")
+		// Should contain the direct provider
+		assert.Contains(t, providers, "anthropic")
 	})
 
 	t.Run("returns error when no providers available", func(t *testing.T) {
@@ -352,7 +347,8 @@ func TestIntegration_HandlerErrorMessages(t *testing.T) {
 		})
 
 		input := ReviewBranchInput{
-			BaseRef: "main",
+			BaseRef:   "main",
+			TargetRef: "feature/test", // Explicit target to skip auto-detection (no Git engine)
 		}
 
 		// Call handler directly with nil request (no session)

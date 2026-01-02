@@ -141,6 +141,7 @@ type ReviewBranchInput struct {
 	TargetRef          string   `json:"target_ref,omitempty" jsonschema:"Target branch to review (defaults to current branch)"`
 	IncludeUncommitted bool     `json:"include_uncommitted,omitempty" jsonschema:"Include uncommitted working tree changes in the review"`
 	Reviewers          []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from cr.yaml config)"`
+	RepoDir            string   `json:"repo_dir,omitempty" jsonschema:"Repository directory to review (defaults to server working directory)"`
 }
 
 // ReviewBranchOutput is the output for the review_branch tool.
@@ -157,6 +158,35 @@ type ReviewBranchOutput struct {
 	Message       string          `json:"message"`
 	BaseRef       string          `json:"base_ref"`
 	TargetRef     string          `json:"target_ref"`
+}
+
+// =============================================================================
+// review_files Tool Types
+// =============================================================================
+
+// ReviewFilesInput is the input for the review_files tool.
+// This tool reviews files in a directory without requiring git.
+type ReviewFilesInput struct {
+	Path      string   `json:"path" jsonschema:"Directory to review,required"`
+	Patterns  []string `json:"patterns,omitempty" jsonschema:"Glob patterns to include (e.g., *.go, *.ts). Matches against filename. If empty, reviews all non-binary files."`
+	Exclude   []string `json:"exclude,omitempty" jsonschema:"Glob patterns to exclude (e.g., *_test.go, *.min.js). Matches against filename."`
+	Reviewers []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from cr.yaml config)"`
+}
+
+// ReviewFilesOutput is the output for the review_files tool.
+type ReviewFilesOutput struct {
+	Findings      []FindingOutput `json:"findings"`
+	Summary       string          `json:"summary"`
+	TotalFindings int             `json:"total_findings"`
+	BySeverity    map[string]int  `json:"by_severity"`
+	ByCategory    map[string]int  `json:"by_category"`
+	ReviewerStats []ReviewerStat  `json:"reviewer_stats,omitempty"`
+	TokensIn      int             `json:"tokens_in"`
+	TokensOut     int             `json:"tokens_out"`
+	Cost          float64         `json:"cost"`
+	Message       string          `json:"message"`
+	Path          string          `json:"path"`
+	FilesReviewed int             `json:"files_reviewed"`
 }
 
 // =============================================================================

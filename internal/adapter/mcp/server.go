@@ -158,6 +158,7 @@ func (s *Server) registerTools() {
 	s.registerReviewPRTool()
 	s.registerPostFindingsTool()
 	s.registerReviewBranchTool()
+	s.registerReviewFilesTool()
 }
 
 // Tool input/output types for M2 PR-based tools.

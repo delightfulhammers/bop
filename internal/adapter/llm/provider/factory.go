@@ -9,6 +9,8 @@ import (
 	"os"
 
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/anthropic"
+	"github.com/bkyoung/code-reviewer/internal/adapter/llm/gemini"
+	"github.com/bkyoung/code-reviewer/internal/adapter/llm/ollama"
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/openai"
 	"github.com/bkyoung/code-reviewer/internal/adapter/llm/sampling"
 	"github.com/bkyoung/code-reviewer/internal/config"
@@ -56,39 +58,77 @@ func NewFactory(opts FactoryOptions) *Factory {
 	return f
 }
 
-// buildDirectProviders creates providers from environment variables.
+// buildDirectProviders creates providers from configuration.
+// Provider API keys in config support ${VAR} environment variable expansion,
+// which is handled by the config loader before reaching this method.
 func (f *Factory) buildDirectProviders() {
-	// Anthropic provider
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		model := "claude-sonnet-4-20250514" // default
-		providerCfg := config.ProviderConfig{}
-		if f.config != nil {
-			if pc, ok := f.config.Providers["anthropic"]; ok {
-				providerCfg = pc
-				if pc.Model != "" {
-					model = pc.Model
-				}
-			}
-		}
-		client := anthropic.NewHTTPClient(key, model, providerCfg, f.config.HTTP)
-		f.directProviders["anthropic"] = anthropic.NewProvider(model, client)
+	if f.config == nil || f.config.Providers == nil {
+		return
 	}
 
 	// OpenAI provider
-	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		model := "gpt-4o" // default
-		providerCfg := config.ProviderConfig{}
-		if f.config != nil {
-			if pc, ok := f.config.Providers["openai"]; ok {
-				providerCfg = pc
-				if pc.Model != "" {
-					model = pc.Model
-				}
-			}
+	if cfg, ok := f.config.Providers["openai"]; ok && isProviderEnabled(cfg) {
+		model := cfg.GetDefaultModel()
+		if model == "" {
+			model = "gpt-5.2"
 		}
-		client := openai.NewHTTPClient(key, model, providerCfg, f.config.HTTP)
-		f.directProviders["openai"] = openai.NewProvider(model, client)
+		apiKey := cfg.APIKey
+		if apiKey != "" {
+			client := openai.NewHTTPClient(apiKey, model, cfg, f.config.HTTP)
+			f.directProviders["openai"] = openai.NewProvider(model, client)
+		}
 	}
+
+	// Anthropic provider
+	if cfg, ok := f.config.Providers["anthropic"]; ok && isProviderEnabled(cfg) {
+		model := cfg.GetDefaultModel()
+		if model == "" {
+			model = "claude-sonnet-4-5"
+		}
+		apiKey := cfg.APIKey
+		if apiKey != "" {
+			client := anthropic.NewHTTPClient(apiKey, model, cfg, f.config.HTTP)
+			f.directProviders["anthropic"] = anthropic.NewProvider(model, client)
+		}
+	}
+
+	// Gemini provider
+	if cfg, ok := f.config.Providers["gemini"]; ok && isProviderEnabled(cfg) {
+		model := cfg.GetDefaultModel()
+		if model == "" {
+			model = "gemini-3-pro-preview"
+		}
+		apiKey := cfg.APIKey
+		if apiKey != "" {
+			client := gemini.NewHTTPClient(apiKey, model, cfg, f.config.HTTP)
+			f.directProviders["gemini"] = gemini.NewProvider(model, client)
+		}
+	}
+
+	// Ollama provider (local LLM)
+	if cfg, ok := f.config.Providers["ollama"]; ok && isProviderEnabled(cfg) {
+		model := cfg.GetDefaultModel()
+		if model == "" {
+			model = "codellama"
+		}
+		host := os.Getenv("OLLAMA_HOST")
+		if host == "" {
+			host = "http://localhost:11434"
+		}
+		client := ollama.NewHTTPClient(host, model, cfg, f.config.HTTP)
+		f.directProviders["ollama"] = ollama.NewProvider(model, client)
+	}
+}
+
+// isProviderEnabled checks if a provider should be enabled based on its config.
+// A provider is enabled if:
+//   - Enabled is explicitly true, OR
+//   - Enabled is nil (not set) AND APIKey is non-empty
+func isProviderEnabled(cfg config.ProviderConfig) bool {
+	if cfg.Enabled != nil {
+		return *cfg.Enabled
+	}
+	return cfg.APIKey != ""
 }
 
 // DirectProviders returns a copy of the providers built from API keys.
