@@ -303,3 +303,68 @@ func TestFactory_SamplingProvider_ImplementsInterface(t *testing.T) {
 	// Verify it implements review.Provider
 	_ = review.Provider(p)
 }
+
+// =============================================================================
+// Keyless Provider Tests (Issue #212)
+// =============================================================================
+
+func TestNewFactory_OllamaWithExplicitEnabled(t *testing.T) {
+	enabled := true
+	factory := provider.NewFactory(provider.FactoryOptions{
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"ollama": {Enabled: &enabled, DefaultModel: "codellama"},
+			},
+		},
+	})
+
+	providers := factory.DirectProviders()
+	assert.Len(t, providers, 1)
+	assert.Contains(t, providers, "ollama")
+}
+
+func TestNewFactory_OllamaWithImplicitEnabled(t *testing.T) {
+	// When Ollama config is present without explicit enabled: true,
+	// it should still be enabled since Ollama doesn't require an API key.
+	// This is the bug fix for issue #212.
+	factory := provider.NewFactory(provider.FactoryOptions{
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"ollama": {DefaultModel: "codellama"}, // No APIKey, no Enabled
+			},
+		},
+	})
+
+	providers := factory.DirectProviders()
+	assert.Len(t, providers, 1, "Ollama should be enabled implicitly when config is present")
+	assert.Contains(t, providers, "ollama")
+}
+
+func TestNewFactory_OllamaExplicitlyDisabled(t *testing.T) {
+	enabled := false
+	factory := provider.NewFactory(provider.FactoryOptions{
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"ollama": {Enabled: &enabled, DefaultModel: "codellama"},
+			},
+		},
+	})
+
+	providers := factory.DirectProviders()
+	assert.Empty(t, providers, "Ollama should not be enabled when explicitly disabled")
+}
+
+func TestNewFactory_KeyRequiredProvidersStillNeedKeys(t *testing.T) {
+	// Providers that require API keys should still fail without them
+	factory := provider.NewFactory(provider.FactoryOptions{
+		Config: &config.Config{
+			Providers: map[string]config.ProviderConfig{
+				"anthropic": {DefaultModel: "claude-sonnet-4-5"}, // No APIKey
+				"openai":    {DefaultModel: "gpt-4o"},            // No APIKey
+			},
+		},
+	})
+
+	providers := factory.DirectProviders()
+	assert.Empty(t, providers, "Providers requiring API keys should not be enabled without keys")
+}
