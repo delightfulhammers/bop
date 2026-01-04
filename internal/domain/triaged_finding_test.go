@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestTriagedFindingContext_HasFindings(t *testing.T) {

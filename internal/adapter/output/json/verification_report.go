@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // VerificationReport captures the full verification results for transparency.

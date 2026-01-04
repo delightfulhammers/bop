@@ -168,7 +168,7 @@ type Finding struct {
 ### New `reviewers` Section
 
 ```yaml
-# cr.yaml
+# bop.yaml
 
 # New reviewers configuration (Phase 3.2)
 reviewers:
@@ -686,8 +686,8 @@ type BranchRequest struct {
     {
       "tool": {
         "driver": {
-          "name": "code-reviewer",
-          "informationUri": "https://github.com/bkyoung/code-reviewer"
+          "name": "bop",
+          "informationUri": "https://github.com/delightfulhammers/bop"
         },
         "extensions": [
           {
@@ -807,7 +807,7 @@ reviewers:
 
 | Question | Proposed Answer | Status |
 |----------|-----------------|--------|
-| Should personas be in separate files? | No, keep in cr.yaml for simplicity | Decided |
+| Should personas be in separate files? | No, keep in bop.yaml for simplicity | Decided |
 | Allow runtime persona override? | No, config-only for v1 | Decided |
 | Built-in persona library? | Yes, ship 3 default personas | Decided |
 | Persona inheritance/composition? | Defer to Phase 3.3 or later | Deferred |

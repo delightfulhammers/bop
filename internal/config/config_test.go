@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/config"
+	"github.com/delightfulhammers/bop/internal/config"
 )
 
 func TestMergePrioritizesLaterConfigs(t *testing.T) {
@@ -32,17 +32,17 @@ func TestMergePrioritizesLaterConfigs(t *testing.T) {
 
 func TestLoadReadsFromFileAndEnv(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	if err := os.WriteFile(file, []byte("output:\n  directory: file\n"), 0o600); err != nil {
 		t.Fatalf("failed to write config file: %v", err)
 	}
 
-	t.Setenv("CR_OUTPUT_DIRECTORY", "env")
+	t.Setenv("BOP_OUTPUT_DIRECTORY", "env")
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
-		EnvPrefix:   "CR",
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		t.Fatalf("load returned error: %v", err)
@@ -57,7 +57,7 @@ func TestObservabilityConfigDefaults(t *testing.T) {
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{},
 		FileName:    "nonexistent",
-		EnvPrefix:   "CR",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		t.Fatalf("load returned error: %v", err)
@@ -83,7 +83,7 @@ func TestObservabilityConfigDefaults(t *testing.T) {
 
 func TestObservabilityConfigFromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 observability:
   logging:
@@ -100,8 +100,8 @@ observability:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
-		EnvPrefix:   "CR",
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		t.Fatalf("load returned error: %v", err)
@@ -129,7 +129,7 @@ func TestReviewActionsDefaults(t *testing.T) {
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{},
 		FileName:    "nonexistent",
-		EnvPrefix:   "CR",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		t.Fatalf("load returned error: %v", err)
@@ -155,7 +155,7 @@ func TestReviewActionsDefaults(t *testing.T) {
 
 func TestReviewActionsFromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   actions:
@@ -171,8 +171,8 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
-		EnvPrefix:   "CR",
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		t.Fatalf("load returned error: %v", err)
@@ -198,7 +198,7 @@ review:
 
 func TestReviewActionsEnvOverride(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   actions:
@@ -209,12 +209,12 @@ review:
 	}
 
 	// Environment variable should override file
-	t.Setenv("CR_REVIEW_ACTIONS_ONCRITICAL", "approve")
+	t.Setenv("BOP_REVIEW_ACTIONS_ONCRITICAL", "approve")
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
-		EnvPrefix:   "CR",
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		t.Fatalf("load returned error: %v", err)
@@ -280,7 +280,7 @@ func TestBotUsernameDefault(t *testing.T) {
 
 func TestBotUsernameFromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   botUsername: "custom-bot[bot]"
@@ -291,7 +291,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_BOTUSER2",
 	})
 	if err != nil {
@@ -385,7 +385,7 @@ func TestVerificationConfigDefaults(t *testing.T) {
 
 func TestVerificationConfigFromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 verification:
   enabled: true
@@ -401,7 +401,7 @@ verification:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_VERIF_FILE",
 	})
 	if err != nil {
@@ -757,7 +757,7 @@ func TestSizeGuardsConfigMergeCanDisable(t *testing.T) {
 
 func TestSizeGuardsConfigFromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 sizeGuards:
   warnTokens: 100000
@@ -774,7 +774,7 @@ sizeGuards:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_SIZEGUARDS",
 	})
 	if err != nil {
@@ -804,7 +804,7 @@ sizeGuards:
 
 func TestBlockThresholdExpansion_Critical(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: critical
@@ -815,7 +815,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_CRIT",
 	})
 	if err != nil {
@@ -839,7 +839,7 @@ review:
 
 func TestBlockThresholdExpansion_High(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: high
@@ -850,7 +850,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_HIGH",
 	})
 	if err != nil {
@@ -874,7 +874,7 @@ review:
 
 func TestBlockThresholdExpansion_Medium(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: medium
@@ -885,7 +885,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_MED",
 	})
 	if err != nil {
@@ -909,7 +909,7 @@ review:
 
 func TestBlockThresholdExpansion_Low(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: low
@@ -920,7 +920,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_LOW",
 	})
 	if err != nil {
@@ -944,7 +944,7 @@ review:
 
 func TestBlockThresholdExpansion_None(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: none
@@ -955,7 +955,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_NONE",
 	})
 	if err != nil {
@@ -979,7 +979,7 @@ review:
 
 func TestBlockThresholdExpansion_CaseInsensitive(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: HIGH
@@ -990,7 +990,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_CASE",
 	})
 	if err != nil {
@@ -1008,7 +1008,7 @@ review:
 
 func TestBlockThresholdExpansion_ExplicitActionsOverride(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: high
@@ -1021,7 +1021,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_OVERRIDE",
 	})
 	if err != nil {
@@ -1039,7 +1039,7 @@ review:
 
 func TestBlockThresholdExpansion_InvalidThreshold(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   blockThreshold: invalid_value
@@ -1050,7 +1050,7 @@ review:
 
 	_, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_THRESHOLD_INVALID",
 	})
 
@@ -1073,7 +1073,7 @@ review:
 
 func TestAlwaysBlockCategories_FromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 review:
   alwaysBlockCategories:
@@ -1086,7 +1086,7 @@ review:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_CATEGORIES_FILE",
 	})
 	if err != nil {
@@ -1384,7 +1384,7 @@ func TestReviewerConfig_HasAllFields(t *testing.T) {
 
 func TestReviewerConfig_EnvExpansion(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 reviewers:
   security:
@@ -1404,7 +1404,7 @@ reviewers:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_REVIEWER_ENV",
 	})
 	if err != nil {
@@ -1426,7 +1426,7 @@ reviewers:
 
 func TestReviewerConfig_FromFile(t *testing.T) {
 	dir := t.TempDir()
-	file := filepath.Join(dir, "cr.yaml")
+	file := filepath.Join(dir, "bop.yaml")
 	content := `
 reviewers:
   security:
@@ -1462,7 +1462,7 @@ defaultReviewers:
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: []string{dir},
-		FileName:    "cr",
+		FileName:    "bop",
 		EnvPrefix:   "CR_TEST_REVIEWER_FILE",
 	})
 	if err != nil {

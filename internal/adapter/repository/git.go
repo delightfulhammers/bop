@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // GitRepository extends LocalRepository with git-awareness.

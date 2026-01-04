@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/output/json"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/adapter/output/json"
+	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/stretchr/testify/assert"
 )
 

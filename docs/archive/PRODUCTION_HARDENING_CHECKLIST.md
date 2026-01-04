@@ -317,8 +317,8 @@ Replace unstructured logging with structured logging throughout the codebase.
   import (
       "context"
       "log"
-      llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-      "github.com/bkyoung/code-reviewer/internal/usecase/review"
+      llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+      "github.com/delightfulhammers/bop/internal/usecase/review"
   )
 
   // ReviewLogger adapts llmhttp.Logger to review.Logger interface.
@@ -446,10 +446,10 @@ Replace unstructured logging with structured logging throughout the codebase.
 
 ### 4.4. Wire Logger from Main ⏱️ 30 min
 
-- [ ] **Read** `cmd/cr/main.go`
+- [ ] **Read** `cmd/bop/main.go`
 - [ ] **Import** observability package
   ```go
-  import "github.com/bkyoung/code-reviewer/internal/adapter/observability"
+  import "github.com/delightfulhammers/bop/internal/adapter/observability"
   ```
 
 - [ ] **Create** ReviewLogger after observability logger setup
@@ -477,18 +477,18 @@ Replace unstructured logging with structured logging throughout the codebase.
 
 - [ ] **Test** manually with JSON output
   ```bash
-  ./cr review branch HEAD --base main --log-format json 2>&1 | jq .
+  ./bop review branch HEAD --base main --log-format json 2>&1 | jq .
   ```
 
 - [ ] **Test** manually with human output
   ```bash
-  ./cr review branch HEAD --base main --log-format human
+  ./bop review branch HEAD --base main --log-format human
   ```
 
 - [ ] **Verify** structured fields appear in logs
 
 **Files Modified**:
-- `cmd/cr/main.go`
+- `cmd/bop/main.go`
 
 ---
 
@@ -518,8 +518,8 @@ Replace unstructured logging with structured logging throughout the codebase.
 
 - [ ] **Verify** binary works
   ```bash
-  ./cr --version
-  ./cr review --help
+  ./bop --version
+  ./bop review --help
   ```
 
 ---
@@ -528,12 +528,12 @@ Replace unstructured logging with structured logging throughout the codebase.
 
 - [ ] **Test** structured logging with JSON format
   ```bash
-  ./cr review branch HEAD~5..HEAD --log-format json 2>&1 | jq .
+  ./bop review branch HEAD~5..HEAD --log-format json 2>&1 | jq .
   ```
 
 - [ ] **Test** structured logging with human format
   ```bash
-  ./cr review branch HEAD~5..HEAD --log-format human
+  ./bop review branch HEAD~5..HEAD --log-format human
   ```
 
 - [ ] **Test** retry logic with invalid API key (should retry and fail gracefully)

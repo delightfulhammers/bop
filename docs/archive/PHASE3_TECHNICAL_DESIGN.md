@@ -93,7 +93,7 @@ package store
 import (
     "context"
     "time"
-    "github.com/bkyoung/code-reviewer/internal/domain"
+    "github.com/delightfulhammers/bop/internal/domain"
 )
 
 // Store defines the persistence layer interface
@@ -192,7 +192,7 @@ import (
     "context"
     "database/sql"
     _ "github.com/mattn/go-sqlite3"
-    "github.com/bkyoung/code-reviewer/internal/store"
+    "github.com/delightfulhammers/bop/internal/store"
 )
 
 type Store struct {
@@ -235,7 +235,7 @@ import (
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/bubbles/list"
     "github.com/charmbracelet/bubbles/viewport"
-    "github.com/bkyoung/code-reviewer/internal/store"
+    "github.com/delightfulhammers/bop/internal/store"
 )
 
 // Model represents the TUI state machine
@@ -583,10 +583,10 @@ func newTUICommand(deps Dependencies) *cobra.Command {
 Add new configuration options:
 
 ```yaml
-# .cr.yaml
+# .bop.yaml
 store:
   enabled: true
-  path: ~/.config/cr/reviews.db
+  path: ~/.config/bop/reviews.db
 
 tui:
   enabled: true

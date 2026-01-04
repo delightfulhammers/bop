@@ -1,6 +1,6 @@
 # Phase 3.1 Implementation Roadmap
 
-## Triage MCP Server (`code-reviewer-mcp`)
+## Triage MCP Server (`bop-mcp`)
 
 **Target Version:** v0.5.0
 **Estimated Effort:** ~50 hours
@@ -66,7 +66,7 @@ M1 (Foundation) ✅
 
 ### Deliverables - All Complete
 
-- [x] `cmd/code-reviewer-mcp/main.go` - Entry point, config loading
+- [x] `cmd/bop-mcp/main.go` - Entry point, config loading
 - [x] `internal/domain/triage.go` - TriageStatus, TriageFinding types
 - [x] `internal/domain/annotation.go` - Annotation, CheckRunSummary types
 - [x] `internal/domain/findings.go` - PRFinding, PRMetadata types

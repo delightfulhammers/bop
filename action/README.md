@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: bkyoung/code-reviewer/action@v0.6.3
+      - uses: delightfulhammers/bop/action@v0.6.3
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -35,7 +35,7 @@ jobs:
 | `block-threshold` | Severity threshold for blocking (`critical`, `high`, `medium`, `low`, `none`) | No | `none` |
 | `post-review` | Post review comments to PR | No | `true` |
 | `fail-on-findings` | Fail if findings exceed block-threshold | No | `false` |
-| `config-file` | Path to cr.yaml config file | No | |
+| `config-file` | Path to bop.yaml config file | No | |
 | `log-level` | Log level (`trace`, `debug`, `info`, `error`) | No | `info` |
 
 \* At least one API key is required.
@@ -56,7 +56,7 @@ jobs:
 ### Multi-Provider Review
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.6.3
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -65,7 +65,7 @@ jobs:
 ### Block on High Severity
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.6.3
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     block-threshold: high
@@ -75,7 +75,7 @@ jobs:
 ### Custom Reviewers
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.6.3
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     reviewers: security,performance
@@ -85,29 +85,29 @@ jobs:
 
 The action automatically detects config files in this order:
 1. Explicit `config-file` input
-2. `.github/cr.yaml`
-3. `cr.yaml` (repo root)
+2. `.github/bop.yaml`
+3. `bop.yaml` (repo root)
 4. Built-in defaults
 
 ```yaml
 # Explicit config path
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.6.3
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-    config-file: custom/path/cr.yaml
+    config-file: custom/path/bop.yaml
 
-# Or just drop a cr.yaml in .github/ or repo root - it's auto-detected
-- uses: bkyoung/code-reviewer/action@v0.6.3
+# Or just drop a bop.yaml in .github/ or repo root - it's auto-detected
+- uses: delightfulhammers/bop/action@v0.6.3
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-A well-commented example config is included in the [release tarballs](https://github.com/bkyoung/code-reviewer/releases) and in the [main repository](https://github.com/bkyoung/code-reviewer/blob/main/cr.yaml).
+A well-commented example config is included in the [release tarballs](https://github.com/delightfulhammers/bop/releases) and in the [main repository](https://github.com/delightfulhammers/bop/blob/main/bop.yaml).
 
 ### Use Outputs in Subsequent Steps
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.6.3
   id: review
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -144,10 +144,10 @@ Reference specific versions for stability:
 
 ```yaml
 # Pin to specific version (recommended)
-- uses: bkyoung/code-reviewer/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.6.3
 
 # Use latest from main (not recommended for production)
-- uses: bkyoung/code-reviewer/action@main
+- uses: delightfulhammers/bop/action@main
 ```
 
 ## License

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

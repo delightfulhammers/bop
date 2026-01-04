@@ -7,7 +7,7 @@ package dedup
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // CandidatePair represents two findings that may be semantic duplicates.

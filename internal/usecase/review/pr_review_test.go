@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,9 +127,9 @@ func TestParsePRIdentifier(t *testing.T) {
 	}{
 		{
 			name:       "parses owner/repo#number format",
-			input:      "bkyoung/code-reviewer#172",
-			wantOwner:  "bkyoung",
-			wantRepo:   "code-reviewer",
+			input:      "delightfulhammers/bop#172",
+			wantOwner:  "delightfulhammers",
+			wantRepo:   "bop",
 			wantNumber: 172,
 			wantErr:    false,
 		},

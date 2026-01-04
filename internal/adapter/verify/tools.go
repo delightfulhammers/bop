@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // MaxToolOutputLength is the maximum length of tool output before truncation.

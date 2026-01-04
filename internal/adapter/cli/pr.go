@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 // prCommand creates the 'review pr' subcommand for reviewing GitHub PRs remotely.
@@ -57,9 +57,9 @@ By default, the review is written to local files only. Use --post to upload
 findings to the PR as inline comments.
 
 Examples:
-  cr review pr bkyoung/code-reviewer#172
-  cr review pr https://github.com/owner/repo/pull/123 --reviewers security
-  cr review pr owner/repo#1 --post --output ./review-output`,
+  bop review pr delightfulhammers/bop#172
+  bop review pr https://github.com/owner/repo/pull/123 --reviewers security
+  bop review pr owner/repo#1 --post --output ./review-output`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			identifier := args[0]

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/adapter/llm"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // StaticClient provides an offline-friendly OpenAI client implementation.

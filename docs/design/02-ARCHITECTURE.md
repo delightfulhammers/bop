@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-This document describes the architectural changes required for Phase 3 of code-reviewer. It builds on the existing clean architecture foundation while introducing new components for triage automation and intelligent review orchestration.
+This document describes the architectural changes required for Phase 3 of bop. It builds on the existing clean architecture foundation while introducing new components for triage automation and intelligent review orchestration.
 
 ### Design Principles (Unchanged)
 
@@ -26,7 +26,7 @@ This document describes the architectural changes required for Phase 3 of code-r
 ```mermaid
 graph TB
     subgraph Entry["Entry Points"]
-        CLI["cmd/cr/<br/>(Cobra CLI)"]
+        CLI["cmd/bop/<br/>(Cobra CLI)"]
     end
 
     subgraph Adapters["internal/adapter/"]
@@ -62,7 +62,7 @@ graph TB
 
 ### Current Data Flow
 
-1. **CLI** → `cr review branch main`
+1. **CLI** → `bop review branch main`
 2. **Git Engine** → Produces cumulative diff
 3. **Redaction** → Sanitizes secrets from diff
 4. **Context Builder** → Assembles prompt with docs
@@ -81,8 +81,8 @@ graph TB
 ```mermaid
 graph TB
     subgraph Entry["Entry Points"]
-        CLI["cmd/cr/<br/>(CLI)"]
-        MCP_Server["cmd/code-reviewer-mcp/<br/>(MCP server)"]
+        CLI["cmd/bop/<br/>(CLI)"]
+        MCP_Server["cmd/bop-mcp/<br/>(MCP server)"]
         MCP_Clients["MCP Clients<br/>Claude Desktop/Code"]
         Action["action/<br/>(GitHub Action)"]
     end
@@ -129,13 +129,13 @@ graph TB
 
 ## 4. Component Details
 
-### 4.1 MCP Server (`cmd/code-reviewer-mcp/`)
+### 4.1 MCP Server (`cmd/bop-mcp/`)
 
 A standalone binary that implements the Model Context Protocol, exposing triage operations as tools.
 
 ```mermaid
 graph TB
-    subgraph MCP["code-reviewer-mcp"]
+    subgraph MCP["bop-mcp"]
         Transport["MCP Transport Layer<br/>(stdio for Claude Code / SSE for web)"]
         
         subgraph Router["Tool Router"]
@@ -162,13 +162,13 @@ graph TB
 
 #### Key Design Decisions
 
-**Separate Binary:** The MCP server is a separate binary (`code-reviewer-mcp`) rather than a subcommand of `cr`. This allows:
+**Separate Binary:** The MCP server is a separate binary (`bop-mcp`) rather than a subcommand of `cr`. This allows:
 - Independent deployment and versioning
 - Cleaner separation of concerns
 - Easier testing of MCP protocol handling
 - Configuration via MCP standard mechanisms
 
-**Shared Libraries:** Both `cr` and `code-reviewer-mcp` share:
+**Shared Libraries:** Both `cr` and `bop-mcp` share:
 - `internal/domain/` — Types
 - `internal/adapter/github/` — GitHub API client
 - `internal/adapter/git/` — Git operations
@@ -417,7 +417,7 @@ func (s *DefaultModelSelector) SelectModel(ctx context.Context, req SelectionReq
 ### 5.1 Reviewers Configuration
 
 ```yaml
-# cr.yaml - Phase 3 configuration
+# bop.yaml - Phase 3 configuration
 
 # Legacy providers section (deprecated, still supported)
 # providers:
@@ -594,7 +594,7 @@ flowchart TB
 ```mermaid
 sequenceDiagram
     participant CC as Claude Code<br/>(MCP Client)
-    participant MCP as code-reviewer-mcp<br/>(MCP Server)
+    participant MCP as bop-mcp<br/>(MCP Server)
     participant GH as GitHub API
     participant Git as Local Git
 
@@ -937,9 +937,9 @@ reviewers:
 
 | Old Command | New Command | Notes |
 |-------------|-------------|-------|
-| `cr review branch main` | `cr review branch main` | Unchanged, uses new config |
-| N/A | `cr review branch main --reviewers security,docs` | Select specific reviewers |
-| N/A | `cr triage list --pr 42` | New triage command |
+| `bop review branch main` | `bop review branch main` | Unchanged, uses new config |
+| N/A | `bop review branch main --reviewers security,docs` | Select specific reviewers |
+| N/A | `bop triage list --pr 42` | New triage command |
 
 ---
 
@@ -947,12 +947,12 @@ reviewers:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| **MCP binary name** | `code-reviewer-mcp` | Descriptive, matches project naming |
+| **MCP binary name** | `bop-mcp` | Descriptive, matches project naming |
 | **Binary renaming** | Support via build flags | Internal code uses `os.Args[0]}` for self-reference; binary name is cosmetic |
-| **Persona storage** | Same `cr.yaml` config file | Simpler, version-controlled with rest of config |
+| **Persona storage** | Same `bop.yaml` config file | Simpler, version-controlled with rest of config |
 | **Triage state** | GitHub-only | Source of truth; enables cross-context flexibility |
 | **Tool naming** | Concise with excellent descriptions | `list_findings` not `list_pr_findings`; descriptions carry context |
-| **Repo structure** | Shared repo | `cmd/code-reviewer-mcp/` alongside `cmd/cr/` |
+| **Repo structure** | Shared repo | `cmd/bop-mcp/` alongside `cmd/bop/` |
 
 ---
 

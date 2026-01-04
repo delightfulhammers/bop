@@ -540,14 +540,14 @@ func (v *AgentVerifier) Verify(ctx context.Context, candidate CandidateFinding, 
 **Goal:** Expose verification settings to users.
 
 **Tasks:**
-- [ ] Add verification config section to `.cr.yml`
+- [ ] Add verification config section to `.bop.yml`
 - [ ] Add CLI flags for verification (--verify, --verification-depth, etc.)
 - [ ] Add --no-verify flag to skip verification (fast mode)
 - [ ] Update help/documentation
 
 **Files to modify:**
 - `internal/config/config.go`
-- `cmd/cr/main.go`
+- `cmd/bop/main.go`
 - `docs/` (documentation)
 
 ### Phase 6: Testing & Refinement

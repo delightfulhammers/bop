@@ -3,7 +3,7 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestFindingDeterministicID(t *testing.T) {

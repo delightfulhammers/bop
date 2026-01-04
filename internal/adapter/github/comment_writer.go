@@ -11,9 +11,9 @@ import (
 	"regexp"
 	"strings"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/pathutil"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/pathutil"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // githubTeamSlugPattern validates GitHub team slugs.

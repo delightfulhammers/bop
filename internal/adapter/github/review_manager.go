@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // ReviewManagerAdapter wraps the GitHub Client to implement the triage.ReviewManager port.

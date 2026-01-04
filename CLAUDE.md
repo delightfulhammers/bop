@@ -12,14 +12,14 @@
 1. **First:** Read Phase 3 design docs in `docs/design/` for current scope
 2. **Build:** `mage build` (or `mage buildAll` for both binaries)
 3. **Test:** `mage test` (or `mage testRace` for race detection)
-4. **Run:** `./cr review branch main` (reviews current branch against main)
+4. **Run:** `./bop review branch main` (reviews current branch against main)
 
 > **IMPORTANT:** Always prefer `mage` commands over raw `go` commands. Mage targets ensure consistent builds with version injection and proper flags.
 
 ### GitHub Action (CI/CD)
 
 ```yaml
-- uses: bkyoung/code-reviewer/action@v0.7.0
+- uses: delightfulhammers/bop/action@v0.7.0
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -53,11 +53,11 @@
 
 | Component | Status |
 |-----------|--------|
-| `code-reviewer-mcp` binary | ✅ Complete |
+| `bop-mcp` binary | ✅ Complete |
 | `internal/usecase/triage/` | ✅ Complete |
 | 12 MCP tool handlers | ✅ Complete |
 | Claude Code skill update | ✅ Complete |
-| `cr triage` CLI (P2) | 🚧 Planned |
+| `bop triage` CLI (P2) | 🚧 Planned |
 
 ### Phase 3.2 Deliverables (Reviewer Personas)
 
@@ -80,8 +80,8 @@
 | MCP `review_files` tool | ✅ Complete |
 | MCP `post_findings` tool | ✅ Complete |
 | MCP sampling fallback | ✅ Complete |
-| `cr review pr` command | ✅ Complete |
-| `cr post` command | ✅ Complete |
+| `bop review pr` command | ✅ Complete |
+| `bop post` command | ✅ Complete |
 | Session-based local storage | ✅ Complete |
 | Interactive TUI (Bubble Tea) | 🚧 Planned |
 
@@ -121,8 +121,8 @@ mage check       # Quick pre-commit: format, vet, test
 mage all         # Everything: format, lint, test, coverage, build
 
 # Build targets
-mage build       # Build cr binary
-mage buildMCP    # Build code-reviewer-mcp binary
+mage build       # Build bop binary
+mage buildMCP    # Build bop-mcp binary
 mage buildAll    # Build both binaries
 mage install     # Install to $GOPATH/bin
 mage clean       # Remove build artifacts
@@ -151,8 +151,8 @@ mage generate    # Run go generate
 Only use these if mage is unavailable:
 
 ```bash
-go build -o cr ./cmd/cr
-go build -o code-reviewer-mcp ./cmd/code-reviewer-mcp
+go build -o bop ./cmd/bop
+go build -o bop-mcp ./cmd/bop-mcp
 go test ./...
 go test -race ./...
 gofmt -w .
@@ -163,16 +163,16 @@ golangci-lint run
 
 ```bash
 # Review current branch against main
-./cr review branch main
+./bop review branch main
 
 # Review with specific personas
-./cr review branch main --reviewers security,architecture
+./bop review branch main --reviewers security,architecture
 
 # Review with output directory
-./cr review branch main --output ./review-output
+./bop review branch main --output ./review-output
 
 # Review with custom context
-./cr review branch main --instructions "Focus on security"
+./bop review branch main --instructions "Focus on security"
 ```
 
 ### Core Rules
@@ -213,7 +213,7 @@ Use these skills for targeted context instead of reading docs manually:
 ```
 cmd/
   cr/                    # CLI entry point
-  code-reviewer-mcp/     # MCP server for triage workflow
+  bop-mcp/     # MCP server for triage workflow
 action/                  # GitHub Action (composite action)
 internal/
   adapter/               # External integrations
@@ -266,7 +266,7 @@ When running `mage lint`, fix **every error** you encounter - not just errors in
 
 ## PR Triage Protocol
 
-When triaging PR review findings, use the `code-reviewer` MCP server tools. The server exposes 12 tools that handle both finding sources:
+When triaging PR review findings, use the `bop` MCP server tools. The server exposes 12 tools that handle both finding sources:
 
 | Source | MCP Tools |
 |--------|-----------|

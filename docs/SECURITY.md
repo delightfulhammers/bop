@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines security concerns, risks, and mitigations when using the code-reviewer tool, particularly in automated CI/CD environments like GitHub Actions.
+This document outlines security concerns, risks, and mitigations when using the bop tool, particularly in automated CI/CD environments like GitHub Actions.
 
 ## ⚠️ Critical Security Concerns
 

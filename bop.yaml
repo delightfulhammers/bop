@@ -1,5 +1,5 @@
 # Code Reviewer Configuration File
-# This file configures the code-reviewer application for CI/CD usage
+# This file configures the bop application for CI/CD usage
 
 # LLM Provider Configuration
 # Providers define connection details (API keys, credentials, timeouts) for LLM services.
@@ -155,7 +155,7 @@ defaultReviewers:
 # Enables persistence of review history to SQLite database
 store:
   enabled: true
-  path: "~/.config/cr/reviews.db"
+  path: "~/.config/bop/reviews.db"
 
 # Output Configuration
 output:

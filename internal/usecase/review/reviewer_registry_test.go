@@ -3,8 +3,8 @@ package review_test
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 func boolPtr(b bool) *bool {

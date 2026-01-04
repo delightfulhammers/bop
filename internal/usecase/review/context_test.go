@@ -3,7 +3,7 @@ package review
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestDetectChangeTypes(t *testing.T) {

@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/verify"
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	usecaseverify "github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/adapter/verify"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/domain"
+	usecaseverify "github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 func TestVerificationPrompt(t *testing.T) {

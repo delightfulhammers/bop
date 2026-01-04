@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm"
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/adapter/llm"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 const (

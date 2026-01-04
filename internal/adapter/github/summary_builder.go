@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // BuildSummaryAppendix creates structured appendix sections for edge cases.

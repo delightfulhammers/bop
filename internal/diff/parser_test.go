@@ -3,7 +3,7 @@ package diff_test
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/diff"
+	"github.com/delightfulhammers/bop/internal/diff"
 )
 
 // equalIntPtr compares two *int values for equality (test helper).

@@ -10,10 +10,10 @@ When this skill is invoked, you have access to development workflows.
 
 ```bash
 # Build the CLI
-go build -o cr ./cmd/cr
+go build -o bop ./cmd/bop
 
 # Build with version injection
-go build -ldflags "-X github.com/bkyoung/code-reviewer/internal/version.version=v0.2.3" -o cr ./cmd/cr
+go build -ldflags "-X github.com/delightfulhammers/bop/internal/version.version=v0.2.3" -o bop ./cmd/bop
 ```
 
 ## Test Commands
@@ -50,7 +50,7 @@ go test -race ./...
 
 ## Configuration
 
-The tool uses `cr.yaml` for configuration. Key sections:
+The tool uses `bop.yaml` for configuration. Key sections:
 
 ```yaml
 providers:

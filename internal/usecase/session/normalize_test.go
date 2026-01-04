@@ -105,16 +105,16 @@ func TestNormalizeRemoteURL(t *testing.T) {
 func TestNormalizeRemoteURL_SameRepoSameResult(t *testing.T) {
 	// All these should normalize to the same result
 	urls := []string{
-		"https://github.com/bkyoung/code-reviewer.git",
-		"https://github.com/bkyoung/code-reviewer",
-		"git@github.com:bkyoung/code-reviewer.git",
-		"git@github.com:bkyoung/code-reviewer",
-		"ssh://git@github.com/bkyoung/code-reviewer.git",
-		"git://github.com/bkyoung/code-reviewer.git",
-		"HTTPS://GitHub.com/bkyoung/code-reviewer.git",
+		"https://github.com/delightfulhammers/bop.git",
+		"https://github.com/delightfulhammers/bop",
+		"git@github.com:delightfulhammers/bop.git",
+		"git@github.com:delightfulhammers/bop",
+		"ssh://git@github.com/delightfulhammers/bop.git",
+		"git://github.com/delightfulhammers/bop.git",
+		"HTTPS://GitHub.com/delightfulhammers/bop.git",
 	}
 
-	expected := "github.com/bkyoung/code-reviewer"
+	expected := "github.com/delightfulhammers/bop"
 
 	for _, url := range urls {
 		result := NormalizeRemoteURL(url)

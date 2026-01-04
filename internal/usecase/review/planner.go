@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // scanner wraps bufio.Scanner for easier mocking and testing.

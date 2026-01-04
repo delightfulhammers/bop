@@ -1,8 +1,8 @@
 package github
 
 import (
-	"github.com/bkyoung/code-reviewer/internal/diff"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/diff"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // MapFindings enriches domain findings with GitHub diff positions.

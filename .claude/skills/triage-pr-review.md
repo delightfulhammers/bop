@@ -1,10 +1,10 @@
 # PR Code Review Triage Skill
 
-Triage, respond to, and address PR code review feedback using the `code-reviewer` MCP server.
+Triage, respond to, and address PR code review feedback using the `bop` MCP server.
 
 ## Prerequisites
 
-The `code-reviewer` MCP server must be running and configured in Claude Code. It provides 12 tools for PR triage.
+The `bop` MCP server must be running and configured in Claude Code. It provides 12 tools for PR triage.
 
 ## Understanding the Two Sources
 
@@ -20,7 +20,7 @@ The `code-reviewer` MCP server must be running and configured in Claude Code. It
 ### Bot Comment Handling
 
 `list_findings` returns both:
-- Comments with `CR_FP` fingerprint markers (from code-reviewer)
+- Comments with `CR_FP` fingerprint markers (from bop)
 - **All comments from bot users** (e.g., `github-actions[bot]`, `github-advanced-security[bot]`)
 
 This ensures all automated review feedback is captured, regardless of whether the bot uses fingerprints.
@@ -111,7 +111,7 @@ For findings you're addressing:
 
 1. Use `get_suggestion` to extract the proposed fix
 2. Apply the fix using standard file editing
-3. Run validation: `go test ./... && go build -o cr ./cmd/cr`
+3. Run validation: `go test ./... && go build -o bop ./cmd/bop`
 4. Commit locally (**don't push yet** - respond to findings first!)
 
 ### Step 5: Respond to Findings
@@ -291,7 +291,7 @@ Group operations by type for efficiency:
 > ⚠️ **CRITICAL: Respond BEFORE Push**
 >
 > Always post responses to findings (step 4) BEFORE pushing code (step 6). Pushing triggers CI which may start a new review cycle. If your responses aren't posted yet, there's a race condition where:
-> 1. You push → CI triggers code-reviewer
+> 1. You push → CI triggers bop
 > 2. Code-reviewer runs and posts new findings
 > 3. Your responses to OLD findings finally post (too late!)
 >

@@ -296,7 +296,7 @@ func TestAnnotation_MatchesFilters(t *testing.T) {
 
 func TestCheckRunSummary_MatchesNameFilter(t *testing.T) {
 	summary := CheckRunSummary{
-		Name: "code-reviewer",
+		Name: "bop",
 	}
 
 	tests := []struct {
@@ -311,7 +311,7 @@ func TestCheckRunSummary_MatchesNameFilter(t *testing.T) {
 		},
 		{
 			name:       "matching name filter",
-			nameFilter: strPtr("code-reviewer"),
+			nameFilter: strPtr("bop"),
 			want:       true,
 		},
 		{
@@ -341,8 +341,8 @@ func strPtr(s string) *string {
 
 func TestPRMetadata(t *testing.T) {
 	meta := PRMetadata{
-		Owner:       "bkyoung",
-		Repo:        "code-reviewer",
+		Owner:       "delightfulhammers",
+		Repo:        "bop",
 		Number:      42,
 		HeadRef:     "feature-branch",
 		HeadSHA:     "abc123",
@@ -350,12 +350,12 @@ func TestPRMetadata(t *testing.T) {
 		BaseSHA:     "def456",
 		Title:       "Add new feature",
 		Description: "This adds a cool feature",
-		Author:      "bkyoung",
+		Author:      "delightfulhammers",
 		State:       "open",
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
 
-	assert.Equal(t, "bkyoung/code-reviewer", meta.FullName())
+	assert.Equal(t, "delightfulhammers/bop", meta.FullName())
 	assert.True(t, meta.IsOpen())
 }

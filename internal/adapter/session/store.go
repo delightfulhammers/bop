@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // Errors returned by FileStore operations.
@@ -24,7 +24,7 @@ var (
 // FileStore implements LocalSessionStore using the filesystem.
 // Storage layout:
 //
-//	~/.cache/code-reviewer/sessions/<session_id>/
+//	~/.cache/bop/sessions/<session_id>/
 //	  meta.json     - Session metadata (LocalSession without findings)
 //	  reviews/      - Directory containing individual reviews
 //	    <review_id>.json
@@ -34,14 +34,14 @@ type FileStore struct {
 }
 
 // NewFileStore creates a new file-based session store.
-// If baseDir is empty, defaults to ~/.cache/code-reviewer/sessions.
+// If baseDir is empty, defaults to ~/.cache/bop/sessions.
 func NewFileStore(baseDir string) (*FileStore, error) {
 	if baseDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return nil, fmt.Errorf("get home directory: %w", err)
 		}
-		baseDir = filepath.Join(home, ".cache", "code-reviewer", "sessions")
+		baseDir = filepath.Join(home, ".cache", "bop", "sessions")
 	}
 
 	if err := os.MkdirAll(baseDir, 0o700); err != nil {

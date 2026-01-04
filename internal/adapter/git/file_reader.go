@@ -10,9 +10,9 @@ import (
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/bkyoung/code-reviewer/internal/diff"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/diff"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // maxFileSize is the maximum file size that can be read (10 MB).

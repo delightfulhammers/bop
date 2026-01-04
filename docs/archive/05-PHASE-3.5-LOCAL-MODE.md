@@ -31,10 +31,10 @@ The primary use case is reviewing PRs in GitHub Enterprise repositories where se
 ### Current Architecture
 
 ```
-GitHub Actions → cr review → LLM providers → GitHub PR comments
+GitHub Actions → bop review → LLM providers → GitHub PR comments
                                            → SARIF annotations
 
-code-reviewer-mcp ← GitHub API (read findings for triage)
+bop-mcp ← GitHub API (read findings for triage)
 ```
 
 **Limitations:**
@@ -58,7 +58,7 @@ TUI/REPL ────────┘                                    └─�
 
 ## 3. Feature Specifications
 
-### 3.1 Remote PR Review (`cr review pr`)
+### 3.1 Remote PR Review (`bop review pr`)
 
 **Command:**
 ```bash
@@ -79,7 +79,7 @@ cr review pr owner/repo#123 --interactive  # launches TUI
 - Uses `GITHUB_TOKEN` environment variable
 - Works with github.com and GitHub Enterprise (`GH_HOST` or config)
 
-**Differences from `cr review branch`:**
+**Differences from `bop review branch`:**
 | Aspect | `review branch` | `review pr` |
 |--------|-----------------|-------------|
 | Input | Local git diff | GitHub PR diff |
@@ -314,11 +314,11 @@ cr sessions clean                  // Delete all
 
 ### Phase 3.5a: Remote PR Review (Foundation)
 
-**Scope:** `cr review pr owner/repo#123` with file output
+**Scope:** `bop review pr owner/repo#123` with file output
 
 **Deliverables:**
 - [ ] GitHub adapter: fetch PR diff via API
-- [ ] CLI command: `cr review pr`
+- [ ] CLI command: `bop review pr`
 - [ ] Output to stdout/files (no TUI yet)
 - [ ] Works with github.com and GHE
 
@@ -331,7 +331,7 @@ cr sessions clean                  // Delete all
 **Deliverables:**
 - [ ] Session store implementation
 - [ ] Session ID derivation (repo+branch hash)
-- [ ] `cr sessions` commands
+- [ ] `bop sessions` commands
 - [ ] Deduplication against prior session runs
 
 **Effort:** Medium
@@ -402,7 +402,7 @@ cr sessions clean                  // Delete all
 1. **Editor for findings:** Inline in TUI, or shell out to `$EDITOR`?
 2. **GHE discovery:** Auto-detect from git remote, or require explicit config?
 3. **Session storage location:** `~/.cache` vs `~/.local/share` vs configurable?
-4. **Review without posting:** Should `cr review pr` require `--post` to post, or `--dry-run` to skip?
+4. **Review without posting:** Should `bop review pr` require `--post` to post, or `--dry-run` to skip?
 
 ---
 

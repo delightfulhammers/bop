@@ -41,7 +41,7 @@ func (l AnnotationLevel) IsValid() bool {
 }
 
 // Annotation represents a SARIF annotation from a GitHub check run.
-// These are created by tools like code-reviewer when posting findings.
+// These are created by tools like bop when posting findings.
 type Annotation struct {
 	// CheckRunID is the GitHub check run this annotation belongs to.
 	CheckRunID int64 `json:"checkRunId"`
@@ -96,7 +96,7 @@ type CheckRunSummary struct {
 	// ID is the GitHub check run ID.
 	ID int64 `json:"id"`
 
-	// Name is the name of the check (e.g., "code-reviewer").
+	// Name is the name of the check (e.g., "bop").
 	Name string `json:"name"`
 
 	// Status is the current status (queued, in_progress, completed).

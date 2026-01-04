@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // Regex patterns for parsing comment metadata.
@@ -33,7 +33,7 @@ var (
 // in findings even without fingerprints. This prevents arbitrary bots from
 // injecting findings into the triage workflow.
 var trustedBots = map[string]bool{
-	"github-actions[bot]":           true, // GitHub Actions (code-reviewer)
+	"github-actions[bot]":           true, // GitHub Actions (bop)
 	"github-advanced-security[bot]": true, // GitHub Advanced Security (CodeQL, etc.)
 	"dependabot[bot]":               true, // Dependabot security updates
 	"renovate[bot]":                 true, // Renovate dependency updates

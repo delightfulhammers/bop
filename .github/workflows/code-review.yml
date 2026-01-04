@@ -24,8 +24,8 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Build code-reviewer
-        run: go build -o cr ./cmd/cr
+      - name: Build bop
+        run: go build -o bop ./cmd/bop
 
       - name: Get head commit message
         id: get-commit
@@ -46,7 +46,7 @@ jobs:
           # Check for skip trigger in commit message, PR title, or PR description
           # Exit codes: 0 = skip, 1 = review, other = error
           set +e
-          ./cr check-skip \
+          ./bop check-skip \
             --commit-message "$COMMIT_MSG" \
             --pr-title "$PR_TITLE" \
             --pr-description "$PR_BODY"
@@ -78,7 +78,7 @@ jobs:
           # Compare PR branch against base branch
           # github.head_ref = source branch (e.g., feature/foo)
           # github.event.pull_request.base.ref = target branch (e.g., main)
-          ./cr review branch ${{ github.head_ref }} \
+          ./bop review branch ${{ github.head_ref }} \
             --base ${{ github.event.pull_request.base.ref }} \
             --output ./review-output \
             --post-github-review \

@@ -18,4 +18,4 @@ Running `mage` with no arguments executes `mage ci`.
 
 The CLI exposes `-v` / `--version` flags on every command. `mage build` injects the most recent Git tag as the version; if the working tree or HEAD diverges from that tag, the string is suffixed with `-dirty`. When no tags are present, the default version is `v0.0.0`.
 
-To review uncommitted work on the checked-out branch, run `cr review branch --include-uncommitted`; the command auto-detects the current branch unless you pass a positional name or `--target`. The CLI still expects `git` to be available so it can diff the working tree against the chosen base reference.
+To review uncommitted work on the checked-out branch, run `bop review branch --include-uncommitted`; the command auto-detects the current branch unless you pass a positional name or `--target`. The CLI still expects `git` to be available so it can diff the working tree against the chosen base reference.

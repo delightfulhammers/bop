@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Phase 3.1 delivers the triage automation capabilities that close the review-to-resolution loop. The primary deliverable is an MCP server (`code-reviewer-mcp`) that exposes triage operations as tools for AI assistants like Claude Code.
+Phase 3.1 delivers the triage automation capabilities that close the review-to-resolution loop. The primary deliverable is an MCP server (`bop-mcp`) that exposes triage operations as tools for AI assistants like Claude Code.
 
 ### Architecture Philosophy
 
@@ -88,12 +88,12 @@ This approach:
 
 | Deliverable | Priority | Description |
 |-------------|----------|-------------|
-| `code-reviewer-mcp` binary | P0 | MCP server exposing triage tools |
+| `bop-mcp` binary | P0 | MCP server exposing triage tools |
 | `internal/usecase/triage/` | P0 | Triage business logic (transport-agnostic) |
 | `internal/adapter/mcp/` | P0 | MCP tool handlers |
 | GitHub adapter extensions | P0 | Comment threading, review status queries |
 | `triage-pr-review` skill | P1 | Claude Code skill for effective triage |
-| `cr triage` CLI | P2 | Interactive CLI (lower priority) |
+| `bop triage` CLI | P2 | Interactive CLI (lower priority) |
 
 ### Dependencies
 
@@ -110,7 +110,7 @@ This approach:
 cmd/
 ├── cr/                          # Existing CLI
 │   └── main.go
-└── code-reviewer-mcp/           # NEW: MCP server entry point
+└── bop-mcp/           # NEW: MCP server entry point
     └── main.go
 
 internal/
@@ -264,7 +264,7 @@ import (
 	"context"
 	"time"
 	
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // GitHubClient defines GitHub operations needed for triage.
@@ -346,7 +346,7 @@ import (
 	"regexp"
 	"strings"
 	
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // Service coordinates triage operations.
@@ -725,7 +725,7 @@ func (s *Service) parseSuggestionBlock(finding *domain.TriageFinding) (*domain.S
 ### 5.1 Server Setup
 
 ```go
-// cmd/code-reviewer-mcp/main.go
+// cmd/bop-mcp/main.go
 
 package main
 
@@ -735,10 +735,10 @@ import (
 	
 	"github.com/mark3labs/mcp-go/server"
 	
-	"github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/adapter/git"
-	mcpadapter "github.com/bkyoung/code-reviewer/internal/adapter/mcp"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/adapter/github"
+	"github.com/delightfulhammers/bop/internal/adapter/git"
+	mcpadapter "github.com/delightfulhammers/bop/internal/adapter/mcp"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 func main() {
@@ -772,7 +772,7 @@ func main() {
 	
 	// Create MCP server
 	s := server.NewMCPServer(
-		"code-reviewer-mcp",
+		"bop-mcp",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 	)
@@ -806,7 +806,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // RegisterTools registers all triage tools with the MCP server.
@@ -1029,8 +1029,8 @@ import (
 	
 	"github.com/mark3labs/mcp-go/mcp"
 	
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 func handleListFindings(ctx context.Context, svc *triage.Service, owner, repo string, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1161,7 +1161,7 @@ func handleGetSuggestion(ctx context.Context, svc *triage.Service, req mcp.CallT
 
 # Triage PR Review Skill
 
-This skill teaches you how to effectively triage code review feedback using the `code-reviewer-mcp` tools combined with your native file editing capabilities.
+This skill teaches you how to effectively triage code review feedback using the `bop-mcp` tools combined with your native file editing capabilities.
 
 ## Overview
 
@@ -1173,7 +1173,7 @@ After a PR receives automated code review, you'll help the developer:
 
 ## Tools Available
 
-### From `code-reviewer-mcp` (MCP tools)
+### From `bop-mcp` (MCP tools)
 
 **SARIF/Annotations (Static Analysis):**
 - `list_annotations` - Get check run annotations for HEAD commit

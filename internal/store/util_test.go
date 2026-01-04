@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/store"
+	"github.com/delightfulhammers/bop/internal/store"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -120,7 +120,7 @@ import (
     "encoding/json"
     "fmt"
 
-    "github.com/bkyoung/code-reviewer/internal/domain"
+    "github.com/delightfulhammers/bop/internal/domain"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -215,11 +215,11 @@ Create a factory that builds the provider list with fallback support.
 package llm
 
 import (
-    "github.com/bkyoung/code-reviewer/internal/adapter/llm/anthropic"
-    "github.com/bkyoung/code-reviewer/internal/adapter/llm/openai"
-    "github.com/bkyoung/code-reviewer/internal/adapter/llm/sampling"
-    "github.com/bkyoung/code-reviewer/internal/config"
-    "github.com/bkyoung/code-reviewer/internal/usecase/review"
+    "github.com/delightfulhammers/bop/internal/adapter/llm/anthropic"
+    "github.com/delightfulhammers/bop/internal/adapter/llm/openai"
+    "github.com/delightfulhammers/bop/internal/adapter/llm/sampling"
+    "github.com/delightfulhammers/bop/internal/config"
+    "github.com/delightfulhammers/bop/internal/usecase/review"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -352,7 +352,7 @@ func (s *Server) handleReviewBranch(...) {
 
 ### Phase 5: Update MCP Server Wiring
 
-**File:** `cmd/code-reviewer-mcp/main.go`
+**File:** `cmd/bop-mcp/main.go`
 
 ```go
 func run() error {
@@ -455,7 +455,7 @@ func run() error {
 
 ### Manual Testing
 
-1. Connect code-reviewer-mcp to Claude Code
+1. Connect bop-mcp to Claude Code
 2. Remove all API keys from environment
 3. Run `review_branch` tool
 4. Verify it uses sampling and returns findings
@@ -529,7 +529,7 @@ Cache sampling responses for identical diffs to reduce client load.
 | `internal/adapter/llm/factory.go` | Create | Provider factory with fallback |
 | `internal/adapter/mcp/server.go` | Modify | Add DirectProviders to deps |
 | `internal/adapter/mcp/review_handlers.go` | Modify | Per-request provider wiring |
-| `cmd/code-reviewer-mcp/main.go` | Modify | Remove orchestrator from startup |
+| `cmd/bop-mcp/main.go` | Modify | Remove orchestrator from startup |
 | `docs/design/06-MCP-SAMPLING-FALLBACK.md` | Create | This document |
 
 ---

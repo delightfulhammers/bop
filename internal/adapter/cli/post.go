@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/post"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/post"
 )
 
 // FindingsPoster defines the dependency for posting findings.
@@ -34,13 +34,13 @@ them to a GitHub PR. This enables a review-then-post workflow where
 you can inspect and optionally edit findings before posting.
 
 The JSON file can be:
-  - Full review output from 'cr review branch --format json'
+  - Full review output from 'bop review branch --format json'
   - Raw array of findings for maximum flexibility
 
 Examples:
-  cr post ./review/findings.json --owner bkyoung --repo code-reviewer --pr 217
-  cr post ./review.json --owner owner --repo repo --pr 123 --dry-run
-  cr post ./review.json --owner owner --repo repo --pr 123 --review-action COMMENT`,
+  bop post ./review/findings.json --owner delightfulhammers --repo bop --pr 217
+  bop post ./review.json --owner owner --repo repo --pr 123 --dry-run
+  bop post ./review.json --owner owner --repo repo --pr 123 --review-action COMMENT`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Validate dependency (fail fast if not properly wired)

@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 // ErrVersionRequested indicates the user requested the CLI version and no further work should be done.
@@ -89,7 +89,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	}
 
 	root := &cobra.Command{
-		Use:   "cr",
+		Use:   "bop",
 		Short: "Multi-LLM code review CLI",
 	}
 	root.SilenceUsage = true

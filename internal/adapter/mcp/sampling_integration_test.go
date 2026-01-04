@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

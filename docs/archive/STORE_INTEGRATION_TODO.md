@@ -53,7 +53,7 @@ Integrate the SQLite persistence layer with the review orchestrator so that all 
 - [x] Write tests for config loading with store options (config_test.go)
 
 ### 2.2 Default Configuration ✅
-- [x] Implement default store path ~/.config/cr/reviews.db (loader.go)
+- [x] Implement default store path ~/.config/bop/reviews.db (loader.go)
 - [x] Add store defaults to setDefaults() (loader.go)
 - [x] Write tests for defaults (config_test.go)
 
@@ -95,7 +95,7 @@ Integrate the SQLite persistence layer with the review orchestrator so that all 
 ## Phase 4: Main Function Updates ✅ COMPLETE
 
 ### 4.1 Store Initialization ✅
-- [x] Add store initialization in cmd/cr/main.go (main.go)
+- [x] Add store initialization in cmd/bop/main.go (main.go)
 - [x] Add directory creation with error handling (main.go)
 - [x] Add defer reviewStore.Close() (main.go)
 - [x] Wire store into orchestrator deps (main.go)
@@ -130,7 +130,7 @@ Integrate the SQLite persistence layer with the review orchestrator so that all 
 ### 6.1 Documentation ✅
 - [x] Update MAIN_INTEGRATION_CHECKLIST.md with store integration status
 - [x] Update CONFIGURATION.md with store configuration examples
-- [x] Add example cr.yaml with store config (in docs)
+- [x] Add example bop.yaml with store config (in docs)
 - [x] Document environment variable overrides (CONFIGURATION.md)
 
 ### 6.2 Verification ✅
@@ -164,13 +164,13 @@ mage ci
 # Run specific tests
 go test ./internal/store/... -v
 go test ./internal/usecase/review/... -v
-go test ./cmd/cr/... -v
+go test ./cmd/bop/... -v
 
 # Test with real review
-./cr review branch main --target feature --output ./reviews
+./bop review branch main --target feature --output ./reviews
 
 # Inspect database
-sqlite3 ~/.config/cr/reviews.db
+sqlite3 ~/.config/bop/reviews.db
 > .tables
 > SELECT * FROM runs;
 > SELECT * FROM reviews;

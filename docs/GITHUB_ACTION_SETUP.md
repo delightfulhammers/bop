@@ -98,8 +98,8 @@ Create a test pull request:
 
 ```bash
 git checkout -b test-code-review
-echo "// Test change" >> cmd/cr/main.go
-git add cmd/cr/main.go
+echo "// Test change" >> cmd/bop/main.go
+git add cmd/bop/main.go
 git commit -m "Test: Trigger code review workflow"
 git push origin test-code-review
 ```
@@ -252,10 +252,10 @@ To use Anthropic, Gemini, or Ollama instead of OpenAI:
    - `GEMINI_API_KEY` for Google Gemini
    - No key needed for Ollama (local only, not suitable for GitHub Actions)
 
-2. **Create a config file** in your repository:
+2. **Create a `.bop.yaml` config file** in your repository:
 
 ```yaml
-# .code-reviewer.yml
+# .bop.yml
 providers:
   anthropic:
     apiKey: ${ANTHROPIC_API_KEY}
@@ -275,14 +275,14 @@ providers:
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   run: |
-    ./cr branch ${{ github.event.pull_request.base.ref }} \
+    ./bop branch ${{ github.event.pull_request.base.ref }} \
       --format sarif \
       --output review.sarif
 ```
 
 ### Customizing Review Behavior
 
-Create a `.code-reviewer.yml` config file in your repository root:
+Create a `.bop.yaml` config file in your repository root:
 
 ```yaml
 # Example configuration
@@ -463,4 +463,4 @@ For issues or questions:
 - Check workflow logs in GitHub Actions tab
 - Review SARIF artifact for detailed output
 - Consult [CONFIGURATION.md](./CONFIGURATION.md) for config options
-- Open an issue in the code-reviewer repository
+- Open an issue in the bop repository

@@ -3,7 +3,7 @@ package triage
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // ReviewRepository provides access to stored review data.

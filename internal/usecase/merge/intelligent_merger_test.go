@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/store"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/store"
 )
 
 func TestGroupSimilarFindings(t *testing.T) {

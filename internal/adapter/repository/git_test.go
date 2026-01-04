@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/repository"
-	"github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/adapter/repository"
+	"github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // Compile-time check that GitRepository implements verify.Repository.

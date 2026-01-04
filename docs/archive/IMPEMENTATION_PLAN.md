@@ -23,7 +23,7 @@ This document outlines a phased implementation plan for the Multi-LLM Code Revie
 * **\[x\] Markdown Output:** Implement the OutputManager with support for Markdown only.  
 * **\[x\] Core Data Structs:** Define all key structs for Review, Finding, etc.
 
-**Outcome:** A user can run cr review branch main and get a single Markdown review file in an output directory. Reproducible automation is provided through Mage targets (`mage ci`).
+**Outcome:** A user can run bop review branch main and get a single Markdown review file in an output directory. Reproducible automation is provided through Mage targets (`mage ci`).
 
 ## **3\. Phase 2: Parallelism, Merging & Determinism (Weeks 4-6)**
 

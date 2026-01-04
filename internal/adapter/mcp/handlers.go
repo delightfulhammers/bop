@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

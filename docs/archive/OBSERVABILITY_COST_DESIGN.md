@@ -604,7 +604,7 @@ type Review struct {
 ### 4.6 Configuration
 
 ```yaml
-# ~/.config/cr/cr.yaml
+# ~/.config/bop/bop.yaml
 
 observability:
   logging:

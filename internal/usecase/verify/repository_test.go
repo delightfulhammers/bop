@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // mockRepository implements verify.Repository for testing.

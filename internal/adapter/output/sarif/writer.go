@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 // Writer implements the review.SARIFWriter interface.
@@ -122,7 +122,7 @@ func (w *Writer) convertToSARIF(artifact review.SARIFArtifact) map[string]interf
 	tool := map[string]interface{}{
 		"driver": map[string]interface{}{
 			"name":            artifact.ProviderName,
-			"informationUri":  "https://github.com/bkyoung/code-reviewer",
+			"informationUri":  "https://github.com/delightfulhammers/bop",
 			"version":         "1.0.0",
 			"semanticVersion": "1.0.0",
 			"rules": []map[string]interface{}{

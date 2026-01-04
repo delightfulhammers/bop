@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/anthropic"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/gemini"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/ollama"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/openai"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/sampling"
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/anthropic"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/gemini"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/ollama"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/openai"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/sampling"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

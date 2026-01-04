@@ -3,8 +3,8 @@ package observability
 import (
 	"context"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 // ReviewLogger adapts llmhttp.Logger to review.Logger interface.

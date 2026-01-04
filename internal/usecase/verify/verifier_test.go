@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // mockVerifier implements verify.Verifier for testing.

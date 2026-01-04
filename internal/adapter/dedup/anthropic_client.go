@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/config"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/config"
 )
 
 // maxResponseSize limits the response body to prevent memory exhaustion.

@@ -65,7 +65,7 @@ type ReviewPRInput struct {
 	Owner     string   `json:"owner" jsonschema:"Repository owner"`
 	Repo      string   `json:"repo" jsonschema:"Repository name"`
 	PRNumber  int      `json:"pr_number" jsonschema:"Pull request number"`
-	Reviewers []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (defaults to cr.yaml configuration)"`
+	Reviewers []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (defaults to bop.yaml configuration)"`
 }
 
 // ReviewPROutput is the output for the review_pr tool.
@@ -140,7 +140,7 @@ type ReviewBranchInput struct {
 	BaseRef            string   `json:"base_ref" jsonschema:"Base ref to diff against (e.g. main),required"`
 	TargetRef          string   `json:"target_ref,omitempty" jsonschema:"Target branch to review (defaults to current branch)"`
 	IncludeUncommitted bool     `json:"include_uncommitted,omitempty" jsonschema:"Include uncommitted working tree changes in the review"`
-	Reviewers          []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from cr.yaml config)"`
+	Reviewers          []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from bop.yaml config)"`
 	RepoDir            string   `json:"repo_dir,omitempty" jsonschema:"Repository directory to review (defaults to server working directory)"`
 }
 
@@ -170,7 +170,7 @@ type ReviewFilesInput struct {
 	Path      string   `json:"path" jsonschema:"Directory to review,required"`
 	Patterns  []string `json:"patterns,omitempty" jsonschema:"Glob patterns to include (e.g., *.go, *.ts). Matches against filename. If empty, reviews all non-binary files."`
 	Exclude   []string `json:"exclude,omitempty" jsonschema:"Glob patterns to exclude (e.g., *_test.go, *.min.js). Matches against filename."`
-	Reviewers []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from cr.yaml config)"`
+	Reviewers []string `json:"reviewers,omitempty" jsonschema:"Specific reviewers to use (from bop.yaml config)"`
 }
 
 // ReviewFilesOutput is the output for the review_files tool.

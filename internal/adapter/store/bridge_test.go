@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	storeAdapter "github.com/bkyoung/code-reviewer/internal/adapter/store"
-	"github.com/bkyoung/code-reviewer/internal/store"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	storeAdapter "github.com/delightfulhammers/bop/internal/adapter/store"
+	"github.com/delightfulhammers/bop/internal/store"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

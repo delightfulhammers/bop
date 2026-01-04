@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/store"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/store"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 // Bridge adapts store.Store to review.Store interface.

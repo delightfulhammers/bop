@@ -129,8 +129,8 @@ The codebase uses a mix of structured logging (via observability logger) and uns
 ### Current State
 
 **Unstructured logging locations**:
-1. `cmd/cr/main.go:88` - Store initialization warning
-2. `cmd/cr/main.go:93` - Store initialization warning (else branch)
+1. `cmd/bop/main.go:88` - Store initialization warning
+2. `cmd/bop/main.go:93` - Store initialization warning (else branch)
 3. `internal/usecase/review/orchestrator.go:244` - Failed to create run warning
 4. `internal/usecase/review/orchestrator.go:349` - Failed to save review warning
 5. `internal/usecase/review/orchestrator.go:398` - Failed to update run cost warning
@@ -202,8 +202,8 @@ package observability
 
 import (
     "context"
-    llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-    "github.com/bkyoung/code-reviewer/internal/usecase/review"
+    llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+    "github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 // ReviewLogger adapts llmhttp.Logger to review.Logger interface.
@@ -224,7 +224,7 @@ func (l *ReviewLogger) LogInfo(ctx context.Context, message string, fields map[s
 }
 ```
 
-Update `cmd/cr/main.go` to wire logger:
+Update `cmd/bop/main.go` to wire logger:
 
 ```go
 // Create observability logger
@@ -526,7 +526,7 @@ Each task includes specific unit tests:
 go test -race ./...
 
 # Test structured logging output
-./cr review branch HEAD --base main 2>&1 | jq .  # JSON format
+./bop review branch HEAD --base main 2>&1 | jq .  # JSON format
 
 # Verify no regressions
 mage ci

@@ -268,17 +268,17 @@ go test -tags=integration ./internal/adapter/llm/...
 
 # Manual tests (requires API keys and real services)
 # OpenAI
-OPENAI_API_KEY=sk-... ./cr review branch main --target HEAD
+OPENAI_API_KEY=sk-... ./bop review branch main --target HEAD
 
 # Anthropic
-ANTHROPIC_API_KEY=sk-ant-... ./cr review branch main --target HEAD
+ANTHROPIC_API_KEY=sk-ant-... ./bop review branch main --target HEAD
 
 # Ollama (requires Ollama running locally)
 ollama serve &
-./cr review branch main --target HEAD
+./bop review branch main --target HEAD
 
 # Gemini
-GEMINI_API_KEY=... ./cr review branch main --target HEAD
+GEMINI_API_KEY=... ./bop review branch main --target HEAD
 ```
 
 ## Completion Criteria

@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/git"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/adapter/git"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 func TestEngine_ReadFile(t *testing.T) {

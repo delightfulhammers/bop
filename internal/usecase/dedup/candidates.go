@@ -1,7 +1,7 @@
 package dedup
 
 import (
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // FindCandidates identifies new findings that may be semantic duplicates of existing findings.

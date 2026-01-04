@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // LocalSessionStore provides persistence for branch-based review sessions.

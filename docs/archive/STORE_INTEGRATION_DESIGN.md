@@ -293,17 +293,17 @@ func defaultStorePath() string {
     if err != nil {
         return "./reviews.db"
     }
-    return filepath.Join(home, ".config", "cr", "reviews.db")
+    return filepath.Join(home, ".config", "bop", "reviews.db")
 }
 ```
 
 ### 4.3 Example Configuration File
 
 ```yaml
-# .cr.yaml
+# .bop.yaml
 store:
   enabled: true
-  path: ~/.config/cr/reviews.db
+  path: ~/.config/bop/reviews.db
 
 # Environment variable override:
 # CR_STORE_ENABLED=false
@@ -315,7 +315,7 @@ store:
 ### 5.1 Wire Store into Orchestrator
 
 ```go
-// cmd/cr/main.go
+// cmd/bop/main.go
 
 func run() error {
     ctx := context.Background()
@@ -461,7 +461,7 @@ if err := os.MkdirAll(storeDir, 0755); err != nil {
    - Integrate at appropriate points
    - Add error handling
 
-4. **Main function updates** (`cmd/cr/main.go`)
+4. **Main function updates** (`cmd/bop/main.go`)
    - Initialize store from config
    - Wire into orchestrator
    - Add cleanup

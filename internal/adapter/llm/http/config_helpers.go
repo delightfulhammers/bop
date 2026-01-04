@@ -3,7 +3,7 @@ package http
 import (
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/config"
+	"github.com/delightfulhammers/bop/internal/config"
 )
 
 // ParseTimeout parses timeout with fallback chain: provider override > global > default.

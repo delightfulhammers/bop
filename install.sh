@@ -1,6 +1,6 @@
 #!/bin/sh
-# Code-Reviewer Installer
-# Usage: curl -sSfL https://raw.githubusercontent.com/bkyoung/code-reviewer/main/install.sh | sh
+# BOP Installer
+# Usage: curl -sSfL https://raw.githubusercontent.com/delightfulhammers/bop/main/install.sh | sh
 #
 # Options (passed after --):
 #   -v, --version VERSION   Install specific version (default: latest)
@@ -9,12 +9,12 @@
 #
 # Examples:
 #   curl -sSfL .../install.sh | sh
-#   curl -sSfL .../install.sh | sh -s -- --version v0.6.2
+#   curl -sSfL .../install.sh | sh -s -- --version v0.7.0
 #   curl -sSfL .../install.sh | sh -s -- --dir /usr/local/bin
 
 set -e
 
-REPO="bkyoung/code-reviewer"
+REPO="delightfulhammers/bop"
 INSTALL_DIR="${HOME}/.local/bin"
 VERSION=""
 
@@ -52,7 +52,7 @@ error() {
 
 usage() {
     cat <<EOF
-Code-Reviewer Installer
+BOP Installer
 
 Usage: curl -sSfL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh
 
@@ -66,7 +66,7 @@ Examples:
   curl -sSfL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh
 
   # Install specific version
-  curl -sSfL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- -v v0.6.2
+  curl -sSfL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- -v v0.7.0
 
   # Install to custom directory
   curl -sSfL https://raw.githubusercontent.com/${REPO}/main/install.sh | sh -s -- -d /usr/local/bin
@@ -185,11 +185,11 @@ main() {
         fi
     fi
 
-    info "Installing code-reviewer ${VERSION}"
+    info "Installing bop ${VERSION}"
 
     # Build download URLs
     VERSION_NUM="${VERSION#v}"
-    ARCHIVE_NAME="code-reviewer_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
+    ARCHIVE_NAME="bop_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
     DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE_NAME}"
     CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
 
@@ -224,25 +224,25 @@ main() {
     # Install binaries
     info "Installing to $INSTALL_DIR..."
 
-    # Install cr
-    if [ -f "$TMP_DIR/cr" ]; then
-        mv "$TMP_DIR/cr" "$INSTALL_DIR/cr"
-        chmod +x "$INSTALL_DIR/cr"
-        success "Installed cr"
+    # Install bop
+    if [ -f "$TMP_DIR/bop" ]; then
+        mv "$TMP_DIR/bop" "$INSTALL_DIR/bop"
+        chmod +x "$INSTALL_DIR/bop"
+        success "Installed bop"
     else
-        warn "cr binary not found in archive"
+        warn "bop binary not found in archive"
     fi
 
-    # Install code-reviewer-mcp (if present)
-    if [ -f "$TMP_DIR/code-reviewer-mcp" ]; then
-        mv "$TMP_DIR/code-reviewer-mcp" "$INSTALL_DIR/code-reviewer-mcp"
-        chmod +x "$INSTALL_DIR/code-reviewer-mcp"
-        success "Installed code-reviewer-mcp"
+    # Install bop-mcp (if present)
+    if [ -f "$TMP_DIR/bop-mcp" ]; then
+        mv "$TMP_DIR/bop-mcp" "$INSTALL_DIR/bop-mcp"
+        chmod +x "$INSTALL_DIR/bop-mcp"
+        success "Installed bop-mcp"
     fi
 
     # Verify installation
-    if [ -x "$INSTALL_DIR/cr" ]; then
-        success "code-reviewer ${VERSION} installed successfully!"
+    if [ -x "$INSTALL_DIR/bop" ]; then
+        success "bop ${VERSION} installed successfully!"
     fi
 
     # Check if install dir is in PATH
@@ -268,7 +268,7 @@ main() {
     esac
 
     echo ""
-    echo "Run 'cr --help' to get started!"
+    echo "Run 'bop --help' to get started!"
 }
 
 main

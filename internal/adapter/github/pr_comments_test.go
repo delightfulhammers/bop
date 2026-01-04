@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ func TestClient_ListPRComments(t *testing.T) {
 			Body:        "**Severity: high**\n**Category: security**\nCR_FP:abc123\nSecurity issue found",
 			Path:        "main.go",
 			Line:        intPtr(10),
-			User:        User{Login: "code-reviewer", Type: "User"},
+			User:        User{Login: "bop", Type: "User"},
 			CreatedAt:   "2024-01-15T10:00:00Z",
 			InReplyToID: 0,
 		},

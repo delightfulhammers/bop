@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/verify"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/adapter/verify"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestBatchVerifier_SingleLLMCall(t *testing.T) {

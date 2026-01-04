@@ -1,6 +1,6 @@
 package llm
 
-import "github.com/bkyoung/code-reviewer/internal/domain"
+import "github.com/delightfulhammers/bop/internal/domain"
 
 // UsageMetadata captures token usage and cost information from LLM API calls.
 // This metadata flows alongside the content through the adapter layer.

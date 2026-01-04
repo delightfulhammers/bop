@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/adapter/github"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // mockReviewClientForTriage implements ReviewClient for testing triage fetcher.

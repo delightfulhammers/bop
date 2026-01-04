@@ -210,7 +210,7 @@ From PR #2 security testing, the AI code reviewer successfully reviewed the secu
 - **When to Address**: When creating automated test harness
 
 **12. Model Name Confusion in Config**
-- **Location**: `cr.yaml:21` (claude-sonnet-4-5-20250929)
+- **Location**: `bop.yaml:21` (claude-sonnet-4-5-20250929)
 - **Issue**: Claude's knowledge cutoff doesn't recognize future model names
 - **Note**: This is expected - model names are correct for current date
 
@@ -221,7 +221,7 @@ From PR #2 security testing, the AI code reviewer successfully reviewed the secu
 Deferred from v0.2.0 code review feedback - these are nice-to-haves that can be addressed if they become problematic:
 
 **1. Observability Setup Duplication**
-- **Location**: `cmd/cr/main.go` - Multiple `SetLogger/SetMetrics/SetPricing` calls
+- **Location**: `cmd/bop/main.go` - Multiple `SetLogger/SetMetrics/SetPricing` calls
 - **Severity**: Low (minor code duplication)
 - **Defer Reason**: Only 2-3 instances, extraction would add complexity without significant benefit
 - **When to Address**: If observability setup appears in 5+ locations
@@ -274,7 +274,7 @@ Added test coverage for context cancellation before first attempt. Verified corr
 Comprehensive audit of all 4 LLM HTTP clients (OpenAI, Anthropic, Gemini, Ollama). Verified all clients properly use `defer resp.Body.Close()` pattern. Ran race detector tests - zero data races found.
 
 #### Structured Logging Throughout
-**Locations**: `internal/usecase/review/logger.go`, `internal/adapter/observability/logger.go`, `cmd/cr/main.go`, `internal/usecase/review/orchestrator.go`
+**Locations**: `internal/usecase/review/logger.go`, `internal/adapter/observability/logger.go`, `cmd/bop/main.go`, `internal/usecase/review/orchestrator.go`
 
 - Created `review.Logger` interface in use case layer
 - Implemented `observability.ReviewLogger` adapter
@@ -444,7 +444,7 @@ Gemini 2.5 Pro has **extended thinking** capabilities (like OpenAI o1/o4) where 
 **Issues Identified by LLM Code Review**:
 1. **ExtractJSONFromMarkdown lacks documentation** - Greedy matching behavior not documented
 2. **config_helpers.go lacks unit tests** - No dedicated tests for ParseTimeout and BuildRetryConfig edge cases
-3. **Database file in version control** - `~/.config/cr/reviews.db` was committed (security/merge risk)
+3. **Database file in version control** - `~/.config/bop/reviews.db` was committed (security/merge risk)
 
 **Solution**:
 1. **Enhanced GoDoc for ExtractJSONFromMarkdown**:
@@ -460,7 +460,7 @@ Gemini 2.5 Pro has **extended thinking** capabilities (like OpenAI o1/o4) where 
    - Mixed overrides and fallbacks
 
 3. **Database file cleanup**:
-   - Removed `~/.config/cr/reviews.db` from version control
+   - Removed `~/.config/bop/reviews.db` from version control
    - Added `*.db`, `*.sqlite`, `*.sqlite3` to `.gitignore`
 
 **Changes**:
@@ -593,13 +593,13 @@ This work included three phases of fixes based on comprehensive code review feed
 
 ### ✅ Security & Reliability Improvements (v0.1.6)
 **Fixed**: 2025-10-22
-**Locations**: `cmd/cr/main.go`, `internal/config/loader.go`, `internal/adapter/llm/http/logging.go`, `internal/adapter/llm/http/logger.go`
+**Locations**: `cmd/bop/main.go`, `internal/config/loader.go`, `internal/adapter/llm/http/logging.go`, `internal/adapter/llm/http/logger.go`
 **Severity**: HIGH (security + reliability)
 
 This release addresses three critical bugs discovered during manual testing:
 
 #### 1. Graceful Shutdown on SIGINT/SIGTERM
-**Location**: `cmd/cr/main.go:45-47`
+**Location**: `cmd/bop/main.go:45-47`
 **Severity**: HIGH (resource leaks, orphaned goroutines)
 
 **Problem**: When users pressed CTRL+C during long-running reviews, the main process exited but goroutines making HTTP requests to LLM providers continued running in the background. This caused:
@@ -622,7 +622,7 @@ This release addresses three critical bugs discovered during manual testing:
 **Location**: `internal/config/loader.go:123-141`
 **Severity**: MEDIUM (incorrect file locations)
 
-**Problem**: Configuration paths like `~/.config/cr/reviews.db` were interpreted literally as `$REPO_ROOT/~/.config/cr/reviews.db`, creating a directory named `~` in the repository root instead of expanding to the user's home directory.
+**Problem**: Configuration paths like `~/.config/bop/reviews.db` were interpreted literally as `$REPO_ROOT/~/.config/bop/reviews.db`, creating a directory named `~` in the repository root instead of expanding to the user's home directory.
 
 **Root Cause**: The `expandEnvString()` function only handled `${VAR}` and `$VAR` syntax but didn't implement shell-style tilde expansion.
 
@@ -637,7 +637,7 @@ This release addresses three critical bugs discovered during manual testing:
 **Impact**: Database files and other configured paths now correctly resolve to user's home directory. No more accidental creation of `~` directories in repository roots.
 
 #### 3. API Key Redaction in Error Messages
-**Location**: `internal/adapter/llm/http/logging.go:52-92`, `internal/adapter/llm/http/logger.go:149-150`, `cmd/cr/main.go:39`
+**Location**: `internal/adapter/llm/http/logging.go:52-92`, `internal/adapter/llm/http/logger.go:149-150`, `cmd/bop/main.go:39`
 **Severity**: HIGH (security - API key exposure)
 
 **Problem**: When Gemini API requests failed (e.g., timeout, cancellation), error messages contained full URLs with API keys visible in query parameters like `?key=AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`. API keys appeared in TWO locations:
@@ -803,7 +803,7 @@ When adding new features:
 - Configurable HTTP settings (timeout, retries, backoff)
 - Global HTTP config with per-provider overrides
 - Environment variable expansion for HTTP config
-- Module path correction (github.com/bkyoung/code-reviewer)
+- Module path correction (github.com/delightfulhammers/bop)
 - OpenAI o3/o4 reasoning model support
 - Security fixes (log truncation prevents data leakage)
 - Negative duration validation (prevents runtime panics)
@@ -1056,7 +1056,7 @@ This phase enables immediate self-dogfooding by integrating the code reviewer in
      env:
        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
      run: |
-       ./cr review branch ${{ github.event.pull_request.base.ref }} \
+       ./bop review branch ${{ github.event.pull_request.base.ref }} \
          --no-architecture \
          --no-auto-context \
          --output ./review-output

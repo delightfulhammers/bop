@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // GitEngine abstracts git operations for code review.

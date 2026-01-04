@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/verify"
-	usecaseverify "github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/adapter/verify"
+	usecaseverify "github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // mockRepository implements usecaseverify.Repository for testing.

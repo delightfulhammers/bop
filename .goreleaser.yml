@@ -1,6 +1,6 @@
 version: 2
 
-project_name: code-reviewer
+project_name: bop
 
 before:
   hooks:
@@ -8,9 +8,9 @@ before:
     - go test ./...
 
 builds:
-  - id: cr
-    main: ./cmd/cr
-    binary: cr
+  - id: bop
+    main: ./cmd/bop
+    binary: bop
     env:
       # CGO disabled for static binaries. SQLite store (currently unused) will
       # show a warning at runtime but tool functions normally without it.
@@ -24,11 +24,11 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/bkyoung/code-reviewer/internal/version.version={{.Version}}
+      - -X github.com/delightfulhammers/bop/internal/version.version={{.Version}}
 
-  - id: code-reviewer-mcp
-    main: ./cmd/code-reviewer-mcp
-    binary: code-reviewer-mcp
+  - id: bop-mcp
+    main: ./cmd/bop-mcp
+    binary: bop-mcp
     env:
       - CGO_ENABLED=0
     goos:
@@ -40,7 +40,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/bkyoung/code-reviewer/internal/version.version={{.Version}}
+      - -X github.com/delightfulhammers/bop/internal/version.version={{.Version}}
 
 archives:
   - id: default
@@ -55,40 +55,40 @@ archives:
       - README.md
       - docs/GITHUB_ACTION_SETUP.md
       - .claude/skills/triage-pr-review.md
-      - cr.yaml
+      - bop.yaml
 
 # Homebrew formula publishing
-# Install with: brew install bkyoung/code-reviewer/code-reviewer
+# Install with: brew install delightfulhammers/tap/bop
 brews:
-  - name: code-reviewer
+  - name: bop
     ids:
       - default
     repository:
-      owner: bkyoung
-      name: homebrew-code-reviewer
+      owner: delightfulhammers
+      name: tap
       branch: main
       token: "{{ .Env.HOMEBREW_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/bkyoung/code-reviewer"
+    homepage: "https://github.com/delightfulhammers/bop"
     description: "AI-powered code review tool with multi-provider LLM support"
     license: "MIT"
     install: |
-      bin.install "cr"
-      bin.install "code-reviewer-mcp"
+      bin.install "bop"
+      bin.install "bop-mcp"
     test: |
-      system "#{bin}/cr", "version"
+      system "#{bin}/bop", "version"
     caveats: |
-      To use code-reviewer, set at least one LLM provider API key:
+      To use bop, set at least one LLM provider API key:
         export ANTHROPIC_API_KEY="your-key"    # Claude models
         export OPENAI_API_KEY="your-key"       # GPT models
         export GEMINI_API_KEY="your-key"       # Gemini models
 
       Quick start:
-        cr review branch main
+        bop review branch main
 
       For GitHub PR integration:
         export GITHUB_TOKEN="your-token"
-        cr review branch main --github-post --pr 123
+        bop review branch main --github-post --pr 123
 
 checksum:
   name_template: 'checksums.txt'
@@ -105,8 +105,8 @@ changelog:
 
 release:
   github:
-    owner: bkyoung
-    name: code-reviewer
+    owner: delightfulhammers
+    name: bop
   draft: false
   prerelease: auto
   name_template: "{{.Tag}}"

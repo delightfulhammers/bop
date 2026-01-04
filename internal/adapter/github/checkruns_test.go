@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func TestClient_ListCheckRuns(t *testing.T) {
 				CheckRuns: []checkRunAPI{
 					{
 						ID:          1001,
-						Name:        "code-reviewer",
+						Name:        "bop",
 						Status:      "completed",
 						Conclusion:  strPtr("success"),
 						HeadSHA:     "abc123",
@@ -65,13 +65,13 @@ func TestClient_ListCheckRuns(t *testing.T) {
 		{
 			name:      "filters by check name",
 			ref:       "abc123",
-			checkName: strPtr("code-reviewer"),
+			checkName: strPtr("bop"),
 			serverResponse: checkRunsResponse{
 				TotalCount: 1,
 				CheckRuns: []checkRunAPI{
 					{
 						ID:     1001,
-						Name:   "code-reviewer",
+						Name:   "bop",
 						Status: "completed",
 						Output: checkRunOutputAPI{
 							AnnotationsCount: 5,

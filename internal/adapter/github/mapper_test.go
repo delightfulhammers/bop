@@ -3,9 +3,9 @@ package github_test
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/diff"
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/adapter/github"
+	"github.com/delightfulhammers/bop/internal/diff"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestMapFindings_SingleFile(t *testing.T) {

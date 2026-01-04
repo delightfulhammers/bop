@@ -39,7 +39,7 @@ Updated: 2025-10-21
 - [x] Update orchestrator to save runs after review completion (orchestrator.go)
 - [x] Update orchestrator to save reviews and findings (orchestrator.go - saveReviewToStore)
 - [x] Add config options for store (config.go - StoreConfig)
-- [x] Update default config to enable store at ~/.config/cr/reviews.db (loader.go)
+- [x] Update default config to enable store at ~/.config/bop/reviews.db (loader.go)
 - [x] Wire store into main.go (main.go - store initialization and adapter)
 
 ### 1.6 Utility Functions ✅ COMPLETE
@@ -91,7 +91,7 @@ Updated: 2025-10-21
 - [ ] Handle window resize events
 
 ### 2.6 CLI Integration
-- [ ] Add `tui` command to CLI (cmd/cr/main.go)
+- [ ] Add `tui` command to CLI (cmd/bop/main.go)
 - [ ] Wire up store dependency
 - [ ] Add --db-path flag to override default location
 - [ ] Test TUI launches and displays data

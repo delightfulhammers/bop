@@ -2,10 +2,10 @@
 
 ## Configuration File Location
 
-The code-reviewer tool searches for configuration in the following locations (in order):
+The bop tool searches for configuration in the following locations (in order):
 
-1. **Current directory**: `./cr.yaml`
-2. **User config directory**: `~/.config/cr/cr.yaml`
+1. **Current directory**: `./bop.yaml`
+2. **User config directory**: `~/.config/bop/bop.yaml`
 
 Files in the current directory take precedence over files in the user config directory.
 
@@ -16,10 +16,10 @@ Files in the current directory take precedence over files in the user config dir
 ```bash
 # Option A: Install globally (recommended)
 mkdir -p ~/.config/cr
-cp cr.yaml ~/.config/cr/cr.yaml
+cp bop.yaml ~/.config/bop/bop.yaml
 
 # Option B: Use in current project only
-cp cr.yaml ./cr.yaml
+cp bop.yaml ./bop.yaml
 ```
 
 ### 2. Edit the configuration
@@ -28,10 +28,10 @@ Open the config file and enable your desired providers:
 
 ```bash
 # For global config
-vim ~/.config/cr/cr.yaml
+vim ~/.config/bop/bop.yaml
 
 # For local config
-vim ./cr.yaml
+vim ./bop.yaml
 ```
 
 ### 3. Set API keys (if using cloud providers)
@@ -87,7 +87,7 @@ Configure SQLite database for storing review history:
 ```yaml
 store:
   enabled: true  # Set to false to disable persistence
-  path: "~/.config/cr/reviews.db"  # Database file location
+  path: "~/.config/bop/reviews.db"  # Database file location
 ```
 
 **Benefits of enabling the store:**
@@ -316,10 +316,10 @@ If planning fails (LLM error, timeout, etc.), review continues without planning 
 
 ```bash
 # Enable interactive planning
-./cr review branch main --interactive
+./bop review branch main --interactive
 
 # With custom config
-./cr review branch main --interactive
+./bop review branch main --interactive
 ```
 
 Sample interaction:
@@ -392,17 +392,17 @@ By default, the tool automatically gathers context to enhance review quality:
 
 - **Custom instructions**: Guide reviewers on specific concerns
   ```bash
-  cr review branch main --instructions "This is a security-sensitive change to authentication"
+  bop review branch main --instructions "This is a security-sensitive change to authentication"
   ```
 
 - **Additional context**: Provide domain-specific documentation
   ```bash
-  cr review branch main --context docs/API_SPEC.md --context docs/MIGRATIONS.md
+  bop review branch main --context docs/API_SPEC.md --context docs/MIGRATIONS.md
   ```
 
 - **Minimal context**: For fast reviews or when context isn't needed
   ```bash
-  cr review branch main --no-architecture --no-auto-context
+  bop review branch main --no-architecture --no-auto-context
   ```
 
 ### HTTP and Performance Tuning
@@ -477,7 +477,7 @@ output:
   directory: "${CR_OUTPUT_DIR}"  # Can be used for any string field
 
 store:
-  path: "${HOME}/.config/cr/reviews.db"  # Useful for home directory references
+  path: "${HOME}/.config/bop/reviews.db"  # Useful for home directory references
 ```
 
 **How it works:**
@@ -560,7 +560,7 @@ planning:
 
 store:
   enabled: true
-  path: "~/.config/cr/reviews.db"
+  path: "~/.config/bop/reviews.db"
 
 output:
   directory: "./reviews"
@@ -625,7 +625,7 @@ After creating your config file, test it:
 mage build
 
 # Run a test review (uses static provider if no API keys set)
-./cr review branch main --target HEAD
+./bop review branch main --target HEAD
 ```
 
 ## Configuration Troubleshooting
@@ -636,7 +636,7 @@ mage build
 Error: config load failed: no configuration file found
 ```
 
-**Solution:** Ensure config file exists at `~/.config/cr/cr.yaml` or `./cr.yaml`
+**Solution:** Ensure config file exists at `~/.config/bop/bop.yaml` or `./bop.yaml`
 
 ### Provider API key missing
 
@@ -678,10 +678,10 @@ If you have `apiKey: "${OPENAI_API_KEY}"` in your config but it's not working:
 2. If empty, export it before running the tool:
    ```bash
    export OPENAI_API_KEY="sk-your-key-here"
-   ./cr review branch main --target HEAD
+   ./bop review branch main --target HEAD
    ```
 3. Ensure the variable name is uppercase (lowercase variables won't be expanded)
-4. Rebuild the application after updating config code: `go build ./cmd/cr`
+4. Rebuild the application after updating config code: `go build ./cmd/bop`
 
 ## Next Steps
 

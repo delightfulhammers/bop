@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/skip"
+	"github.com/delightfulhammers/bop/internal/usecase/skip"
 )
 
 // ErrShouldReview is returned when no skip trigger is found,

@@ -29,7 +29,7 @@ observability:
 
 ### YAML Configuration
 
-Create or update your `cr.yaml` file:
+Create or update your `bop.yaml` file:
 
 ```yaml
 observability:
@@ -179,7 +179,7 @@ Error types:
 
 Currently, metrics are tracked in-memory during execution. They are available in:
 
-1. **Review History Database** (`~/.config/cr/reviews.db`)
+1. **Review History Database** (`~/.config/bop/reviews.db`)
    - Total cost per run
    - Timestamp and scope
    - Provider and model used
@@ -215,7 +215,7 @@ cr review branch HEAD~1..HEAD
 cat out/repo_feature_merged_*.md | grep "Cost:"
 
 # Query database for historical costs
-sqlite3 ~/.config/cr/reviews.db "SELECT SUM(total_cost) FROM runs;"
+sqlite3 ~/.config/bop/reviews.db "SELECT SUM(total_cost) FROM runs;"
 ```
 
 ### Performance Analysis
@@ -293,7 +293,7 @@ observability:
 
 Temporarily disable redaction (be careful!):
 ```bash
-CR_OBSERVABILITY_LOGGING_REDACT_API_KEYS=false cr review ...
+CR_OBSERVABILITY_LOGGING_REDACT_API_KEYS=false bop review ...
 ```
 
 **Warning**: Only do this in secure environments. Never commit logs with exposed API keys.

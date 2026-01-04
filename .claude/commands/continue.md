@@ -57,12 +57,12 @@ gh issue list --state open --limit 10
 **Phase 3 Priority Order (from design docs):**
 
 ### Phase 3.1: Triage Automation (P0)
-1. MCP Server skeleton (`cmd/code-reviewer-mcp/`)
+1. MCP Server skeleton (`cmd/bop-mcp/`)
 2. Domain types (`internal/domain/triage.go`)
 3. Triage service (`internal/usecase/triage/`)
 4. MCP tool handlers (9 tools)
 5. Claude Code skill update
-6. `cr triage` CLI (P2)
+6. `bop triage` CLI (P2)
 
 ### Phase 3.2: Reviewer Personas (P0)
 1. Reviewer configuration schema
@@ -116,7 +116,7 @@ Before marking any work as complete:
 - [ ] Tests written (TDD)
 - [ ] Code formatted (`gofmt -w .`)
 - [ ] All tests pass (`go test ./...`)
-- [ ] Build succeeds (`go build -o cr ./cmd/cr`)
+- [ ] Build succeeds (`go build -o bop ./cmd/bop`)
 - [ ] No race conditions (`go test -race ./...`)
 
 ## 8. Key Design Documents

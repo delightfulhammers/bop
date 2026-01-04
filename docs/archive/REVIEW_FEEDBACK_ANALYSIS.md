@@ -34,7 +34,7 @@ close(resultsChan)  // Line 364 - Already present!
 
 ### 2. ❌ Anthropic: "reviewStore.Close() will panic if nil"
 
-**Location**: `cmd/cr/main.go:86-98`
+**Location**: `cmd/bop/main.go:86-98`
 
 **Claim**: `defer reviewStore.Close()` will panic if store init fails
 
@@ -119,7 +119,7 @@ operation := func(ctx context.Context) error {
 **Source**: OpenAI
 
 **Problem**: Using `fmt.Printf` for warnings/errors instead of configured observability logger:
-- `cmd/cr/main.go:88,93` - Store warnings
+- `cmd/bop/main.go:88,93` - Store warnings
 - `internal/usecase/review/orchestrator.go:244,349,398` - Store operation warnings
 
 **Solution**: Pass logger to components and use structured logging:
@@ -203,7 +203,7 @@ func ParseReview(jsonData []byte) (domain.Review, error) {
 
 **Solution**: Import and use functions from `internal/store`:
 ```go
-import "github.com/bkyoung/code-reviewer/internal/store"
+import "github.com/delightfulhammers/bop/internal/store"
 
 reviewID := store.GenerateReviewID(runID, review.ProviderName)
 findingID := store.GenerateFindingID(reviewID, i)
@@ -320,7 +320,7 @@ Makes it more obvious that redaction occurred.
 #### Task 1.2: Add Structured Logging Support
 - **Files**:
   - `internal/usecase/review/orchestrator.go`
-  - `cmd/cr/main.go`
+  - `cmd/bop/main.go`
 - **Steps**:
   1. Add optional Logger to OrchestratorDeps
   2. Replace `fmt.Printf` with logger calls when available

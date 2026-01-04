@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
 )
 
 // ContentFile represents a file from the GitHub Contents API.

@@ -8,7 +8,7 @@ import (
 	"text/template"
 	"unicode/utf8"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // TokenEstimator estimates the token count for a given text.

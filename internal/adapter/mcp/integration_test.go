@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // =============================================================================
@@ -183,7 +183,7 @@ func TestIntegration_TriageWorkflow(t *testing.T) {
 	}
 
 	checkRuns := []domain.CheckRunSummary{
-		{ID: 1001, Name: "code-reviewer", Status: "completed", AnnotationCount: 1},
+		{ID: 1001, Name: "bop", Status: "completed", AnnotationCount: 1},
 	}
 
 	annotations := []domain.Annotation{

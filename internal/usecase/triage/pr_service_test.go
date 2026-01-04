@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // MockAnnotationReader implements triage.AnnotationReader for testing.
@@ -102,7 +102,7 @@ func TestPRService_ListAnnotations(t *testing.T) {
 		mockPR.On("GetPRMetadata", ctx, "owner", "repo", 42).Return(prMeta, nil)
 
 		checkRuns := []domain.CheckRunSummary{
-			{ID: 1001, Name: "code-reviewer", Status: "completed", AnnotationCount: 2, HeadSHA: "abc123"},
+			{ID: 1001, Name: "bop", Status: "completed", AnnotationCount: 2, HeadSHA: "abc123"},
 		}
 		mockAnn.On("ListCheckRuns", ctx, "owner", "repo", "abc123", (*string)(nil)).Return(checkRuns, nil)
 
@@ -134,9 +134,9 @@ func TestPRService_ListAnnotations(t *testing.T) {
 		prMeta := &domain.PRMetadata{Owner: "owner", Repo: "repo", Number: 42, HeadSHA: "abc123"}
 		mockPR.On("GetPRMetadata", ctx, "owner", "repo", 42).Return(prMeta, nil)
 
-		checkName := "code-reviewer"
+		checkName := "bop"
 		checkRuns := []domain.CheckRunSummary{
-			{ID: 1001, Name: "code-reviewer", Status: "completed", AnnotationCount: 1},
+			{ID: 1001, Name: "bop", Status: "completed", AnnotationCount: 1},
 		}
 		mockAnn.On("ListCheckRuns", ctx, "owner", "repo", "abc123", &checkName).Return(checkRuns, nil)
 
@@ -163,7 +163,7 @@ func TestPRService_ListAnnotations(t *testing.T) {
 		mockPR.On("GetPRMetadata", ctx, "owner", "repo", 42).Return(prMeta, nil)
 
 		checkRuns := []domain.CheckRunSummary{
-			{ID: 1001, Name: "code-reviewer", AnnotationCount: 2},
+			{ID: 1001, Name: "bop", AnnotationCount: 2},
 		}
 		mockAnn.On("ListCheckRuns", ctx, "owner", "repo", "abc123", (*string)(nil)).Return(checkRuns, nil)
 

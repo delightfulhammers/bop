@@ -299,7 +299,7 @@ Query the database for trends:
 
 ```bash
 # Open database
-sqlite3 ~/.config/cr/reviews.db
+sqlite3 ~/.config/bop/reviews.db
 
 # Weekly costs
 SELECT
@@ -330,7 +330,7 @@ Set up alerts using cron and scripts:
 # check-costs.sh - Alert if daily costs exceed threshold
 
 THRESHOLD=5.00
-DAILY_COST=$(sqlite3 ~/.config/cr/reviews.db \
+DAILY_COST=$(sqlite3 ~/.config/bop/reviews.db \
   "SELECT SUM(total_cost) FROM runs WHERE DATE(timestamp) = DATE('now')")
 
 if (( $(echo "$DAILY_COST > $THRESHOLD" | bc -l) )); then

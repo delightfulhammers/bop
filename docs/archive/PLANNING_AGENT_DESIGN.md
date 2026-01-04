@@ -20,7 +20,7 @@ The Planning Agent provides an interactive, human-in-the-loop workflow where an 
 ### 1.2 User Experience
 
 ```bash
-$ cr review branch main --interactive
+$ bop review branch main --interactive
 
 ⏳ Gathering context...
 ✓ Found: ARCHITECTURE.md, README.md, 3 design docs
@@ -154,7 +154,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // PlanningProvider is the LLM interface for planning operations
@@ -587,7 +587,7 @@ func TestIsInteractive(t *testing.T) {
 ### 5.1 Enable Planning
 
 ```yaml
-# cr.yaml
+# bop.yaml
 
 planning:
   enabled: true

@@ -42,19 +42,19 @@ func All() {
 // Build Targets
 // =============================================================================
 
-// Build compiles the main cr binary with version info.
+// Build compiles the main bop binary with version info.
 func Build() error {
-	fmt.Println("==> Building cr binary...")
-	return buildBinary("cr", "./cmd/cr")
+	fmt.Println("==> Building bop binary...")
+	return buildBinary("bop", "./cmd/bop")
 }
 
-// BuildMCP compiles the code-reviewer-mcp binary with version info.
+// BuildMCP compiles the bop-mcp binary with version info.
 func BuildMCP() error {
-	fmt.Println("==> Building code-reviewer-mcp binary...")
-	return buildBinary("code-reviewer-mcp", "./cmd/code-reviewer-mcp")
+	fmt.Println("==> Building bop-mcp binary...")
+	return buildBinary("bop-mcp", "./cmd/bop-mcp")
 }
 
-// BuildAll compiles all binaries (cr and code-reviewer-mcp).
+// BuildAll compiles all binaries (bop and bop-mcp).
 func BuildAll() error {
 	fmt.Println("==> Building all binaries...")
 	// First verify all packages compile
@@ -71,26 +71,26 @@ func BuildAll() error {
 func Install() error {
 	fmt.Println("==> Installing binaries to GOPATH/bin...")
 	version := resolveVersion()
-	ldflags := fmt.Sprintf("-X github.com/bkyoung/code-reviewer/internal/version.version=%s", version)
+	ldflags := fmt.Sprintf("-X github.com/delightfulhammers/bop/internal/version.version=%s", version)
 
-	if err := run("go", "install", "-ldflags", ldflags, "./cmd/cr"); err != nil {
+	if err := run("go", "install", "-ldflags", ldflags, "./cmd/bop"); err != nil {
 		return err
 	}
-	return run("go", "install", "-ldflags", ldflags, "./cmd/code-reviewer-mcp")
+	return run("go", "install", "-ldflags", ldflags, "./cmd/bop-mcp")
 }
 
 // Clean removes build artifacts.
 func Clean() error {
 	fmt.Println("==> Cleaning build artifacts...")
 	// Remove artifacts from root directory
-	artifacts := []string{"cr", "code-reviewer-mcp", "coverage.out", "coverage.html"}
+	artifacts := []string{"bop", "bop-mcp", "coverage.out", "coverage.html"}
 	for _, artifact := range artifacts {
 		if err := os.Remove(artifact); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove %s: %w", artifact, err)
 		}
 	}
 	// Also remove artifacts from bin/ directory (buildBinary outputs there if it exists)
-	binArtifacts := []string{"bin/cr", "bin/code-reviewer-mcp"}
+	binArtifacts := []string{"bin/bop", "bin/bop-mcp"}
 	for _, artifact := range binArtifacts {
 		if err := os.Remove(artifact); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove %s: %w", artifact, err)
@@ -210,7 +210,7 @@ func Generate() error {
 
 func buildBinary(name, pkg string) error {
 	version := resolveVersion()
-	ldflags := fmt.Sprintf("-X github.com/bkyoung/code-reviewer/internal/version.version=%s", version)
+	ldflags := fmt.Sprintf("-X github.com/delightfulhammers/bop/internal/version.version=%s", version)
 
 	outputPath := name
 	if _, err := os.Stat("bin"); err == nil {

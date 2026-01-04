@@ -6,8 +6,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/store"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/store"
 )
 
 // PrecisionStore defines the interface for accessing precision priors.

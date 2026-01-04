@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/usecase/verify"
 )
 
 // floatEquals checks if two floats are approximately equal.

@@ -10,13 +10,13 @@ When this skill is invoked, assist with running code reviews.
 
 ```bash
 # Review current branch against main
-./cr review branch main
+./bop review branch main
 
 # Review with output directory
-./cr review branch main --output ./review-output
+./bop review branch main --output ./review-output
 
 # Review specific target branch
-./cr review branch feature/foo --base main
+./bop review branch feature/foo --base main
 ```
 
 ## CLI Flags
@@ -41,7 +41,7 @@ The tool generates multiple formats:
 
 ## Configuration
 
-Create `cr.yaml` in the repo root:
+Create `bop.yaml` in the repo root:
 
 ```yaml
 providers:
@@ -70,7 +70,7 @@ The tool integrates with GitHub Actions:
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   run: |
-    ./cr review branch ${{ github.head_ref }} \
+    ./bop review branch ${{ github.head_ref }} \
       --base ${{ github.event.pull_request.base.ref }} \
       --output ./review-output
 ```

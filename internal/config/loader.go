@@ -23,7 +23,7 @@ func Load(opts LoaderOptions) (Config, error) {
 
 	name := opts.FileName
 	if name == "" {
-		name = "cr"
+		name = "bop"
 	}
 
 	configFile := locateConfigFile(name, opts.ConfigPaths)
@@ -35,7 +35,7 @@ func Load(opts LoaderOptions) (Config, error) {
 
 	prefix := opts.EnvPrefix
 	if prefix == "" {
-		prefix = "CR"
+		prefix = "BOP"
 	}
 	v.SetEnvPrefix(prefix)
 	v.AutomaticEnv()
@@ -324,5 +324,5 @@ func defaultStorePath() string {
 	if err != nil {
 		return "./reviews.db"
 	}
-	return filepath.Join(home, ".config", "cr", "reviews.db")
+	return filepath.Join(home, ".config", "bop", "reviews.db")
 }

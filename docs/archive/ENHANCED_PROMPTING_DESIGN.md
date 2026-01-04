@@ -448,7 +448,7 @@ cr review branch main --no-auto-context  # Disable smart doc detection
 ### 4.2 Interactive Mode Flow
 
 ```
-$ cr review branch main --interactive
+$ bop review branch main --interactive
 
 ⏳ Gathering context...
 ✓ Found: ARCHITECTURE.md, README.md, 3 design docs
@@ -567,7 +567,7 @@ Total cost: $0.0268
 - Update `internal/usecase/merge/intelligent_merger.go`: Add LLM-based synthesis
 - Update `internal/usecase/merge/intelligent_merger_test.go`: Test LLM synthesis
 - Update `internal/config/config.go`: Add merge.useLLM, merge.provider, merge.model
-- Update `cmd/cr/main.go`: Wire synthesis provider
+- Update `cmd/bop/main.go`: Wire synthesis provider
 
 **TDD Approach**:
 1. Write tests for LLM synthesis prompt generation
@@ -619,7 +619,7 @@ Total cost: $0.0268
 
 **Deliverables**:
 - Updated `internal/adapter/cli/root.go`: New flags
-- Updated `cmd/cr/main.go`: Wire new components
+- Updated `cmd/bop/main.go`: Wire new components
 - Updated documentation
 
 **TDD Approach**:

@@ -3,7 +3,7 @@ package skip_test
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/skip"
+	"github.com/delightfulhammers/bop/internal/usecase/skip"
 )
 
 func TestContainsSkipTrigger(t *testing.T) {

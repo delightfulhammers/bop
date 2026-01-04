@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
 	"github.com/stretchr/testify/assert"
 )
 

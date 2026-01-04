@@ -8,15 +8,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/git"
-	"github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
-	mcpadapter "github.com/bkyoung/code-reviewer/internal/adapter/mcp"
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/determinism"
-	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/adapter/git"
+	"github.com/delightfulhammers/bop/internal/adapter/github"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
+	mcpadapter "github.com/delightfulhammers/bop/internal/adapter/mcp"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/determinism"
+	"github.com/delightfulhammers/bop/internal/usecase/merge"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 func main() {

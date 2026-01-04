@@ -7,7 +7,7 @@ This document tracks all fixes applied in response to code review feedback from 
 ### 1. Missing Provider Wiring in main.go
 **Issue**: The CLI only recognized OpenAI provider, ignoring Anthropic, Gemini, and Ollama configurations.
 
-**Fix**: Updated `buildProviders()` function in `cmd/cr/main.go` to instantiate all four providers:
+**Fix**: Updated `buildProviders()` function in `cmd/bop/main.go` to instantiate all four providers:
 - Anthropic provider with default model `claude-3-5-sonnet-20241022`
 - Gemini provider with default model `gemini-pro`
 - Ollama provider with default model `llama2`
@@ -19,10 +19,10 @@ This document tracks all fixes applied in response to code review feedback from 
 **Issue**: JSON and SARIF writers, and Redaction engine were not instantiated or wired into the orchestrator, causing "orchestrator dependencies missing" errors.
 
 **Fix**:
-- Instantiated `json.NewWriter(nowFunc)` at `cmd/cr/main.go:63`
-- Instantiated `sarif.NewWriter(nowFunc)` at `cmd/cr/main.go:64`
-- Conditionally instantiated `redaction.NewEngine()` when `cfg.Redaction.Enabled` at `cmd/cr/main.go:72-74`
-- Wired all dependencies into orchestrator at `cmd/cr/main.go:76-86`
+- Instantiated `json.NewWriter(nowFunc)` at `cmd/bop/main.go:63`
+- Instantiated `sarif.NewWriter(nowFunc)` at `cmd/bop/main.go:64`
+- Conditionally instantiated `redaction.NewEngine()` when `cfg.Redaction.Enabled` at `cmd/bop/main.go:72-74`
+- Wired all dependencies into orchestrator at `cmd/bop/main.go:76-86`
 
 **Impact**: All output formats (Markdown, JSON, SARIF) now work correctly, and secret redaction is properly enabled when configured.
 

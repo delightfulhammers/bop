@@ -3,7 +3,7 @@ package review
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // DiffComputer determines the appropriate diff for a review request.

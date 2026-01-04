@@ -148,10 +148,10 @@ go test ./internal/adapter/llm/gemini/... -v
 go test ./internal/usecase/review/... -v
 
 # Manual testing with observability
-DEBUG=1 ./cr review branch HEAD --base HEAD~1
+DEBUG=1 ./bop review branch HEAD --base HEAD~1
 
 # Check cost tracking
-./cr review branch HEAD --base HEAD~1 | grep -i cost
+./bop review branch HEAD --base HEAD~1 | grep -i cost
 ```
 
 ## Completion Criteria

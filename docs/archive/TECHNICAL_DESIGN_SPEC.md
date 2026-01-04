@@ -10,7 +10,7 @@ This document provides a detailed technical design for the Multi-LLM Code Review
 
 ## **2\. Configuration System (internal/config)**
 
-Configuration will be managed by Viper, loaded in the following priority order: CLI flags \> Environment variables \> Local .cr.yaml \> Global \~/.config/cr/config.yaml \> Defaults.
+Configuration will be managed by Viper, loaded in the following priority order: CLI flags \> Environment variables \> Local .bop.yaml \> Global \~/.config/bop/config.yaml \> Defaults.
 
 ### **2.1. Core Configuration Structs**
 

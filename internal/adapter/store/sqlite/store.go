@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/store"
+	"github.com/delightfulhammers/bop/internal/store"
 	_ "github.com/mattn/go-sqlite3"
 )
 

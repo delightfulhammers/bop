@@ -61,7 +61,7 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 - [ ] Run formatter: `mage format`
 - [ ] Run linter: `go vet ./internal/usecase/review`
 - [ ] Run all tests: `mage test`
-- [ ] Manual test: Run in terminal vs piped (e.g., `echo "" | go run ./cmd/cr`)
+- [ ] Manual test: Run in terminal vs piped (e.g., `echo "" | go run ./cmd/bop`)
 
 ---
 
@@ -434,7 +434,7 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 
 ### 7.3 Verify - Configuration
 
-- [ ] Test with real cr.yaml file
+- [ ] Test with real bop.yaml file
 - [ ] Test environment variable overrides
 - [ ] Run formatter: `mage format`
 - [ ] Run all config tests: `go test ./internal/config -v`
@@ -563,7 +563,7 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 
 ### 9.3 Implement - Main.go Wiring
 
-- [ ] Update `cmd/cr/main.go`
+- [ ] Update `cmd/bop/main.go`
   - [ ] Check if planning is configured
   - [ ] If enabled, create planning provider:
     ```go
@@ -589,12 +589,12 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
         Planner: planningAgent,
     })
     ```
-- [ ] Run: `go build ./cmd/cr`
+- [ ] Run: `go build ./cmd/bop`
 - [ ] **Verify**: Builds successfully
 
 ### 9.4 Verify - CLI Integration
 
-- [ ] Test help output: `./cr review branch --help`
+- [ ] Test help output: `./bop review branch --help`
 - [ ] Verify `--interactive`, `--no-planning`, `--plan-only` appear
 - [ ] Run formatter: `mage format`
 - [ ] Run all tests: `mage test`
@@ -608,20 +608,20 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 
 - [ ] Test with minimal config (planning disabled)
   ```bash
-  cr review branch main --interactive
+  bop review branch main --interactive
   # Should work without planning (graceful degradation)
   ```
 
 - [ ] Test with planning enabled
   ```yaml
-  # cr.yaml
+  # bop.yaml
   planning:
     enabled: true
     provider: "openai"
     model: "gpt-4o-mini"
   ```
   ```bash
-  cr review branch main --interactive
+  bop review branch main --interactive
   # Should present planning questions
   # Should collect answers
   # Should enhance context
@@ -629,13 +629,13 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 
 - [ ] Test skipping planning
   ```bash
-  cr review branch main --interactive --no-planning
+  bop review branch main --interactive --no-planning
   # Should skip planning phase
   ```
 
 - [ ] Test plan-only mode
   ```bash
-  cr review branch main --plan-only
+  bop review branch main --plan-only
   # Should show gathered context
   # Should show planning questions
   # Should NOT execute review
@@ -645,14 +645,14 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 
 - [ ] Test in non-TTY environment
   ```bash
-  echo "" | cr review branch main --interactive
+  echo "" | bop review branch main --interactive
   # Should automatically skip planning
   # Should log info message
   ```
 
 - [ ] Test in CI/CD (no stdin)
   ```bash
-  cr review branch main --interactive < /dev/null
+  bop review branch main --interactive < /dev/null
   # Should skip planning gracefully
   ```
 
@@ -665,7 +665,7 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
     provider: "invalid"
   ```
   ```bash
-  cr review branch main --interactive
+  bop review branch main --interactive
   # Should skip planning with warning
   # Should continue with review
   ```
@@ -676,7 +676,7 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
     timeout: "1ms"
   ```
   ```bash
-  cr review branch main --interactive
+  bop review branch main --interactive
   # Should timeout gracefully
   # Should log warning
   # Should continue with original context
@@ -754,12 +754,12 @@ This checklist uses TDD methodology: Write test → Run test (fail) → Implemen
 ### 12.3 Build and Run
 
 - [ ] Build application: `mage build`
-- [ ] Run help: `./cr review branch --help`
+- [ ] Run help: `./bop review branch --help`
   - [ ] Verify all flags appear correctly
   - [ ] Verify no hidden flags are shown
   - [ ] Verify descriptions are clear
 
-- [ ] Run with planning: `./cr review branch main --interactive`
+- [ ] Run with planning: `./bop review branch main --interactive`
   - [ ] Verify questions are relevant
   - [ ] Verify answers enhance context
   - [ ] Verify review quality improves

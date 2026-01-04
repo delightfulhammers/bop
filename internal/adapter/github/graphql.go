@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
 
 // GraphQL mutation for resolving a review thread.

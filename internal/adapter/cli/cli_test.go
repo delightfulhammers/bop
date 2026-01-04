@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/cli"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/adapter/cli"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
 
 type branchStub struct {

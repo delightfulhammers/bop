@@ -14,7 +14,7 @@ When this skill is invoked:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           cmd/cr/ & cmd/code-reviewer-mcp/      │  Entry points
+│           cmd/bop/ & cmd/bop-mcp/      │  Entry points
 ├─────────────────────────────────────────────────┤
 │              internal/adapter/                  │  External integrations
 │  cli/ git/ llm/ mcp/ output/ store/ github/     │
@@ -61,7 +61,7 @@ When this skill is invoked:
 
 Phase 3 introduces:
 
-1. **MCP Server** (`cmd/code-reviewer-mcp/`)
+1. **MCP Server** (`cmd/bop-mcp/`)
    - Separate binary for Model Context Protocol
    - Exposes triage tools for AI assistants
    - Shares libraries with main `cr` CLI

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/store/sqlite"
-	"github.com/bkyoung/code-reviewer/internal/store"
+	"github.com/delightfulhammers/bop/internal/adapter/store/sqlite"
+	"github.com/delightfulhammers/bop/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

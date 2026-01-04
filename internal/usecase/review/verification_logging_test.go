@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestLogVerificationDetails(t *testing.T) {

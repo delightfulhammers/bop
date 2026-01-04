@@ -1,4 +1,4 @@
-module github.com/bkyoung/code-reviewer
+module github.com/delightfulhammers/bop
 
 go 1.25.1
 

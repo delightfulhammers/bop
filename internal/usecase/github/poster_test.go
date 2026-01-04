@@ -6,11 +6,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/diff"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/dedup"
-	usecasegithub "github.com/bkyoung/code-reviewer/internal/usecase/github"
+	"github.com/delightfulhammers/bop/internal/adapter/github"
+	"github.com/delightfulhammers/bop/internal/diff"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/dedup"
+	usecasegithub "github.com/delightfulhammers/bop/internal/usecase/github"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/cli"
-	"github.com/bkyoung/code-reviewer/internal/usecase/post"
+	"github.com/delightfulhammers/bop/internal/adapter/cli"
+	"github.com/delightfulhammers/bop/internal/usecase/post"
 )
 
 // =============================================================================

@@ -3,7 +3,7 @@ package merge
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // ProviderRequest is a minimal struct matching review.ProviderRequest.

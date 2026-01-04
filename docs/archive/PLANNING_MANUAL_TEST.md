@@ -22,10 +22,10 @@ mage build
 Copy the example configuration:
 
 ```bash
-cp .cr-planning-example.yaml ~/.config/cr/cr.yaml
+cp .cr-planning-example.yaml ~/.config/bop/bop.yaml
 ```
 
-Edit `~/.config/cr/cr.yaml` and set your API keys:
+Edit `~/.config/bop/bop.yaml` and set your API keys:
 
 ```yaml
 providers:
@@ -57,7 +57,7 @@ planning:
 
 2. Run review with interactive flag:
    ```bash
-   ./cr review branch --base main --interactive
+   ./bop review branch --base main --interactive
    ```
 
 3. **Expected behavior**:
@@ -86,7 +86,7 @@ planning:
 **Steps**:
 1. Run review through a pipe (simulates CI/CD):
    ```bash
-   echo "" | ./cr review branch --base main --interactive
+   echo "" | ./bop review branch --base main --interactive
    ```
 
 2. **Expected behavior**:
@@ -116,7 +116,7 @@ planning:
 
 2. Run review:
    ```bash
-   ./cr review branch --base main --interactive
+   ./bop review branch --base main --interactive
    ```
 
 3. **Expected behavior**:
@@ -145,7 +145,7 @@ planning:
 
 2. Run review on large diff:
    ```bash
-   ./cr review branch --base main --interactive
+   ./bop review branch --base main --interactive
    ```
 
 3. **Expected behavior**:
@@ -186,7 +186,7 @@ planning:
 **Steps**:
 1. Run multiple reviews and observe question types:
    ```bash
-   ./cr review branch --base main --interactive
+   ./bop review branch --base main --interactive
    ```
 
 2. **Expected question types**:
@@ -232,7 +232,7 @@ planning:
 **Steps**:
 1. Run review:
    ```bash
-   ./cr review branch --base main --interactive
+   ./bop review branch --base main --interactive
    ```
 
 2. When planning questions appear, press `Ctrl+C`
@@ -261,7 +261,7 @@ planning:
 
 2. Run review WITHOUT --interactive flag:
    ```bash
-   ./cr review branch --base main
+   ./bop review branch --base main
    ```
 
 3. **Expected behavior**:

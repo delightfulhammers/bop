@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/git"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/adapter/git"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

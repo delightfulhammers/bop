@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // calculateConfigHash creates a deterministic hash of the BranchRequest configuration.

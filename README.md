@@ -4,7 +4,7 @@ AI code reviews that actually matter. Multiple LLMs review your PR, agree on wha
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/bkyoung/code-reviewer)](https://github.com/bkyoung/code-reviewer/releases)
+[![Release](https://img.shields.io/github/v/release/delightfulhammers/bop)](https://github.com/delightfulhammers/bop/releases)
 
 ## What You Get
 
@@ -17,7 +17,7 @@ AI code reviews that actually matter. Multiple LLMs review your PR, agree on wha
 
 ```bash
 # Install (macOS)
-brew install bkyoung/code-reviewer/code-reviewer
+brew install delightfulhammers/tap/bop
 
 # Set your API key
 export OPENAI_API_KEY="sk-..."
@@ -32,7 +32,7 @@ That's it. You'll get a detailed review in `./reviews/`.
 
 **Quick install (Linux/macOS):**
 ```bash
-curl -sSfL https://raw.githubusercontent.com/bkyoung/code-reviewer/main/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/delightfulhammers/bop/main/install.sh | sh
 ```
 
 Options:
@@ -46,12 +46,12 @@ curl -sSfL .../install.sh | sh -s -- --dir /usr/local/bin
 
 **Homebrew (macOS):**
 ```bash
-brew install bkyoung/code-reviewer/code-reviewer
+brew install delightfulhammers/tap/bop
 ```
 
 **From source:**
 ```bash
-go install github.com/bkyoung/code-reviewer/cmd/cr@latest
+go install github.com/delightfulhammers/bop/cmd/bop@latest
 ```
 
 ## GitHub Actions
@@ -75,7 +75,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: bkyoung/code-reviewer/action@v0.6.3
+      - uses: delightfulhammers/bop/action@v0.6.3
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           # Or use multiple providers:
@@ -91,8 +91,8 @@ Triage PR findings interactively with Claude Code using the MCP server:
 
 ```bash
 # Install the MCP server
-go build -o code-reviewer-mcp ./cmd/code-reviewer-mcp
-sudo mv code-reviewer-mcp /usr/local/bin/
+go build -o bop-mcp ./cmd/bop-mcp
+sudo mv bop-mcp /usr/local/bin/
 ```
 
 Add to your Claude Code settings (`.claude/settings.local.json`):
@@ -100,8 +100,8 @@ Add to your Claude Code settings (`.claude/settings.local.json`):
 ```json
 {
   "mcpServers": {
-    "code-reviewer": {
-      "command": "code-reviewer-mcp"
+    "bop": {
+      "command": "bop-mcp"
     }
   }
 }
@@ -117,7 +117,7 @@ The MCP server provides 12 tools for listing findings, viewing context, applying
 
 ## Configuration
 
-Create `~/.config/cr/cr.yaml`:
+Create `~/.config/bop/bop.yaml`:
 
 ```yaml
 providers:
@@ -264,7 +264,7 @@ observability:
 
 ## MCP Server
 
-The `code-reviewer-mcp` binary exposes 12 tools for PR triage:
+The `bop-mcp` binary exposes 12 tools for PR triage:
 
 **Read operations:**
 | Tool | Description |
@@ -330,7 +330,7 @@ This tool sends code to third-party LLM APIs. Before using on private repositori
 
 ```bash
 # Build
-go build -o cr ./cmd/cr
+go build -o bop ./cmd/bop
 
 # Test
 go test ./...

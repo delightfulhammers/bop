@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

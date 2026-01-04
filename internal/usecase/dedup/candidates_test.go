@@ -3,7 +3,7 @@ package dedup
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 func TestLinesOverlap(t *testing.T) {

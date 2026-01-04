@@ -1,6 +1,6 @@
 package github
 
-import "github.com/bkyoung/code-reviewer/internal/domain"
+import "github.com/delightfulhammers/bop/internal/domain"
 
 // PositionedFinding wraps a domain.Finding with GitHub-specific diff position.
 // This type lives in the adapter layer to keep the domain layer pure and

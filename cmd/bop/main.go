@@ -12,38 +12,38 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/cli"
-	dedupadapter "github.com/bkyoung/code-reviewer/internal/adapter/dedup"
-	"github.com/bkyoung/code-reviewer/internal/adapter/git"
-	githubadapter "github.com/bkyoung/code-reviewer/internal/adapter/github"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/anthropic"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/gemini"
-	llmhttp "github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/ollama"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/openai"
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/static"
-	"github.com/bkyoung/code-reviewer/internal/adapter/observability"
-	"github.com/bkyoung/code-reviewer/internal/adapter/output/json"
-	"github.com/bkyoung/code-reviewer/internal/adapter/output/markdown"
-	"github.com/bkyoung/code-reviewer/internal/adapter/output/sarif"
-	"github.com/bkyoung/code-reviewer/internal/adapter/repository"
-	storeAdapter "github.com/bkyoung/code-reviewer/internal/adapter/store"
-	"github.com/bkyoung/code-reviewer/internal/adapter/store/sqlite"
-	verifyadapter "github.com/bkyoung/code-reviewer/internal/adapter/verify"
-	"github.com/bkyoung/code-reviewer/internal/config"
-	"github.com/bkyoung/code-reviewer/internal/determinism"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/redaction"
-	usecasedeup "github.com/bkyoung/code-reviewer/internal/usecase/dedup"
-	usecasegithub "github.com/bkyoung/code-reviewer/internal/usecase/github"
-	"github.com/bkyoung/code-reviewer/internal/usecase/merge"
-	"github.com/bkyoung/code-reviewer/internal/usecase/post"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
-	usecasesession "github.com/bkyoung/code-reviewer/internal/usecase/session"
-	usecaseverify "github.com/bkyoung/code-reviewer/internal/usecase/verify"
-	"github.com/bkyoung/code-reviewer/internal/version"
+	"github.com/delightfulhammers/bop/internal/adapter/cli"
+	dedupadapter "github.com/delightfulhammers/bop/internal/adapter/dedup"
+	"github.com/delightfulhammers/bop/internal/adapter/git"
+	githubadapter "github.com/delightfulhammers/bop/internal/adapter/github"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/anthropic"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/gemini"
+	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/ollama"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/openai"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/static"
+	"github.com/delightfulhammers/bop/internal/adapter/observability"
+	"github.com/delightfulhammers/bop/internal/adapter/output/json"
+	"github.com/delightfulhammers/bop/internal/adapter/output/markdown"
+	"github.com/delightfulhammers/bop/internal/adapter/output/sarif"
+	"github.com/delightfulhammers/bop/internal/adapter/repository"
+	storeAdapter "github.com/delightfulhammers/bop/internal/adapter/store"
+	"github.com/delightfulhammers/bop/internal/adapter/store/sqlite"
+	verifyadapter "github.com/delightfulhammers/bop/internal/adapter/verify"
+	"github.com/delightfulhammers/bop/internal/config"
+	"github.com/delightfulhammers/bop/internal/determinism"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/redaction"
+	usecasedeup "github.com/delightfulhammers/bop/internal/usecase/dedup"
+	usecasegithub "github.com/delightfulhammers/bop/internal/usecase/github"
+	"github.com/delightfulhammers/bop/internal/usecase/merge"
+	"github.com/delightfulhammers/bop/internal/usecase/post"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
+	usecasesession "github.com/delightfulhammers/bop/internal/usecase/session"
+	usecaseverify "github.com/delightfulhammers/bop/internal/usecase/verify"
+	"github.com/delightfulhammers/bop/internal/version"
 
-	sessionstore "github.com/bkyoung/code-reviewer/internal/adapter/session"
+	sessionstore "github.com/delightfulhammers/bop/internal/adapter/session"
 )
 
 func main() {
@@ -149,7 +149,7 @@ func run() error {
 	// Phase 3.2: Create ReviewerRegistry from config
 	reviewerRegistry, err := review.NewReviewerRegistry(&cfg)
 	if err != nil {
-		log.Fatalf("Failed to create reviewer registry: %v\nPlease configure reviewers in your code-reviewer.yaml", err)
+		log.Fatalf("Failed to create reviewer registry: %v\nPlease configure reviewers in your bop.yaml", err)
 	}
 
 	// Use enhanced prompt builder for richer context, wrapped with persona support

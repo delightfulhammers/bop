@@ -1,6 +1,6 @@
-name: 'AI Code Reviewer'
+name: 'BOP AI Code Reviewer'
 description: 'AI-powered code review using multiple LLM providers (Anthropic, OpenAI, Gemini)'
-author: 'bkyoung'
+author: 'delightfulhammers'
 branding:
   icon: 'code'
   color: 'purple'
@@ -42,7 +42,7 @@ inputs:
 
   # Advanced
   config-file:
-    description: 'Path to cr.yaml config file (auto-detects .github/cr.yaml or cr.yaml if not specified)'
+    description: 'Path to bop.yaml config file (auto-detects .github/bop.yaml or bop.yaml if not specified)'
     required: false
   log-level:
     description: 'Log level (trace, debug, info, error)'
@@ -94,7 +94,7 @@ runs:
           echo "::warning::post-review is enabled but this is not a pull_request event. PR comments will not be posted."
         fi
 
-    - name: Install code-reviewer
+    - name: Install bop
       shell: bash
       env:
         ACTION_REF: ${{ github.action_ref }}
@@ -115,7 +115,7 @@ runs:
           VERSION="latest"
         fi
 
-        echo "Installing code-reviewer ${VERSION}..."
+        echo "Installing bop ${VERSION}..."
 
         # Detect OS and architecture with validation
         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -138,7 +138,7 @@ runs:
         esac
 
         # Set up install directory (avoid /usr/local/bin for portability)
-        INSTALL_DIR="${RUNNER_TEMP}/cr-bin"
+        INSTALL_DIR="${RUNNER_TEMP}/bop-bin"
         mkdir -p "$INSTALL_DIR"
 
         # Resolve version and build download URL
@@ -149,19 +149,19 @@ runs:
             CURL_OPTS+=(-H "Authorization: Bearer $GH_TOKEN")
           fi
           LATEST_VERSION=$(curl "${CURL_OPTS[@]}" \
-            https://api.github.com/repos/bkyoung/code-reviewer/releases/latest | \
+            https://api.github.com/repos/delightfulhammers/bop/releases/latest | \
             jq -r '.tag_name')
           if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
-            echo "::error::Failed to determine latest version. Consider pinning to a specific version (e.g., @v0.6.3)"
+            echo "::error::Failed to determine latest version. Consider pinning to a specific version (e.g., @v0.7.0)"
             exit 1
           fi
           VERSION="$LATEST_VERSION"
         fi
 
         VERSION_NUM="${VERSION#v}"
-        ARCHIVE_NAME="code-reviewer_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
-        DOWNLOAD_URL="https://github.com/bkyoung/code-reviewer/releases/download/${VERSION}/${ARCHIVE_NAME}"
-        CHECKSUM_URL="https://github.com/bkyoung/code-reviewer/releases/download/${VERSION}/checksums.txt"
+        ARCHIVE_NAME="bop_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
+        DOWNLOAD_URL="https://github.com/delightfulhammers/bop/releases/download/${VERSION}/${ARCHIVE_NAME}"
+        CHECKSUM_URL="https://github.com/delightfulhammers/bop/releases/download/${VERSION}/checksums.txt"
 
         echo "Downloading from: $DOWNLOAD_URL"
 
@@ -195,14 +195,14 @@ runs:
         echo "Checksum verified successfully"
 
         # Extract binary
-        tar xzf "$ARCHIVE_NAME" -C "$INSTALL_DIR" cr
-        chmod +x "$INSTALL_DIR/cr"
+        tar xzf "$ARCHIVE_NAME" -C "$INSTALL_DIR" bop
+        chmod +x "$INSTALL_DIR/bop"
 
         # Add to PATH for subsequent steps
         echo "$INSTALL_DIR" >> "$GITHUB_PATH"
 
         # Verify installation
-        "$INSTALL_DIR/cr" version
+        "$INSTALL_DIR/bop" version
 
         # Cleanup
         rm -rf "$TEMP_DIR"
@@ -247,7 +247,7 @@ runs:
         fi
 
         # Build command using array to avoid injection
-        CMD=(cr review branch "$GH_HEAD_REF")
+        CMD=(bop review branch "$GH_HEAD_REF")
         CMD+=(--base "$INPUT_BASE_BRANCH")
         CMD+=(--log-level "$INPUT_LOG_LEVEL")
 
@@ -270,7 +270,7 @@ runs:
           CMD+=(--reviewers "$INPUT_REVIEWERS")
         fi
 
-        # Config file: explicit input > .github/cr.yaml > cr.yaml > defaults
+        # Config file: explicit input > .github/bop.yaml > bop.yaml > defaults
         CONFIG_FILE=""
         if [ -n "$INPUT_CONFIG_FILE" ]; then
           CONFIG_FILE="${GH_WORKSPACE}/${INPUT_CONFIG_FILE}"
@@ -292,12 +292,12 @@ except ValueError:
             echo "::error::Config file must be within the workspace directory"
             exit 1
           fi
-        elif [ -f "${GH_WORKSPACE}/.github/cr.yaml" ]; then
-          CONFIG_FILE="${GH_WORKSPACE}/.github/cr.yaml"
-          echo "::notice::Using config file: .github/cr.yaml"
-        elif [ -f "${GH_WORKSPACE}/cr.yaml" ]; then
-          CONFIG_FILE="${GH_WORKSPACE}/cr.yaml"
-          echo "::notice::Using config file: cr.yaml"
+        elif [ -f "${GH_WORKSPACE}/.github/bop.yaml" ]; then
+          CONFIG_FILE="${GH_WORKSPACE}/.github/bop.yaml"
+          echo "::notice::Using config file: .github/bop.yaml"
+        elif [ -f "${GH_WORKSPACE}/bop.yaml" ]; then
+          CONFIG_FILE="${GH_WORKSPACE}/bop.yaml"
+          echo "::notice::Using config file: bop.yaml"
         fi
 
         if [ -n "$CONFIG_FILE" ]; then
@@ -310,7 +310,7 @@ except ValueError:
         # Run review, capture exit code
         set +e
         "${CMD[@]}"
-        CR_EXIT_CODE=$?
+        BOP_EXIT_CODE=$?
         set -e
         echo "::endgroup::"
 
@@ -347,7 +347,7 @@ except ValueError:
           # Truncate to 64000 chars (leaving buffer for GitHub's 65535 limit)
           head -c 64000 "$MD_FILE" >> "$GITHUB_STEP_SUMMARY"
           # Use unique delimiter to prevent injection (unlikely to appear in markdown)
-          DELIM="__CR_SUMMARY_END_$(date +%s)__"
+          DELIM="__BOP_SUMMARY_END_$(date +%s)__"
           {
             echo "summary<<${DELIM}"
             head -c 64000 "$MD_FILE"
@@ -383,8 +383,8 @@ except ValueError:
           fi
         fi
 
-        # Propagate cr exit code
-        if [ "$CR_EXIT_CODE" -ne 0 ]; then
-          echo "::error::Code review failed with exit code $CR_EXIT_CODE"
-          exit "$CR_EXIT_CODE"
+        # Propagate bop exit code
+        if [ "$BOP_EXIT_CODE" -ne 0 ]; then
+          echo "::error::Code review failed with exit code $BOP_EXIT_CODE"
+          exit "$BOP_EXIT_CODE"
         fi

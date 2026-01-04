@@ -98,13 +98,13 @@ Reviews are tailored to the change:
 ## 3. User Personas
 
 ### 3.1 The Solo Developer (Primary)
-- Uses code-reviewer on personal/small team projects
+- Uses bop on personal/small team projects
 - Triages feedback locally, often with Claude Code assistance
 - Wants fast, actionable feedback without spending too much on API costs
 - Values being able to customize review focus per project
 
 ### 3.2 The Team Lead (Secondary)
-- Configures code-reviewer for team repositories
+- Configures bop for team repositories
 - Wants consistent review quality across the team
 - Needs cost visibility and budget controls
 - Values specialized reviews for different change types
@@ -116,7 +116,7 @@ Reviews are tailored to the change:
 - Could fully automate triage with human oversight
 
 ### 3.4 The Platform Engineer (Future)
-- Manages code-reviewer across an organization
+- Manages bop across an organization
 - Needs enterprise features: RBAC, audit trails, cross-repo learning
 - Values standardized configurations with project-level overrides
 
@@ -127,7 +127,7 @@ Reviews are tailored to the change:
 ### Goal 1: Reduce Triage Time by 50%
 **Metric:** Time from review posted → all findings addressed  
 **Baseline:** Manual triage with Claude Code + gh CLI  
-**Target:** Triage via MCP tools or `cr triage` CLI  
+**Target:** Triage via MCP tools or `bop triage` CLI  
 
 ### Goal 2: Improve Finding Relevance by 30%
 **Metric:** Ratio of accepted findings to total findings  
@@ -150,7 +150,7 @@ Reviews are tailored to the change:
 
 ### 5.1 Theme 1: Triage Automation
 
-#### 5.1.1 MCP Server: `code-reviewer-mcp`
+#### 5.1.1 MCP Server: `bop-mcp`
 
 **Description:**  
 An MCP (Model Context Protocol) server that exposes triage primitives as tools. Works with any MCP-compatible client (Claude Desktop, Claude Code, potentially other AI assistants).
@@ -206,7 +206,7 @@ A skill file that teaches Claude Code how to effectively triage PR review feedba
 
 ---
 
-#### 5.1.3 CLI Command: `cr triage`
+#### 5.1.3 CLI Command: `bop triage`
 
 **Description:**  
 Interactive CLI for humans who don't use AI assistants. Provides a guided triage experience.
@@ -215,12 +215,12 @@ Interactive CLI for humans who don't use AI assistants. Provides a guided triage
 
 | Command | Description |
 |---------|-------------|
-| `cr triage list` | List findings with filters |
-| `cr triage show <id>` | Show finding details with context |
-| `cr triage accept <id>` | Mark finding as accepted, apply fix if available |
-| `cr triage dispute <id> <reason>` | Dispute with explanation |
-| `cr triage batch-apply <ids...>` | Apply multiple fixes |
-| `cr triage summary` | Show triage progress (X/Y addressed) |
+| `bop triage list` | List findings with filters |
+| `bop triage show <id>` | Show finding details with context |
+| `bop triage accept <id>` | Mark finding as accepted, apply fix if available |
+| `bop triage dispute <id> <reason>` | Dispute with explanation |
+| `bop triage batch-apply <ids...>` | Apply multiple fixes |
+| `bop triage summary` | Show triage progress (X/Y addressed) |
 
 **Priority:** P2 (Medium) — CLI is secondary interface to MCP  
 **Phase:** 3.1 (ships with MCP server, but lower priority)

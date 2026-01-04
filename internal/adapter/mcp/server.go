@@ -3,10 +3,10 @@ package mcp
 import (
 	"context"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/provider"
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/review"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

@@ -89,10 +89,10 @@ func (a *StoreAdapter) CreateRun(ctx context.Context, run review.StoreRun) error
 mage build
 
 # Run review
-./cr review branch main --target feature
+./bop review branch main --target feature
 
 # Inspect database
-sqlite3 ~/.config/cr/reviews.db
+sqlite3 ~/.config/bop/reviews.db
 
 # Check tables
 .tables

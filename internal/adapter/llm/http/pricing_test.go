@@ -3,7 +3,7 @@ package http_test
 import (
 	"testing"
 
-	"github.com/bkyoung/code-reviewer/internal/adapter/llm/http"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/http"
 	"github.com/stretchr/testify/assert"
 )
 

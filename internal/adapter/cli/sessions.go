@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/session"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/session"
 )
 
 // SessionManager defines the dependency required to run session commands.
@@ -91,10 +91,10 @@ first checks the remote for branch existence, falling back to local checks
 if the network is unavailable.
 
 Examples:
-  cr sessions prune --older-than 30d
-  cr sessions prune --orphans
-  cr sessions prune --older-than 7d --orphans
-  cr sessions prune --older-than 7d --dry-run`,
+  bop sessions prune --older-than 30d
+  bop sessions prune --orphans
+  bop sessions prune --older-than 7d --orphans
+  bop sessions prune --older-than 7d --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 

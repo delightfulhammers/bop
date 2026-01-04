@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
-	"github.com/bkyoung/code-reviewer/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -244,7 +244,7 @@ func TestServer_handleListAnnotations(t *testing.T) {
 		mockPR.On("GetPRMetadata", ctx, "owner", "repo", 42).Return(prMeta, nil)
 
 		checkRuns := []domain.CheckRunSummary{
-			{ID: 1001, Name: "code-reviewer", Status: "completed", AnnotationCount: 2},
+			{ID: 1001, Name: "bop", Status: "completed", AnnotationCount: 2},
 		}
 		mockAnn.On("ListCheckRuns", ctx, "owner", "repo", "abc123", (*string)(nil)).Return(checkRuns, nil)
 

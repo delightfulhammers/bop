@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // convertFindingsToCandidates converts merged findings to candidate findings for verification.

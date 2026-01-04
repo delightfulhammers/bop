@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/bkyoung/code-reviewer/internal/domain"
+	"github.com/delightfulhammers/bop/internal/domain"
 )
 
 // Note: ErrNotImplemented is defined in errors.go
