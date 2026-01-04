@@ -2,8 +2,8 @@
 
 **Project:** AI-Powered Code Review Tool
 **Status:** Phase 3.5 Complete, v0.7.x Stable
-**Version:** v0.7.0
-**Last Updated:** 2026-01-02
+**Version:** v0.7.1
+**Last Updated:** 2026-01-04
 
 ---
 
@@ -19,7 +19,7 @@
 ### GitHub Action (CI/CD)
 
 ```yaml
-- uses: delightfulhammers/bop/action@v0.7.0
+- uses: delightfulhammers/bop/action@v0.7.1
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
