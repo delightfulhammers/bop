@@ -46,7 +46,7 @@ func run() error {
 	}
 
 	// Get repository directory (default to current directory).
-	repoDir := os.Getenv("CODE_REVIEWER_REPO_DIR")
+	repoDir := os.Getenv("BOP_REPO_DIR")
 	if repoDir == "" {
 		var err error
 		repoDir, err = os.Getwd()
@@ -91,8 +91,8 @@ func run() error {
 	// Load config for reviewer and provider settings.
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
-		FileName:    "cr",
-		EnvPrefix:   "CR",
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		log.Printf("warning: config load failed: %v", err)
@@ -155,5 +155,5 @@ func run() error {
 // defaultConfigPaths returns the default config file search paths.
 func defaultConfigPaths() []string {
 	home, _ := os.UserHomeDir()
-	return []string{".", home + "/.config/cr"}
+	return []string{".", home + "/.config/bop"}
 }

@@ -66,8 +66,8 @@ func run() error {
 
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
-		FileName:    "cr",
-		EnvPrefix:   "CR",
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		return fmt.Errorf("config load failed: %w", err)
@@ -343,7 +343,7 @@ func repositoryName(repoDir string) string {
 func defaultConfigPaths() []string {
 	paths := []string{"."}
 	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".config", "cr"))
+		paths = append(paths, filepath.Join(home, ".config", "bop"))
 	}
 	return paths
 }

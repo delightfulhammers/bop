@@ -289,7 +289,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.openai.defaultModel", "gpt-5.2")
 	v.SetDefault("providers.anthropic.defaultModel", "claude-sonnet-4-5")
 	v.SetDefault("providers.gemini.defaultModel", "gemini-3-pro-preview")
-	v.SetDefault("providers.ollama.defaultModel", "llama2")
+	// NOTE: Ollama default intentionally omitted. Setting a default for keyless providers
+	// causes Viper to create a config entry, which triggers "enabled by presence" logic
+	// and activates the provider even when commented out in config. Users must explicitly
+	// configure Ollama with their desired model.
 	v.SetDefault("providers.static.defaultModel", "static-v1")
 
 	// Review action defaults are NOT set here.
