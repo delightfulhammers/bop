@@ -1,4 +1,4 @@
-# Code Reviewer
+# Bop
 
 AI code reviews that actually matter. Multiple LLMs review your PR, agree on what's real, and post inline comments as a first-class GitHub reviewer.
 
@@ -23,7 +23,7 @@ brew install delightfulhammers/tap/bop
 export OPENAI_API_KEY="sk-..."
 
 # Review current branch against main
-cr review branch main
+bop review branch main
 ```
 
 That's it. You'll get a detailed review in `./reviews/`.
@@ -187,10 +187,10 @@ Use `--reviewers` to run specific reviewers:
 
 ```bash
 # Run only security review
-cr review branch main --reviewers security
+bop review branch main --reviewers security
 
 # Run multiple reviewers
-cr review branch main --reviewers security,architecture
+bop review branch main --reviewers security,architecture
 ```
 
 Built-in personas are available in `templates/reviewers/` for common review focuses.
@@ -233,10 +233,10 @@ Debug LLM interactions with configurable logging:
 
 ```bash
 # CLI flag
-cr review branch main --log-level trace
+bop review branch main --log-level trace
 
 # Or environment variable
-export CR_OBSERVABILITY_LOGGING_LEVEL=trace
+export BOP_OBSERVABILITY_LOGGING_LEVEL=trace
 ```
 
 **Log Levels:**
