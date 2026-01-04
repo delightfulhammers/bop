@@ -58,14 +58,14 @@ archives:
       - bop.yaml
 
 # Homebrew formula publishing
-# Install with: brew install delightfulhammers/tap/bop
+# Install with: brew install delightfulhammers/homebrew-tap/bop
 brews:
   - name: bop
     ids:
       - default
     repository:
       owner: delightfulhammers
-      name: tap
+      name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_GITHUB_TOKEN }}"
     directory: Formula
