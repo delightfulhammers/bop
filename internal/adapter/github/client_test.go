@@ -581,7 +581,7 @@ func TestClient_ListReviews_SSRFProtection_WrongPathPrefix(t *testing.T) {
 	_, err := client.ListReviews(context.Background(), "owner", "repo", 123)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a /repos/ endpoint")
+	assert.Contains(t, err.Error(), "must be a /repos/ or /repositories/ endpoint")
 }
 
 func TestClient_ListReviews_SSRFProtection_BlocksDangerousPaths(t *testing.T) {
@@ -739,6 +739,93 @@ func TestClient_ListReviews_RealisticPaginationURL(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, reviews, 2)
 	assert.Equal(t, 2, pageCount)
+}
+
+func TestClient_ListReviews_RepositoriesIDPathFormat(t *testing.T) {
+	// Test that GitHub's /repositories/{id}/ pagination URL format is accepted.
+	// GitHub sometimes returns pagination links using numeric repository IDs
+	// instead of the /repos/{owner}/{repo}/ format (both are valid GitHub API endpoints).
+	// Example: /repositories/1127432770/pulls/48/comments?page=2
+	pageCount := 0
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pageCount++
+		w.Header().Set("Content-Type", "application/json")
+
+		if pageCount == 1 {
+			// GitHub pagination Link header using /repositories/{id}/ format
+			w.Header().Set("Link", `<`+serverURL+`/repositories/1127432770/pulls/48/reviews?page=2>; rel="next"`)
+			reviews := []github.ReviewSummary{
+				{ID: 1, User: github.User{Login: "bot"}, State: "APPROVED", SubmittedAt: "2024-01-01T00:00:00Z"},
+			}
+			_ = json.NewEncoder(w).Encode(reviews)
+		} else {
+			reviews := []github.ReviewSummary{
+				{ID: 2, User: github.User{Login: "bot"}, State: "COMMENTED", SubmittedAt: "2024-01-02T00:00:00Z"},
+			}
+			_ = json.NewEncoder(w).Encode(reviews)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := github.NewClient("test-token")
+	client.SetBaseURL(server.URL)
+
+	reviews, err := client.ListReviews(context.Background(), "owner", "repo", 48)
+
+	require.NoError(t, err)
+	assert.Len(t, reviews, 2, "should have fetched both pages using /repositories/ format")
+	assert.Equal(t, 2, pageCount, "should have made two requests")
+}
+
+func TestClient_ValidateAndResolvePaginationURL_RepositoriesFormat(t *testing.T) {
+	// Direct unit test for ValidateAndResolvePaginationURL with /repositories/{id}/ format
+	client := github.NewClient("test-token")
+	client.SetBaseURL("https://api.github.com")
+
+	testCases := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{
+			name:    "repos format accepted",
+			url:     "https://api.github.com/repos/owner/repo/pulls/1/comments?page=2",
+			wantErr: false,
+		},
+		{
+			name:    "repositories ID format accepted",
+			url:     "https://api.github.com/repositories/1127432770/pulls/48/comments?page=2",
+			wantErr: false,
+		},
+		{
+			name:    "repositories ID format with reviews accepted",
+			url:     "https://api.github.com/repositories/1127432770/pulls/48/reviews?page=2",
+			wantErr: false,
+		},
+		{
+			name:    "users format rejected",
+			url:     "https://api.github.com/users/foo/followers?page=2",
+			wantErr: true,
+		},
+		{
+			name:    "orgs format rejected",
+			url:     "https://api.github.com/orgs/foo/members?page=2",
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := client.ValidateAndResolvePaginationURL(tc.url)
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestClient_ListReviews_PathInjectionRejected(t *testing.T) {

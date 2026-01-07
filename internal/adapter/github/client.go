@@ -318,11 +318,16 @@ func (c *Client) ValidateAndResolvePaginationURL(rawURL string) (string, error) 
 		return "", fmt.Errorf("untrusted host: %s (expected %s)", parsed.Host, base.Host)
 	}
 
-	// Validate path is a GitHub API repos endpoint
+	// Validate path is a GitHub API repository endpoint
 	// The host check above is the primary SSRF defense; this provides defense in depth
-	// Accept both /repos/... and /api/v3/repos/... patterns for GHES compatibility
-	if !strings.Contains(parsed.Path, "/repos/") {
-		return "", fmt.Errorf("unexpected API path: %s (must be a /repos/ endpoint)", parsed.Path)
+	// Accept these patterns:
+	//   - /repos/{owner}/{repo}/... - the standard named format
+	//   - /api/v3/repos/... - GitHub Enterprise Server format
+	//   - /repositories/{id}/... - numeric ID format (used in some pagination links)
+	isReposPath := strings.Contains(parsed.Path, "/repos/")
+	isRepositoriesPath := strings.Contains(parsed.Path, "/repositories/")
+	if !isReposPath && !isRepositoriesPath {
+		return "", fmt.Errorf("unexpected API path: %s (must be a /repos/ or /repositories/ endpoint)", parsed.Path)
 	}
 
 	// Block known dangerous paths even on the same host (defense in depth)
