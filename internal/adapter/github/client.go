@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -324,15 +325,26 @@ func (c *Client) ValidateAndResolvePaginationURL(rawURL string) (string, error) 
 	//   - /repos/{owner}/{repo}/... - the standard named format
 	//   - /api/v3/repos/... - GitHub Enterprise Server format
 	//   - /repositories/{id}/... - numeric ID format (used in some pagination links)
-	isReposPath := strings.Contains(parsed.Path, "/repos/")
-	isRepositoriesPath := strings.Contains(parsed.Path, "/repositories/")
-	if !isReposPath && !isRepositoriesPath {
-		return "", fmt.Errorf("unexpected API path: %s (must be a /repos/ or /repositories/ endpoint)", parsed.Path)
+	//
+	// Use path.Clean to normalize and prevent traversal attacks (e.g., /admin/repos/../secrets)
+	// Use HasPrefix for structural validation instead of Contains
+	cleanPath := path.Clean(parsed.Path)
+	validPrefixes := []string{"/repos/", "/repositories/", "/api/v3/repos/", "/api/v3/repositories/"}
+	hasValidPrefix := false
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(cleanPath, prefix) {
+			hasValidPrefix = true
+			break
+		}
+	}
+	if !hasValidPrefix {
+		return "", fmt.Errorf("unexpected API path: %s (must start with /repos/ or /repositories/)", parsed.Path)
 	}
 
 	// Block known dangerous paths even on the same host (defense in depth)
+	// Use the cleaned path to prevent bypass via traversal
 	dangerousPaths := []string{"/admin", "/settings", "/stafftools", "/_private", "/setup"}
-	pathLower := strings.ToLower(parsed.Path)
+	pathLower := strings.ToLower(cleanPath)
 	for _, dangerous := range dangerousPaths {
 		if strings.Contains(pathLower, dangerous) {
 			return "", fmt.Errorf("blocked path pattern in URL: %s", parsed.Path)

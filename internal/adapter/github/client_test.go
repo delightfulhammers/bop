@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -581,16 +582,17 @@ func TestClient_ListReviews_SSRFProtection_WrongPathPrefix(t *testing.T) {
 	_, err := client.ListReviews(context.Background(), "owner", "repo", 123)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "must be a /repos/ or /repositories/ endpoint")
+	assert.Contains(t, err.Error(), "must start with /repos/ or /repositories/")
 }
 
 func TestClient_ListReviews_SSRFProtection_BlocksDangerousPaths(t *testing.T) {
-	// Test that known dangerous paths are blocked even if they contain /repos/
+	// Test that known dangerous paths are blocked even when they start with /repos/
+	// These paths would pass the prefix check but should be blocked by dangerous path check
 	dangerousPaths := []string{
-		"/admin/repos/evil",
 		"/repos/owner/repo/settings/secrets",
-		"/stafftools/repos/audit",
-		"/_private/repos/internal",
+		"/repos/admin/sensitive/data",
+		"/repos/owner/stafftools/audit",
+		"/repositories/123/_private/data",
 	}
 
 	for _, dangerousPath := range dangerousPaths {
@@ -746,13 +748,13 @@ func TestClient_ListReviews_RepositoriesIDPathFormat(t *testing.T) {
 	// GitHub sometimes returns pagination links using numeric repository IDs
 	// instead of the /repos/{owner}/{repo}/ format (both are valid GitHub API endpoints).
 	// Example: /repositories/1127432770/pulls/48/comments?page=2
-	pageCount := 0
+	var pageCount atomic.Int32
 	var serverURL string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pageCount++
+		count := pageCount.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 
-		if pageCount == 1 {
+		if count == 1 {
 			// GitHub pagination Link header using /repositories/{id}/ format
 			w.Header().Set("Link", `<`+serverURL+`/repositories/1127432770/pulls/48/reviews?page=2>; rel="next"`)
 			reviews := []github.ReviewSummary{
@@ -776,7 +778,7 @@ func TestClient_ListReviews_RepositoriesIDPathFormat(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Len(t, reviews, 2, "should have fetched both pages using /repositories/ format")
-	assert.Equal(t, 2, pageCount, "should have made two requests")
+	assert.Equal(t, int32(2), pageCount.Load(), "should have made two requests")
 }
 
 func TestClient_ValidateAndResolvePaginationURL_RepositoriesFormat(t *testing.T) {
@@ -812,6 +814,21 @@ func TestClient_ValidateAndResolvePaginationURL_RepositoriesFormat(t *testing.T)
 		{
 			name:    "orgs format rejected",
 			url:     "https://api.github.com/orgs/foo/members?page=2",
+			wantErr: true,
+		},
+		{
+			name:    "path traversal attack rejected",
+			url:     "https://api.github.com/admin/repos/../secrets?page=2",
+			wantErr: true,
+		},
+		{
+			name:    "repos in middle of path rejected",
+			url:     "https://api.github.com/admin/repos/evil?page=2",
+			wantErr: true,
+		},
+		{
+			name:    "repositories in middle of path rejected",
+			url:     "https://api.github.com/admin/repositories/backup?page=2",
 			wantErr: true,
 		},
 	}
