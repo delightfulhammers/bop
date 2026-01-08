@@ -25,6 +25,10 @@ const (
 	maxPaginationPages    = 100 // Prevent infinite pagination loops
 )
 
+// validRepoPrefixes defines the allowed path prefixes for pagination URLs.
+// Package-level to avoid allocation on each validation call.
+var validRepoPrefixes = []string{"/repos/", "/repositories/", "/api/v3/repos/", "/api/v3/repositories/"}
+
 // validatePathSegment validates that a path segment (owner, repo) doesn't contain
 // characters that could cause path injection attacks.
 func validatePathSegment(value, name string) error {
@@ -329,9 +333,8 @@ func (c *Client) ValidateAndResolvePaginationURL(rawURL string) (string, error) 
 	// Use path.Clean to normalize and prevent traversal attacks (e.g., /admin/repos/../secrets)
 	// Use HasPrefix for structural validation instead of Contains
 	cleanPath := path.Clean(parsed.Path)
-	validPrefixes := []string{"/repos/", "/repositories/", "/api/v3/repos/", "/api/v3/repositories/"}
 	hasValidPrefix := false
-	for _, prefix := range validPrefixes {
+	for _, prefix := range validRepoPrefixes {
 		if strings.HasPrefix(cleanPath, prefix) {
 			hasValidPrefix = true
 			break
