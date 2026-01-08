@@ -29,6 +29,10 @@ const (
 // Package-level to avoid allocation on each validation call.
 var validRepoPrefixes = []string{"/repos/", "/repositories/", "/api/v3/repos/", "/api/v3/repositories/"}
 
+// dangerousPaths defines path patterns that should be blocked even on trusted hosts.
+// Package-level to avoid allocation on each validation call.
+var dangerousPaths = []string{"/admin", "/settings", "/stafftools", "/_private", "/setup"}
+
 // validatePathSegment validates that a path segment (owner, repo) doesn't contain
 // characters that could cause path injection attacks.
 func validatePathSegment(value, name string) error {
@@ -346,7 +350,6 @@ func (c *Client) ValidateAndResolvePaginationURL(rawURL string) (string, error) 
 
 	// Block known dangerous paths even on the same host (defense in depth)
 	// Use the cleaned path to prevent bypass via traversal
-	dangerousPaths := []string{"/admin", "/settings", "/stafftools", "/_private", "/setup"}
 	pathLower := strings.ToLower(cleanPath)
 	for _, dangerous := range dangerousPaths {
 		if strings.Contains(pathLower, dangerous) {
