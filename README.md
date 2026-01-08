@@ -38,7 +38,7 @@ curl -sSfL https://raw.githubusercontent.com/delightfulhammers/bop/main/install.
 Options:
 ```bash
 # Install specific version
-curl -sSfL .../install.sh | sh -s -- --version v0.6.3
+curl -sSfL .../install.sh | sh -s -- --version v0.7.2
 
 # Install to custom directory
 curl -sSfL .../install.sh | sh -s -- --dir /usr/local/bin
@@ -75,7 +75,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: delightfulhammers/bop/action@v0.6.3
+      - uses: delightfulhammers/bop/action@v0.7.2
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           # Or use multiple providers:
@@ -315,7 +315,7 @@ This tool sends code to third-party LLM APIs. Before using on private repositori
 | Phase 3.1: Triage | ✅ Complete | MCP server for AI-assisted triage |
 | Phase 3.2: Personas | ✅ Complete | Specialized reviewer roles with personas |
 
-**Current Version:** v0.6.3
+**Current Version:** v0.7.2
 
 ---
 

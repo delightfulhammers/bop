@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: delightfulhammers/bop/action@v0.6.3
+      - uses: delightfulhammers/bop/action@v0.7.2
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -56,7 +56,7 @@ jobs:
 ### Multi-Provider Review
 
 ```yaml
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
@@ -65,7 +65,7 @@ jobs:
 ### Block on High Severity
 
 ```yaml
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     block-threshold: high
@@ -75,7 +75,7 @@ jobs:
 ### Custom Reviewers
 
 ```yaml
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     reviewers: security,performance
@@ -91,13 +91,13 @@ The action automatically detects config files in this order:
 
 ```yaml
 # Explicit config path
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     config-file: custom/path/bop.yaml
 
 # Or just drop a bop.yaml in .github/ or repo root - it's auto-detected
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -107,7 +107,7 @@ A well-commented example config is included in the [release tarballs](https://gi
 ### Use Outputs in Subsequent Steps
 
 ```yaml
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
   id: review
   with:
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -144,7 +144,7 @@ Reference specific versions for stability:
 
 ```yaml
 # Pin to specific version (recommended)
-- uses: delightfulhammers/bop/action@v0.6.3
+- uses: delightfulhammers/bop/action@v0.7.2
 
 # Use latest from main (not recommended for production)
 - uses: delightfulhammers/bop/action@main
