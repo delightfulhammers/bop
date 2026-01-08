@@ -81,16 +81,17 @@ If either returns empty, explicitly note "0 findings from [source]" in your summ
 
 ### Step 2: Categorize Findings
 
-For each finding, determine the action:
+For each finding, determine the category:
 
 | Category | Action | Examples |
 |----------|--------|----------|
-| **Errors/Failures** | Must fix | SARIF errors, blocking check failures |
-| **Security Issues** | Must fix | Vulnerabilities, injection risks |
-| **Bugs** | Should fix | Logic errors, null handling |
-| **Valid Suggestions** | Consider fixing | Performance, clarity improvements |
-| **Design Disputes** | Reply with explanation | Intentional patterns, architecture decisions |
-| **False Positives** | Reply with context | Incorrect analysis, missing context |
+| **Needs Fix** | Fix now | Security vulnerabilities, bugs, blocking errors |
+| **Already Addressed** | Reply noting prior fix | Fixed in earlier round, code already handles this |
+| **Already Tracked** | Reply with issue link | Scalability concern tracked in Issue #XX |
+| **Acknowledge** | Reply accepting tradeoff | Valid observation but acceptable for now |
+| **Disputed** | Reply with explanation | False positive, incorrect analysis, intentional design |
+
+**Creating Tracking Issues:** For legitimate concerns that shouldn't block the PR (scalability, future enhancements), create a GitHub issue and reference it in your reply. This acknowledges the concern while deferring the work appropriately.
 
 ### Step 3: Get Details for Complex Findings
 
@@ -109,12 +110,14 @@ get_suggestion(owner, repo, pr_number, finding_id)
 
 For findings you're addressing:
 
-1. Use `get_suggestion` to extract the proposed fix
+1. Use `get_suggestion` to extract the proposed fix (if available)
 2. Apply the fix using standard file editing
-3. Run validation: `go test ./... && go build -o bop ./cmd/bop`
+3. Run **all quality gates**: `mage fmt && mage lint && mage test && mage build`
 4. Commit locally (**don't push yet** - respond to findings first!)
 
-### Step 5: Respond to Findings
+### Step 5: Respond to ALL Findings
+
+**IMPORTANT:** Reply to every finding in the round, not just the ones you fixed. This provides a clear audit trail and shows you've reviewed each concern.
 
 **For PR comment findings:**
 ```
@@ -126,11 +129,12 @@ reply_to_finding(owner, repo, pr_number, finding_id, body, status="fixed")
 post_comment(owner, repo, pr_number, file, line, body)
 ```
 
-**Good reply patterns:**
-- **Fixed:** "Addressed in commit [hash]. [Brief description of fix]."
-- **Disputed:** "This is intentional. [Pattern] is used because [reason]."
-- **Won't fix:** "Acceptable risk because [reason]. Cost of fix outweighs benefit."
-- **False positive:** "[Code] actually does [X], not [Y]. The [context] ensures safety."
+**Reply patterns by category:**
+- **Fixed:** "Fixed. Added [description of fix]."
+- **Already Addressed:** "Already addressed in [previous commit/fix]. [Brief explanation]."
+- **Already Tracked:** "Already tracked in Issue #XX. [Brief context]."
+- **Acknowledged:** "This is documented/intentional behavior. [Explanation of tradeoff]."
+- **Disputed:** "False positive. [Explanation of why analysis is incorrect]."
 
 ### Step 6: Mark Threads Resolved
 
@@ -139,7 +143,7 @@ After addressing a finding:
 mark_resolved(owner, repo, thread_id, resolved=true)
 ```
 
-### Step 7: Push and Request Re-review
+### Step 7: Push and Check for New Findings
 
 After all fixes are committed and responses posted:
 
@@ -147,76 +151,83 @@ After all fixes are committed and responses posted:
 git push
 ```
 
-Then request fresh review:
+Then dismiss stale reviews:
 ```
 request_rereview(owner, repo, pr_number, dismiss_stale=true)
 ```
+
+### Step 8: Iterate Until Clean
+
+**The triage process is iterative.** Each push triggers a new review round that may find new issues. Repeat steps 1-7 until:
+- No new findings appear, OR
+- All remaining findings are acknowledged/tracked
+
+Typical PRs may require 3-8 rounds before all findings are addressed or triaged.
 
 ---
 
 ## Decision Matrix
 
 ```
-Is it a blocking error (SARIF error, check failure)?
+Was this already fixed in a previous round?
+  YES -> Reply "Already addressed" with context
+  NO  -> Continue...
+
+Is there already a tracking issue for this concern?
+  YES -> Reply "Already tracked in Issue #XX"
+  NO  -> Continue...
+
+Is it a blocking error, security issue, or real bug?
   YES -> Fix immediately
   NO  -> Continue...
 
-Is it a security vulnerability?
-  YES -> Fix immediately
+Is it a scalability/performance concern for the future?
+  YES -> Create tracking issue, reply with issue link
   NO  -> Continue...
 
-Is it a real bug or logic error?
-  YES -> Fix it
+Is it a false positive or incorrect analysis?
+  YES -> Reply "Disputed" with explanation
   NO  -> Continue...
 
-Is it about intentional design or architecture?
-  YES -> Reply with explanation (cite clean architecture, SOLID, etc.)
-  NO  -> Continue...
-
-Is it a false positive or lacks context?
-  YES -> Reply explaining why
-  NO  -> Continue...
-
-Is the fix worth the code churn?
-  YES -> Fix it
-  NO  -> Reply noting it's deferred
+Is it a valid observation but acceptable tradeoff?
+  YES -> Reply "Acknowledged" explaining the tradeoff
+  NO  -> Fix it
 ```
 
 ---
 
 ## Output Format
 
-After triaging, provide a summary:
+After triaging each round, provide a summary:
 
 ```markdown
-## PR Triage Summary
+## Round N Triage - X new findings
 
-### Sources Checked
-- [x] SARIF Annotations: X findings
-- [x] PR Comments: Y findings
+| Category | Count | IDs |
+|----------|-------|-----|
+| Already tracked | N | ID1 (→#XX), ID2 (→#YY) |
+| Already addressed | N | ID3, ID4 |
+| Needs fix | N | ID5 (description), ID6 (description) |
+| Acknowledge | N | ID7, ID8 |
+| Disputed | N | ID9 |
 
-### Findings by Source
+**Fixes needed:**
+1. ID5 - [brief description of issue and fix]
+2. ID6 - [brief description of issue and fix]
 
-#### SARIF Annotations
-| # | File:Line | Severity | Finding | Decision |
-|---|-----------|----------|---------|----------|
-| 1 | path:42 | error | [description] | Fixed |
+**Investigation required:** (if any findings need deeper analysis)
+- ID10 - Need to verify [specific concern]
+```
 
-#### PR Comments
-| # | File:Line | Finding ID | Finding | Decision |
-|---|-----------|------------|---------|----------|
-| 1 | path:100 | CR_FP-xxx | [description] | Disputed |
+After completing a round:
+```markdown
+**Round N Summary:**
+| Fix | Status |
+|-----|--------|
+| [description] | ✅ Fixed |
+| [description] | ✅ Fixed |
 
-### Actions Taken
-| Decision | Count | Details |
-|----------|-------|---------|
-| Fixed | X | [list] |
-| Disputed | Y | [list] |
-| Deferred | Z | [list] |
-
-### Status
-- Blocking errors: X fixed, Y remaining
-- Ready for re-review: [yes/no]
+All X findings replied to (Y fixed, Z acknowledged). Changes pushed.
 ```
 
 ---
@@ -242,7 +253,7 @@ After triaging, provide a summary:
 
 ## Fallback: Raw GitHub API
 
-If MCP tools are unavailable, fall back to `gh api`:
+If MCP tools fail (e.g., pagination bug with `list_findings`), fall back to `gh api`:
 
 ```bash
 # Get HEAD commit
@@ -255,8 +266,16 @@ CHECK_RUN_ID=$(gh api repos/{owner}/{repo}/commits/${HEAD_SHA}/check-runs \
 # Get annotations
 gh api repos/{owner}/{repo}/check-runs/${CHECK_RUN_ID}/annotations
 
-# Get PR comments
-gh api repos/{owner}/{repo}/pulls/{pr}/comments
+# Get PR comments (with pagination)
+gh api repos/{owner}/{repo}/pulls/{pr}/comments --paginate
+
+# Get bot findings with key fields
+gh api repos/{owner}/{repo}/pulls/{pr}/comments --paginate \
+  --jq '.[] | select(.user.login | test("bop-bot|github-actions")) | {id, path, line, body: .body[0:100]}'
+
+# Filter for specific round (by ID range)
+gh api repos/{owner}/{repo}/pulls/{pr}/comments --paginate \
+  --jq '.[] | select(.id >= 2670394000) | {id, path, severity: (.body | capture("Severity:.* (?<s>[a-z]+)") | .s)}'
 ```
 
 ---

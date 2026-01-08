@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -23,6 +24,14 @@ const (
 	defaultInitialBackoff = 2 * time.Second
 	maxPaginationPages    = 100 // Prevent infinite pagination loops
 )
+
+// validRepoPrefixes defines the allowed path prefixes for pagination URLs.
+// Package-level to avoid allocation on each validation call.
+var validRepoPrefixes = []string{"/repos/", "/repositories/", "/api/v3/repos/", "/api/v3/repositories/"}
+
+// dangerousPaths defines path patterns that should be blocked even on trusted hosts.
+// Package-level to avoid allocation on each validation call.
+var dangerousPaths = []string{"/admin", "/settings", "/stafftools", "/_private", "/setup"}
 
 // validatePathSegment validates that a path segment (owner, repo) doesn't contain
 // characters that could cause path injection attacks.
@@ -318,22 +327,42 @@ func (c *Client) ValidateAndResolvePaginationURL(rawURL string) (string, error) 
 		return "", fmt.Errorf("untrusted host: %s (expected %s)", parsed.Host, base.Host)
 	}
 
-	// Validate path is a GitHub API repos endpoint
+	// Validate path is a GitHub API repository endpoint
 	// The host check above is the primary SSRF defense; this provides defense in depth
-	// Accept both /repos/... and /api/v3/repos/... patterns for GHES compatibility
-	if !strings.Contains(parsed.Path, "/repos/") {
-		return "", fmt.Errorf("unexpected API path: %s (must be a /repos/ endpoint)", parsed.Path)
+	// Accept these patterns:
+	//   - /repos/{owner}/{repo}/... - the standard named format
+	//   - /api/v3/repos/... - GitHub Enterprise Server format
+	//   - /repositories/{id}/... - numeric ID format (used in some pagination links)
+	//
+	// Use path.Clean to normalize and prevent traversal attacks (e.g., /admin/repos/../secrets)
+	// Use HasPrefix for structural validation instead of Contains
+	cleanPath := path.Clean(parsed.Path)
+	hasValidPrefix := false
+	for _, prefix := range validRepoPrefixes {
+		if strings.HasPrefix(cleanPath, prefix) {
+			hasValidPrefix = true
+			break
+		}
+	}
+	if !hasValidPrefix {
+		return "", fmt.Errorf("unexpected API path: %s (must start with /repos/ or /repositories/)", cleanPath)
 	}
 
 	// Block known dangerous paths even on the same host (defense in depth)
-	dangerousPaths := []string{"/admin", "/settings", "/stafftools", "/_private", "/setup"}
-	pathLower := strings.ToLower(parsed.Path)
+	// Use the cleaned path to prevent bypass via traversal
+	// Check for complete path segments to avoid false positives (e.g., /repos/org/admin-tools is valid)
+	pathLower := strings.ToLower(cleanPath)
 	for _, dangerous := range dangerousPaths {
-		if strings.Contains(pathLower, dangerous) {
-			return "", fmt.Errorf("blocked path pattern in URL: %s", parsed.Path)
+		// Check if dangerous pattern appears as a complete path segment
+		// Must be followed by "/" or end of string to be a real match
+		pattern := dangerous + "/"
+		if strings.Contains(pathLower, pattern) || strings.HasSuffix(pathLower, dangerous) {
+			return "", fmt.Errorf("blocked path pattern in URL: %s", cleanPath)
 		}
 	}
 
+	// Use the cleaned/normalized path in the returned URL
+	parsed.Path = cleanPath
 	return parsed.String(), nil
 }
 
