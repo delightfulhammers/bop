@@ -831,6 +831,21 @@ func TestClient_ValidateAndResolvePaginationURL_RepositoriesFormat(t *testing.T)
 			url:     "https://api.github.com/admin/repositories/backup?page=2",
 			wantErr: true,
 		},
+		{
+			name:    "repo named admin-tools allowed (not false positive)",
+			url:     "https://api.github.com/repos/org/admin-tools/pulls/1/reviews?page=2",
+			wantErr: false,
+		},
+		{
+			name:    "repo named settings-manager allowed (not false positive)",
+			url:     "https://api.github.com/repos/org/settings-manager/pulls/1/reviews?page=2",
+			wantErr: false,
+		},
+		{
+			name:    "actual settings endpoint blocked",
+			url:     "https://api.github.com/repos/org/repo/settings/secrets?page=2",
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range testCases {

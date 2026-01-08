@@ -345,18 +345,24 @@ func (c *Client) ValidateAndResolvePaginationURL(rawURL string) (string, error) 
 		}
 	}
 	if !hasValidPrefix {
-		return "", fmt.Errorf("unexpected API path: %s (must start with /repos/ or /repositories/)", parsed.Path)
+		return "", fmt.Errorf("unexpected API path: %s (must start with /repos/ or /repositories/)", cleanPath)
 	}
 
 	// Block known dangerous paths even on the same host (defense in depth)
 	// Use the cleaned path to prevent bypass via traversal
+	// Check for complete path segments to avoid false positives (e.g., /repos/org/admin-tools is valid)
 	pathLower := strings.ToLower(cleanPath)
 	for _, dangerous := range dangerousPaths {
-		if strings.Contains(pathLower, dangerous) {
-			return "", fmt.Errorf("blocked path pattern in URL: %s", parsed.Path)
+		// Check if dangerous pattern appears as a complete path segment
+		// Must be followed by "/" or end of string to be a real match
+		pattern := dangerous + "/"
+		if strings.Contains(pathLower, pattern) || strings.HasSuffix(pathLower, dangerous) {
+			return "", fmt.Errorf("blocked path pattern in URL: %s", cleanPath)
 		}
 	}
 
+	// Use the cleaned/normalized path in the returned URL
+	parsed.Path = cleanPath
 	return parsed.String(), nil
 }
 
