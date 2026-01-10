@@ -431,6 +431,10 @@ func parseComprehensiveResponse(jsonStr string, config review.ThemeExtractionCon
 	}
 
 	// Use config values with fallbacks to constants for backwards compatibility
+	maxThemes := config.MaxThemes
+	if maxThemes <= 0 {
+		maxThemes = 10 // Default from DefaultThemeExtractionConfig
+	}
 	maxPrinciples := config.MaxDisputePrinciples
 	if maxPrinciples <= 0 {
 		maxPrinciples = maxDisputePrinciples
@@ -440,7 +444,7 @@ func parseComprehensiveResponse(jsonStr string, config review.ThemeExtractionCon
 		maxItems = maxPrincipleItems
 	}
 
-	result.Themes = sanitizeThemes(resp.Themes, config.MaxThemes)
+	result.Themes = sanitizeThemes(resp.Themes, maxThemes)
 	result.Conclusions = sanitizeConclusions(resp.Conclusions)
 	result.DisputedPatterns = sanitizePatterns(resp.DisputedPatterns)
 	result.DisputePrinciples = sanitizePrinciples(resp.DisputePrinciples, maxPrinciples, maxItems)
@@ -527,8 +531,8 @@ func sanitizePrinciples(principles []principleResponse, maxPrinciples, maxItems 
 			DoNotFlag: sanitizeStringSlice(p.DoNotFlag, maxItems, maxThemeLength),
 			Rationale: truncateRunes(strings.TrimSpace(p.Rationale), maxRationaleLength),
 		}
-		// Skip principles with no meaningful content
-		if dp.Principle == "" || (len(dp.AppliesTo) == 0 && len(dp.DoNotFlag) == 0) {
+		// Skip principles with no meaningful content or missing rationale
+		if dp.Principle == "" || dp.Rationale == "" || (len(dp.AppliesTo) == 0 && len(dp.DoNotFlag) == 0) {
 			continue
 		}
 		result = append(result, dp)
@@ -540,15 +544,23 @@ func sanitizePrinciples(principles []principleResponse, maxPrinciples, maxItems 
 	return result
 }
 
-// sanitizeStringSlice validates, limits, and truncates a slice of strings.
+// sanitizeStringSlice validates, deduplicates, limits, and truncates a slice of strings.
+// Items are normalized to lowercase for consistent semantic matching.
 func sanitizeStringSlice(items []string, maxCount, maxLen int) []string {
 	result := make([]string, 0, min(len(items), maxCount))
+	seen := make(map[string]bool)
 	for _, item := range items {
 		item = strings.TrimSpace(item)
 		if item == "" {
 			continue
 		}
+		// Normalize to lowercase for semantic matching
 		item = truncateRunes(strings.ToLower(item), maxLen)
+		// Skip duplicates (after normalization)
+		if seen[item] {
+			continue
+		}
+		seen[item] = true
 		result = append(result, item)
 		if len(result) >= maxCount {
 			break
