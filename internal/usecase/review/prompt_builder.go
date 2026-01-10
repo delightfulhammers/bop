@@ -313,6 +313,10 @@ type TemplateData struct {
 	// Contains formatted text about findings that have been previously addressed.
 	PriorFindings string
 
+	// Extracted themes from prior findings
+	// High-level conceptual areas that have been thoroughly explored.
+	Themes string
+
 	// Request fields
 	BaseRef   string
 	TargetRef string
@@ -339,6 +343,7 @@ func (b *EnhancedPromptBuilder) renderTemplate(
 		ChangeTypes:        context.ChangeTypes,
 		ChangedPaths:       context.ChangedPaths,
 		PriorFindings:      formatPriorFindings(context.TriagedFindings),
+		Themes:             formatExtractedThemes(context.ExtractedThemes),
 		BaseRef:            req.BaseRef,
 		TargetRef:          req.TargetRef,
 		Diff:               b.formatDiff(diff),
@@ -559,6 +564,20 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 	return sb.String()
 }
 
+// formatExtractedThemes formats extracted themes for inclusion in the prompt.
+// Returns empty string if no themes are provided.
+func formatExtractedThemes(themes []string) string {
+	if len(themes) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, theme := range themes {
+		sb.WriteString(fmt.Sprintf("- %s\n", theme))
+	}
+	return sb.String()
+}
+
 // defaultPromptTemplate returns the default template used when no provider-specific template is set.
 // IMPORTANT: Code diff appears FIRST to ensure LLM prioritizes code review over documentation.
 // LLMs exhibit primacy bias - they weight early content more heavily.
@@ -595,6 +614,16 @@ The following findings from earlier reviews have been addressed by the author.
 DO NOT raise similar concerns - they have already been reviewed and resolved.
 
 {{.PriorFindings}}
+{{end}}
+
+{{if .Themes}}
+## Explored Themes (CRITICAL)
+
+The following THEMES have been thoroughly explored in previous review rounds.
+DO NOT raise new findings on these themes, even from different angles or perspectives.
+These areas have been sufficiently covered - focus your review on OTHER aspects of the code.
+
+{{.Themes}}
 {{end}}
 
 ## Background Documentation (for reference only)

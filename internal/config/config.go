@@ -20,8 +20,9 @@ type Config struct {
 	Observability ObservabilityConfig       `yaml:"observability"`
 	Review        ReviewConfig              `yaml:"review"`
 	Verification  VerificationConfig        `yaml:"verification"`
-	Deduplication DeduplicationConfig       `yaml:"deduplication"`
-	SizeGuards    SizeGuardsConfig          `yaml:"sizeGuards"`
+	Deduplication   DeduplicationConfig   `yaml:"deduplication"`
+	ThemeExtraction ThemeExtractionConfig `yaml:"themeExtraction"`
+	SizeGuards      SizeGuardsConfig      `yaml:"sizeGuards"`
 
 	// Phase 3.2: Reviewer Personas
 	// Reviewers configures the reviewer personas for code review.
@@ -395,6 +396,7 @@ func merge(base, overlay Config) Config {
 	result.Review = chooseReview(base.Review, overlay.Review)
 	result.Verification = chooseVerification(base.Verification, overlay.Verification)
 	result.Deduplication = chooseDeduplication(base.Deduplication, overlay.Deduplication)
+	result.ThemeExtraction = chooseThemeExtraction(base.ThemeExtraction, overlay.ThemeExtraction)
 	result.SizeGuards = chooseSizeGuards(base.SizeGuards, overlay.SizeGuards)
 	result.Providers = mergeProviders(base.Providers, overlay.Providers)
 
@@ -768,6 +770,36 @@ func hasConfidenceThresholds(ct ConfidenceThresholds) bool {
 	return ct.Default != 0 || ct.Critical != 0 || ct.High != 0 || ct.Medium != 0 || ct.Low != 0
 }
 
+// ThemeExtractionConfig configures LLM-based theme extraction from prior findings.
+// When enabled, themes are extracted from previous review findings and included
+// in the prompt to prevent thematic repetition across review rounds.
+type ThemeExtractionConfig struct {
+	// Enabled toggles theme extraction.
+	// Default: true (when prior findings exist)
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// Provider is the LLM provider for theme extraction (e.g., "anthropic", "openai", "gemini").
+	// If not specified, uses the first available provider with an API key.
+	Provider string `yaml:"provider"`
+
+	// Model is the model to use for theme extraction.
+	// Default: provider-specific (haiku for anthropic, gpt-4o-mini for openai, gemini-2.0-flash for gemini)
+	Model string `yaml:"model"`
+
+	// MaxTokens is the maximum output tokens for theme extraction.
+	// Default: 4096
+	MaxTokens int `yaml:"maxTokens"`
+
+	// MinFindingsForTheme is the minimum number of prior findings required
+	// before theme extraction is triggered.
+	// Default: 3
+	MinFindingsForTheme int `yaml:"minFindingsForTheme"`
+
+	// MaxThemes is the maximum number of themes to extract.
+	// Default: 10
+	MaxThemes int `yaml:"maxThemes"`
+}
+
 // DeduplicationConfig configures semantic deduplication of findings.
 // When enabled, findings that overlap spatially but have different fingerprints
 // are compared using an LLM to detect semantic duplicates.
@@ -848,6 +880,43 @@ func chooseSemanticDeduplication(base, overlay SemanticDeduplicationConfig) Sema
 	// MaxCandidates: overlay wins if non-zero
 	if overlay.MaxCandidates != 0 {
 		result.MaxCandidates = overlay.MaxCandidates
+	}
+
+	return result
+}
+
+// chooseThemeExtraction merges ThemeExtractionConfig with overlay taking precedence.
+func chooseThemeExtraction(base, overlay ThemeExtractionConfig) ThemeExtractionConfig {
+	result := base
+
+	// Enabled: overlay wins if set (not nil)
+	if overlay.Enabled != nil {
+		result.Enabled = overlay.Enabled
+	}
+
+	// Provider: overlay wins if non-empty
+	if overlay.Provider != "" {
+		result.Provider = overlay.Provider
+	}
+
+	// Model: overlay wins if non-empty
+	if overlay.Model != "" {
+		result.Model = overlay.Model
+	}
+
+	// MaxTokens: overlay wins if non-zero
+	if overlay.MaxTokens != 0 {
+		result.MaxTokens = overlay.MaxTokens
+	}
+
+	// MinFindingsForTheme: overlay wins if non-zero
+	if overlay.MinFindingsForTheme != 0 {
+		result.MinFindingsForTheme = overlay.MinFindingsForTheme
+	}
+
+	// MaxThemes: overlay wins if non-zero
+	if overlay.MaxThemes != 0 {
+		result.MaxThemes = overlay.MaxThemes
 	}
 
 	return result

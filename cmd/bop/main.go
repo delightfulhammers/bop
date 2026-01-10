@@ -14,6 +14,8 @@ import (
 
 	"github.com/delightfulhammers/bop/internal/adapter/cli"
 	dedupadapter "github.com/delightfulhammers/bop/internal/adapter/dedup"
+	"github.com/delightfulhammers/bop/internal/adapter/llm/simple"
+	themeadapter "github.com/delightfulhammers/bop/internal/adapter/theme"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	githubadapter "github.com/delightfulhammers/bop/internal/adapter/github"
 	"github.com/delightfulhammers/bop/internal/adapter/llm/anthropic"
@@ -243,6 +245,10 @@ func run() error {
 		verifier = createVerifier(cfg, providers, repoDir, obs)
 	}
 
+	// Create theme extractor for reducing thematic repetition (PR #75)
+	// Uses any available LLM provider for extracting themes from prior findings
+	themeExtractor := createThemeExtractor(cfg)
+
 	// Build per-provider max tokens map from config
 	providerMaxTokens := buildProviderMaxTokens(cfg.Providers)
 
@@ -272,6 +278,7 @@ func run() error {
 		GitHubPoster:           githubPoster,
 		Verifier:               verifier,
 		TriageContextFetcher:   triageContextFetcher,
+		ThemeExtractor:         themeExtractor,
 		ProviderMaxTokens:      providerMaxTokens,
 		MaxConcurrentReviewers: cfg.Review.MaxConcurrentReviewers,
 		RemoteGitHubClient:     remoteGitHubClient, // Phase 3.5: Remote PR review
@@ -932,6 +939,127 @@ func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 
 	// Create and return the semantic comparer
 	return dedupadapter.NewComparer(anthropicClient, maxTokens)
+}
+
+// createThemeExtractor creates a theme extractor for reducing thematic repetition.
+// Returns nil if theme extraction is disabled or no suitable provider is available.
+// Supports Anthropic, OpenAI, and Gemini providers.
+func createThemeExtractor(cfg config.Config) review.ThemeExtractor {
+	themeCfg := cfg.ThemeExtraction
+
+	// Check if theme extraction is enabled (defaults to true if not specified)
+	if themeCfg.Enabled != nil && !*themeCfg.Enabled {
+		return nil
+	}
+
+	// Get defaults from the review package
+	defaults := review.DefaultThemeExtractionConfig()
+
+	maxTokens := defaults.MaxTokens
+	if themeCfg.MaxTokens > 0 {
+		maxTokens = themeCfg.MaxTokens
+	}
+
+	minFindings := defaults.MinFindingsForTheme
+	if themeCfg.MinFindingsForTheme > 0 {
+		minFindings = themeCfg.MinFindingsForTheme
+	}
+
+	maxThemes := defaults.MaxThemes
+	if themeCfg.MaxThemes > 0 {
+		maxThemes = themeCfg.MaxThemes
+	}
+
+	// Try to create a client for the configured provider (or first available)
+	client, actualProvider := createSimpleClient(cfg, themeCfg.Provider, themeCfg.Model)
+	if client == nil {
+		// Try fallback providers in order of preference
+		fallbackProviders := []string{"anthropic", "openai", "gemini"}
+		for _, fallback := range fallbackProviders {
+			if fallback == themeCfg.Provider {
+				continue // Already tried this one
+			}
+			client, actualProvider = createSimpleClient(cfg, fallback, "")
+			if client != nil {
+				break
+			}
+		}
+	}
+
+	if client == nil {
+		log.Println("[INFO] Theme extraction disabled: no LLM provider API key available")
+		return nil
+	}
+
+	log.Printf("[INFO] Theme extraction enabled (provider=%s)", actualProvider)
+
+	// Create and return the theme extractor
+	extractorConfig := review.ThemeExtractionConfig{
+		MaxThemes:           maxThemes,
+		MinFindingsForTheme: minFindings,
+		MaxTokens:           maxTokens,
+	}
+
+	return themeadapter.NewExtractor(client, extractorConfig)
+}
+
+// createSimpleClient creates a simple.Client for the specified provider.
+// Returns nil if the provider is not available (no API key).
+// Returns the client and the actual provider name (including model).
+func createSimpleClient(cfg config.Config, provider, model string) (simple.Client, string) {
+	// If no provider specified, return nil to try fallbacks
+	if provider == "" {
+		return nil, ""
+	}
+
+	switch provider {
+	case "anthropic":
+		apiKey := getAPIKey(cfg.Providers, "anthropic", "ANTHROPIC_API_KEY")
+		if apiKey == "" {
+			return nil, ""
+		}
+		if model == "" {
+			model = "claude-sonnet-4-20250514" // Default to fast, capable model
+		}
+		providerCfg := cfg.Providers["anthropic"]
+		client := simple.NewAnthropicClient(apiKey, model, providerCfg, cfg.HTTP)
+		return client, fmt.Sprintf("anthropic/%s", model)
+
+	case "openai":
+		apiKey := getAPIKey(cfg.Providers, "openai", "OPENAI_API_KEY")
+		if apiKey == "" {
+			return nil, ""
+		}
+		if model == "" {
+			model = "gpt-4o-mini" // Default to fast, cost-effective model
+		}
+		providerCfg := cfg.Providers["openai"]
+		client := simple.NewOpenAIClient(apiKey, model, providerCfg, cfg.HTTP)
+		return client, fmt.Sprintf("openai/%s", model)
+
+	case "gemini":
+		apiKey := getAPIKey(cfg.Providers, "gemini", "GEMINI_API_KEY")
+		if apiKey == "" {
+			return nil, ""
+		}
+		if model == "" {
+			model = "gemini-2.0-flash" // Default to fast model
+		}
+		providerCfg := cfg.Providers["gemini"]
+		client := simple.NewGeminiClient(apiKey, model, providerCfg, cfg.HTTP)
+		return client, fmt.Sprintf("gemini/%s", model)
+
+	default:
+		return nil, ""
+	}
+}
+
+// getAPIKey retrieves an API key from config or environment variable.
+func getAPIKey(providers map[string]config.ProviderConfig, providerName, envVar string) string {
+	if providerCfg, ok := providers[providerName]; ok && providerCfg.APIKey != "" {
+		return providerCfg.APIKey
+	}
+	return os.Getenv(envVar)
 }
 
 // buildProviderMaxTokens extracts per-provider MaxOutputTokens overrides from config.
