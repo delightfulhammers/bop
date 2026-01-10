@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
@@ -126,7 +127,13 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 		return "", fmt.Errorf("no content in response")
 	}
 
-	return apiResp.Candidates[0].Content.Parts[0].Text, nil
+	// Concatenate all parts (Gemini can return multiple parts for complex responses)
+	var sb strings.Builder
+	for _, part := range apiResp.Candidates[0].Content.Parts {
+		sb.WriteString(part.Text)
+	}
+
+	return sb.String(), nil
 }
 
 type geminiRequest struct {

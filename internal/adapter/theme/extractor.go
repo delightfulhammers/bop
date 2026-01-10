@@ -131,8 +131,10 @@ func parseExtractionResponse(response string, maxThemes int) ([]string, error) {
 			continue
 		}
 		// Limit theme length to prevent processing of excessively long strings
-		if len(theme) > maxThemeLength {
-			theme = theme[:maxThemeLength]
+		// Use rune slice to avoid breaking multi-byte UTF-8 characters
+		runes := []rune(theme)
+		if len(runes) > maxThemeLength {
+			theme = string(runes[:maxThemeLength])
 		}
 		// Normalize to lowercase
 		theme = strings.ToLower(theme)
