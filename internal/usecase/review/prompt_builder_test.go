@@ -1354,3 +1354,54 @@ func TestBuildPromptWithoutThemes(t *testing.T) {
 		t.Error("themes section should not appear when no themes are provided")
 	}
 }
+
+func TestBuildPromptWithDisputePrinciples(t *testing.T) {
+	builder := NewEnhancedPromptBuilder()
+
+	context := ProjectContext{
+		ThemeContext: &ThemeExtractionResult{
+			DisputePrinciples: []DisputePrinciple{
+				{
+					Principle: "Internal data paths are trusted",
+					AppliesTo: []string{"database data", "config files", "llm responses"},
+					DoNotFlag: []string{"prompt injection", "input validation", "resource exhaustion"},
+					Rationale: "These data sources are not user-controlled input",
+				},
+			},
+			Strategy: StrategyComprehensive,
+		},
+	}
+
+	diff := domain.Diff{
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "diff content"},
+		},
+	}
+
+	req := BranchRequest{
+		BaseRef:   "main",
+		TargetRef: "feature",
+	}
+
+	result, err := builder.Build(context, diff, req, "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify principles section appears prominently in prompt
+	expectedElements := []string{
+		"Established Trust Boundaries",
+		"CRITICAL - DO NOT VIOLATE",
+		"Internal data paths are trusted",
+		"Applies to: database data, config files, llm responses",
+		"Do NOT raise: prompt injection, input validation, resource exhaustion",
+		"These data sources are not user-controlled input",
+		"STOP and check",
+	}
+
+	for _, expected := range expectedElements {
+		if !strings.Contains(result.Prompt, expected) {
+			t.Errorf("expected element %q not found in prompt", expected)
+		}
+	}
+}

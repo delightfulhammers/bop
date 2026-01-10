@@ -193,10 +193,15 @@ func buildComprehensivePrompt(findings []domain.TriagedFinding, maxThemes int) s
 
 	sb.WriteString(`You are analyzing code review findings to prevent REPEAT FINDINGS in future reviews.
 
-Your task is to extract THREE types of context:
+Your task is to extract FOUR types of context:
 1. THEMES: High-level conceptual areas (e.g., "response size limits")
 2. CONCLUSIONS: Specific decisions that have been made (e.g., "truncation uses >= intentionally")
 3. DISPUTED PATTERNS: Findings that were disputed with rationales explaining WHY
+4. DISPUTE PRINCIPLES: Transferable concepts that apply BEYOND the specific finding
+
+CRITICAL: Dispute principles prevent SEMANTIC VARIATIONS of the same mistake. If someone disputes
+"prompt injection from database data" because "data comes from our DB, not user input", the principle
+"internal data paths are trusted" applies to ALL internal sources, not just that one finding.
 
 This context will be injected into future review prompts to prevent the same concerns from being raised again.
 
@@ -271,6 +276,14 @@ Respond with a JSON object:
       "pattern": "off-by-one in truncation check",
       "rationale": "LimitReader caps at n bytes, so >= is intentional conservative bound"
     }
+  ],
+  "dispute_principles": [
+    {
+      "principle": "Internal data paths are trusted",
+      "applies_to": ["data from own database", "configured LLM provider responses", "config files"],
+      "do_not_flag": ["prompt injection", "input validation", "resource exhaustion"],
+      "rationale": "These data sources are not user-controlled input"
+    }
   ]
 }
 `+"```\n"+`
@@ -281,6 +294,28 @@ Guidelines:
 - disputed_patterns are CRITICAL - they prevent the exact same concern from being raised
 - conclusions capture decisions that should not be second-guessed
 - Be specific: vague patterns like "code quality" won't prevent repeats
+
+### DISPUTE PRINCIPLE EXTRACTION (CRITICAL)
+
+For each disputed finding, analyze the rationale to extract TRANSFERABLE PRINCIPLES:
+
+1. What CONCEPTUAL RULE is being asserted? (e.g., "internal data is trusted")
+2. What OTHER data sources or contexts does this principle cover? (generalize beyond the specific case)
+3. What CATEGORIES of findings should NOT be raised in these contexts?
+
+Example Analysis:
+- Disputed Finding: "Potential prompt injection from findings data"
+- Dispute Rationale: "Data comes from our own database, not user input"
+- Extracted Principle:
+  - principle: "Internal data paths are trusted"
+  - applies_to: ["database data", "config files", "LLM provider responses"]
+  - do_not_flag: ["prompt injection", "input validation", "resource exhaustion"]
+  - rationale: "These data sources are not user-controlled input"
+
+This principle would prevent future findings like:
+- "Resource exhaustion via LLM responses" (LLM responses are internal data)
+- "JSON parsing DoS" (config files are internal data)
+- "Attacker-controlled input from database" (database is internal data)
 `, maxThemes))
 
 	return sb.String()
@@ -330,9 +365,10 @@ type conclusionResponse struct {
 
 // comprehensiveResponse is the expected JSON structure for comprehensive strategy.
 type comprehensiveResponse struct {
-	Themes           []string             `json:"themes"`
-	Conclusions      []conclusionResponse `json:"conclusions"`
-	DisputedPatterns []patternResponse    `json:"disputed_patterns"`
+	Themes            []string             `json:"themes"`
+	Conclusions       []conclusionResponse `json:"conclusions"`
+	DisputedPatterns  []patternResponse    `json:"disputed_patterns"`
+	DisputePrinciples []principleResponse  `json:"dispute_principles"`
 }
 
 type patternResponse struct {
@@ -340,13 +376,22 @@ type patternResponse struct {
 	Rationale string `json:"rationale"`
 }
 
+type principleResponse struct {
+	Principle string   `json:"principle"`
+	AppliesTo []string `json:"applies_to"`
+	DoNotFlag []string `json:"do_not_flag"`
+	Rationale string   `json:"rationale"`
+}
+
 // Length and count limits for validation (defense against prompt injection and resource exhaustion)
 const (
-	maxThemeLength      = 100
-	maxConclusionLength = 300
-	maxRationaleLength  = 500
-	maxConclusions      = 20 // Max conclusions to prevent memory exhaustion
-	maxDisputedPatterns = 20 // Max disputed patterns to prevent memory exhaustion
+	maxThemeLength       = 100
+	maxConclusionLength  = 300
+	maxRationaleLength   = 500
+	maxConclusions       = 20 // Max conclusions to prevent memory exhaustion
+	maxDisputedPatterns  = 20 // Max disputed patterns to prevent memory exhaustion
+	maxDisputePrinciples = 10 // Max principles to prevent memory exhaustion
+	maxPrincipleItems    = 10 // Max items in applies_to and do_not_flag arrays
 )
 
 // parseAbstractResponse parses themes-only response.
@@ -376,7 +421,7 @@ func parseSpecificResponse(jsonStr string, maxThemes int, strategy review.Extrac
 	return result, nil
 }
 
-// parseComprehensiveResponse parses full response with disputed patterns.
+// parseComprehensiveResponse parses full response with disputed patterns and principles.
 func parseComprehensiveResponse(jsonStr string, maxThemes int, strategy review.ExtractionStrategy) (review.ThemeExtractionResult, error) {
 	result := review.ThemeExtractionResult{Strategy: strategy}
 
@@ -388,6 +433,7 @@ func parseComprehensiveResponse(jsonStr string, maxThemes int, strategy review.E
 	result.Themes = sanitizeThemes(resp.Themes, maxThemes)
 	result.Conclusions = sanitizeConclusions(resp.Conclusions)
 	result.DisputedPatterns = sanitizePatterns(resp.DisputedPatterns)
+	result.DisputePrinciples = sanitizePrinciples(resp.DisputePrinciples)
 	return result, nil
 }
 
@@ -455,6 +501,46 @@ func sanitizePatterns(patterns []patternResponse) []review.DisputedPattern {
 		result = append(result, dp)
 		// Enforce max count to prevent resource exhaustion
 		if len(result) >= maxDisputedPatterns {
+			break
+		}
+	}
+	return result
+}
+
+// sanitizePrinciples validates and limits dispute principles.
+func sanitizePrinciples(principles []principleResponse) []review.DisputePrinciple {
+	result := make([]review.DisputePrinciple, 0, min(len(principles), maxDisputePrinciples))
+	for _, p := range principles {
+		dp := review.DisputePrinciple{
+			Principle: truncateRunes(strings.TrimSpace(p.Principle), maxConclusionLength),
+			AppliesTo: sanitizeStringSlice(p.AppliesTo, maxPrincipleItems, maxThemeLength),
+			DoNotFlag: sanitizeStringSlice(p.DoNotFlag, maxPrincipleItems, maxThemeLength),
+			Rationale: truncateRunes(strings.TrimSpace(p.Rationale), maxRationaleLength),
+		}
+		// Skip principles with no meaningful content
+		if dp.Principle == "" || (len(dp.AppliesTo) == 0 && len(dp.DoNotFlag) == 0) {
+			continue
+		}
+		result = append(result, dp)
+		// Enforce max count to prevent resource exhaustion
+		if len(result) >= maxDisputePrinciples {
+			break
+		}
+	}
+	return result
+}
+
+// sanitizeStringSlice validates, limits, and truncates a slice of strings.
+func sanitizeStringSlice(items []string, maxCount, maxLen int) []string {
+	result := make([]string, 0, min(len(items), maxCount))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		item = truncateRunes(strings.ToLower(item), maxLen)
+		result = append(result, item)
+		if len(result) >= maxCount {
 			break
 		}
 	}

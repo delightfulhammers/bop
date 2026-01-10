@@ -332,6 +332,53 @@ func TestExtractor_ComprehensiveStrategy_ParsesDisputedPatterns(t *testing.T) {
 	assert.Equal(t, "LimitReader caps at n bytes, so >= is intentional", result.DisputedPatterns[0].Rationale)
 }
 
+func TestExtractor_ComprehensiveStrategy_ParsesDisputePrinciples(t *testing.T) {
+	client := &mockClient{
+		response: `{
+			"themes": ["trust boundaries"],
+			"conclusions": [],
+			"disputed_patterns": [],
+			"dispute_principles": [
+				{
+					"principle": "Internal data paths are trusted",
+					"applies_to": ["database data", "config files", "LLM responses"],
+					"do_not_flag": ["prompt injection", "input validation"],
+					"rationale": "These data sources are not user-controlled"
+				}
+			]
+		}`,
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:            review.StrategyComprehensive,
+		MaxThemes:           10,
+		MinFindingsForTheme: 3,
+		MaxTokens:           4096,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{
+			File:         "a.go",
+			Description:  "Prompt injection from database data",
+			Status:       domain.StatusDisputed,
+			StatusReason: "Data comes from our DB, not user input",
+		},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	require.Len(t, result.DisputePrinciples, 1)
+	assert.Equal(t, "Internal data paths are trusted", result.DisputePrinciples[0].Principle)
+	assert.Equal(t, []string{"database data", "config files", "llm responses"}, result.DisputePrinciples[0].AppliesTo)
+	assert.Equal(t, []string{"prompt injection", "input validation"}, result.DisputePrinciples[0].DoNotFlag)
+	assert.Equal(t, "These data sources are not user-controlled", result.DisputePrinciples[0].Rationale)
+}
+
 func TestExtractor_ComprehensiveStrategy_PromptIncludesDisputedFindings(t *testing.T) {
 	client := &mockClient{
 		response: `{"themes": [], "conclusions": [], "disputed_patterns": []}`,
@@ -462,6 +509,13 @@ func TestExtractor_IsEmpty(t *testing.T) {
 			name: "has disputed patterns",
 			result: review.ThemeExtractionResult{
 				DisputedPatterns: []review.DisputedPattern{{Pattern: "test"}},
+			},
+			expected: false,
+		},
+		{
+			name: "has dispute principles",
+			result: review.ThemeExtractionResult{
+				DisputePrinciples: []review.DisputePrinciple{{Principle: "test", AppliesTo: []string{"data"}}},
 			},
 			expected: false,
 		},

@@ -59,6 +59,11 @@ type ThemeExtractionResult struct {
 	// These are derived from dispute rationales to prevent re-raising.
 	DisputedPatterns []DisputedPattern
 
+	// DisputePrinciples contains transferable concepts extracted from dispute rationales.
+	// Only populated with "comprehensive" strategy.
+	// These generalize beyond specific findings to prevent semantic variations.
+	DisputePrinciples []DisputePrinciple
+
 	// Strategy indicates which extraction strategy was used.
 	Strategy ExtractionStrategy
 
@@ -93,9 +98,36 @@ type DisputedPattern struct {
 	Rationale string
 }
 
-// IsEmpty returns true if no themes or patterns were extracted.
+// DisputePrinciple represents a transferable concept extracted from dispute rationales.
+// Unlike DisputedPattern (which is specific to a single finding), principles are
+// generalizations that apply across multiple files and finding types.
+//
+// Example: If a user disputes "prompt injection from findings data" with rationale
+// "data comes from our own database, not user input", the extracted principle might be:
+//   - Principle: "Internal data paths are trusted"
+//   - AppliesTo: ["database data", "config files", "LLM provider responses"]
+//   - DoNotFlag: ["prompt injection", "input validation", "resource exhaustion"]
+type DisputePrinciple struct {
+	// Principle is the conceptual rule being established.
+	// Example: "Internal data paths are trusted"
+	Principle string
+
+	// AppliesTo lists data sources or contexts where this principle applies.
+	// Example: ["data from own database", "configured LLM provider responses"]
+	AppliesTo []string
+
+	// DoNotFlag lists finding categories that should not be raised in these contexts.
+	// Example: ["prompt injection", "input validation", "resource exhaustion"]
+	DoNotFlag []string
+
+	// Rationale explains why this principle was established.
+	// Example: "These data sources are not user-controlled input"
+	Rationale string
+}
+
+// IsEmpty returns true if no themes, patterns, or principles were extracted.
 func (r ThemeExtractionResult) IsEmpty() bool {
-	return len(r.Themes) == 0 && len(r.Conclusions) == 0 && len(r.DisputedPatterns) == 0
+	return len(r.Themes) == 0 && len(r.Conclusions) == 0 && len(r.DisputedPatterns) == 0 && len(r.DisputePrinciples) == 0
 }
 
 // ThemeExtractionConfig holds configuration for theme extraction.
