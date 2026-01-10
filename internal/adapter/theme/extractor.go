@@ -393,6 +393,9 @@ func parseComprehensiveResponse(jsonStr string, maxThemes int, strategy review.E
 
 // sanitizeThemes validates and limits themes.
 func sanitizeThemes(themes []string, maxThemes int) []string {
+	if maxThemes <= 0 {
+		return nil
+	}
 	result := make([]string, 0, min(len(themes), maxThemes))
 	for _, theme := range themes {
 		theme = strings.TrimSpace(theme)
