@@ -231,6 +231,28 @@ observability:
   metrics:
     enabled: true
 
+# Theme Extraction Configuration
+# Extracts high-level themes from prior findings to prevent thematic repetition.
+# When a PR has multiple review rounds, this identifies conceptual areas that have
+# already been covered (e.g., "input validation", "error handling") so the reviewer
+# doesn't raise new angles on the same themes.
+themeExtraction:
+  enabled: true
+  # LLM provider for theme extraction - uses a small, fast model since the task
+  # is simple (extracting 2-5 word phrases from finding descriptions)
+  provider: "anthropic"
+  model: "claude-haiku-4-5"
+  # Maximum output tokens. The response is just a small JSON array like
+  # {"themes": ["input validation", "error handling"]}, so this is generous.
+  maxTokens: 4096
+  # Cost guard: minimum prior findings required before theme extraction runs.
+  # With only 1-2 findings, there's not enough data to form meaningful themes,
+  # so we skip the LLM call entirely.
+  minFindingsForTheme: 3
+  # Limits themes injected into the review prompt to prevent context bloat.
+  # More than 10 themes would waste tokens on the main reviewer prompt.
+  maxThemes: 10
+
 # Deduplication Configuration
 # Controls finding deduplication across providers
 deduplication:

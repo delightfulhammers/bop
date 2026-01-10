@@ -1283,3 +1283,115 @@ func TestFormatPriorFindings_TruncatesLongRationale(t *testing.T) {
 		t.Error("full long rationale should not appear in output")
 	}
 }
+
+func TestFormatExtractedThemes(t *testing.T) {
+	tests := []struct {
+		name           string
+		themes         []string
+		expectedText   []string
+		unexpectedText []string
+	}{
+		{
+			name:           "empty themes",
+			themes:         nil,
+			expectedText:   nil,
+			unexpectedText: []string{"-"},
+		},
+		{
+			name:         "single theme",
+			themes:       []string{"input validation"},
+			expectedText: []string{"- input validation"},
+		},
+		{
+			name:         "multiple themes",
+			themes:       []string{"input validation", "error handling", "sql injection"},
+			expectedText: []string{"- input validation", "- error handling", "- sql injection"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatExtractedThemes(tt.themes)
+
+			for _, expected := range tt.expectedText {
+				if !strings.Contains(result, expected) {
+					t.Errorf("expected text %q not found in result:\n%s", expected, result)
+				}
+			}
+
+			for _, unexpected := range tt.unexpectedText {
+				if strings.Contains(result, unexpected) {
+					t.Errorf("unexpected text %q found in result:\n%s", unexpected, result)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildPromptWithThemes(t *testing.T) {
+	builder := NewEnhancedPromptBuilder()
+
+	context := ProjectContext{
+		ExtractedThemes: []string{"input validation", "error handling", "null safety"},
+	}
+
+	diff := domain.Diff{
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "diff content"},
+		},
+	}
+
+	req := BranchRequest{
+		BaseRef:   "main",
+		TargetRef: "feature",
+	}
+
+	result, err := builder.Build(context, diff, req, "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify themes section appears in prompt
+	expectedElements := []string{
+		"Explored Themes",
+		"input validation",
+		"error handling",
+		"null safety",
+		"DO NOT raise new findings on these themes",
+	}
+
+	for _, expected := range expectedElements {
+		if !strings.Contains(result.Prompt, expected) {
+			t.Errorf("expected element %q not found in prompt", expected)
+		}
+	}
+}
+
+func TestBuildPromptWithoutThemes(t *testing.T) {
+	builder := NewEnhancedPromptBuilder()
+
+	context := ProjectContext{
+		// No extracted themes
+	}
+
+	diff := domain.Diff{
+		Files: []domain.FileDiff{
+			{Path: "main.go", Status: "modified", Patch: "diff content"},
+		},
+	}
+
+	req := BranchRequest{
+		BaseRef:   "main",
+		TargetRef: "feature",
+	}
+
+	result, err := builder.Build(context, diff, req, "openai")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify themes section does NOT appear in prompt
+	if strings.Contains(result.Prompt, "Explored Themes") {
+		t.Error("themes section should not appear when no themes are provided")
+	}
+}

@@ -230,6 +230,10 @@ type OrchestratorDeps struct {
 	// Prior triage context support (Issue #138)
 	TriageContextFetcher TriageContextFetcher // Optional: fetches prior triage context from PR
 
+	// Theme extraction support (PR #75 quality improvements)
+	// Extracts high-level themes from prior findings to prevent thematic repetition.
+	ThemeExtractor ThemeExtractor // Optional: extracts themes from prior findings
+
 	// ProviderMaxTokens allows per-provider max output token overrides.
 	// Key is provider name, value is max output tokens.
 	ProviderMaxTokens map[string]int
@@ -556,6 +560,31 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			} else {
 				log.Printf("Loaded prior triage context: %d acknowledged, %d disputed findings\n",
 					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
+			}
+
+			// Extract themes from prior findings to prevent thematic repetition (PR #75)
+			// This identifies high-level conceptual areas that have been thoroughly explored.
+			if o.deps.ThemeExtractor != nil {
+				themes, err := o.deps.ThemeExtractor.ExtractThemes(ctx, triageCtx.Findings)
+				if err != nil {
+					// Log warning but continue - theme extraction failure shouldn't block review
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogWarning(ctx, "theme extraction failed", map[string]interface{}{
+							"error": err.Error(),
+						})
+					} else {
+						log.Printf("warning: theme extraction failed: %v\n", err)
+					}
+				} else if len(themes) > 0 {
+					projectContext.ExtractedThemes = themes
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
+							"themes": themes,
+						})
+					} else {
+						log.Printf("Extracted %d themes from prior findings: %v\n", len(themes), themes)
+					}
+				}
 			}
 		}
 	}
@@ -1036,6 +1065,31 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 			} else {
 				log.Printf("Loaded prior triage context: %d acknowledged, %d disputed findings\n",
 					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
+			}
+
+			// Extract themes from prior findings to prevent thematic repetition (PR #75)
+			// This identifies high-level conceptual areas that have been thoroughly explored.
+			if o.deps.ThemeExtractor != nil {
+				themes, err := o.deps.ThemeExtractor.ExtractThemes(ctx, triageCtx.Findings)
+				if err != nil {
+					// Log warning but continue - theme extraction failure shouldn't block review
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogWarning(ctx, "theme extraction failed", map[string]interface{}{
+							"error": err.Error(),
+						})
+					} else {
+						log.Printf("warning: theme extraction failed: %v\n", err)
+					}
+				} else if len(themes) > 0 {
+					projectContext.ExtractedThemes = themes
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
+							"themes": themes,
+						})
+					} else {
+						log.Printf("Extracted %d themes from prior findings: %v\n", len(themes), themes)
+					}
+				}
 			}
 		}
 	}
