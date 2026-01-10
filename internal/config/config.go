@@ -778,6 +778,13 @@ type ThemeExtractionConfig struct {
 	// Default: true (when prior findings exist)
 	Enabled *bool `yaml:"enabled,omitempty"`
 
+	// Strategy determines the extraction approach:
+	// - "abstract": High-level themes only (original behavior)
+	// - "specific": Themes with specific conclusions and anti-patterns
+	// - "comprehensive": Themes + conclusions + disputed patterns (default, most effective)
+	// Default: "comprehensive"
+	Strategy string `yaml:"strategy"`
+
 	// Provider is the LLM provider for theme extraction (e.g., "anthropic", "openai", "gemini").
 	// If not specified, uses the first available provider with an API key.
 	Provider string `yaml:"provider"`
@@ -892,6 +899,11 @@ func chooseThemeExtraction(base, overlay ThemeExtractionConfig) ThemeExtractionC
 	// Enabled: overlay wins if set (not nil)
 	if overlay.Enabled != nil {
 		result.Enabled = overlay.Enabled
+	}
+
+	// Strategy: overlay wins if non-empty
+	if overlay.Strategy != "" {
+		result.Strategy = overlay.Strategy
 	}
 
 	// Provider: overlay wins if non-empty
