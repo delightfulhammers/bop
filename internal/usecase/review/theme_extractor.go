@@ -148,14 +148,24 @@ type ThemeExtractionConfig struct {
 	// MaxTokens is the maximum output tokens for the LLM response.
 	// Default: 4096 (themes are short phrases, this is plenty)
 	MaxTokens int
+
+	// MaxDisputePrinciples limits the number of dispute principles to extract.
+	// Default: 5 (balances coverage with context overhead)
+	MaxDisputePrinciples int
+
+	// MaxPrincipleItems limits items in AppliesTo and DoNotFlag arrays.
+	// Default: 5 (enough examples without bloating context)
+	MaxPrincipleItems int
 }
 
 // DefaultThemeExtractionConfig returns sensible defaults for theme extraction.
 func DefaultThemeExtractionConfig() ThemeExtractionConfig {
 	return ThemeExtractionConfig{
-		Strategy:            StrategyComprehensive,
-		MaxThemes:           10,
-		MinFindingsForTheme: 3,
-		MaxTokens:           4096,
+		Strategy:             StrategyComprehensive,
+		MaxThemes:            10,
+		MinFindingsForTheme:  3,
+		MaxTokens:            4096,
+		MaxDisputePrinciples: 5,
+		MaxPrincipleItems:    5,
 	}
 }

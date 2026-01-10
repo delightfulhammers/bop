@@ -578,9 +578,10 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 	// Section 1: Dispute principles (MOST IMPORTANT - appears first)
 	// These prevent semantic variations by establishing trust boundaries
 	if len(ctx.DisputePrinciples) > 0 {
-		sb.WriteString("### Established Trust Boundaries (CRITICAL - DO NOT VIOLATE)\n\n")
+		sb.WriteString("### Established Trust Boundaries\n\n")
 		sb.WriteString("The following principles have been established through dispute resolution.\n")
-		sb.WriteString("ANY finding that violates these principles is a FALSE POSITIVE.\n\n")
+		sb.WriteString("Findings that contradict these principles are likely false positives unless\n")
+		sb.WriteString("there is evidence the trusted source has been compromised.\n\n")
 
 		for _, p := range ctx.DisputePrinciples {
 			sb.WriteString(fmt.Sprintf("**Principle: %s**\n", p.Principle))
@@ -588,7 +589,7 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 				sb.WriteString(fmt.Sprintf("- Applies to: %s\n", strings.Join(p.AppliesTo, ", ")))
 			}
 			if len(p.DoNotFlag) > 0 {
-				sb.WriteString(fmt.Sprintf("- Do NOT raise: %s\n", strings.Join(p.DoNotFlag, ", ")))
+				sb.WriteString(fmt.Sprintf("- Generally avoid flagging: %s\n", strings.Join(p.DoNotFlag, ", ")))
 			}
 			if p.Rationale != "" {
 				sb.WriteString(fmt.Sprintf("- Rationale: %s\n", p.Rationale))
@@ -596,8 +597,9 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 			sb.WriteString("\n")
 		}
 
-		sb.WriteString("⚠️ **STOP and check**: Does your finding assume untrusted input from a trusted source?\n")
-		sb.WriteString("If so, it violates an established principle and should NOT be raised.\n\n")
+		sb.WriteString("⚠️ **Before raising a finding**: Does it assume untrusted input from a source\n")
+		sb.WriteString("listed above? If so, reconsider whether it's a genuine concern or conflicts\n")
+		sb.WriteString("with an established trust boundary.\n\n")
 	}
 
 	// Section 2: High-level themes

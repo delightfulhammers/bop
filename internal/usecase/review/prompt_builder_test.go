@@ -1391,12 +1391,12 @@ func TestBuildPromptWithDisputePrinciples(t *testing.T) {
 	// Verify principles section appears prominently in prompt
 	expectedElements := []string{
 		"Established Trust Boundaries",
-		"CRITICAL - DO NOT VIOLATE",
+		"dispute resolution",
 		"Internal data paths are trusted",
 		"Applies to: database data, config files, llm responses",
-		"Do NOT raise: prompt injection, input validation, resource exhaustion",
+		"Generally avoid flagging: prompt injection, input validation, resource exhaustion",
 		"These data sources are not user-controlled input",
-		"STOP and check",
+		"Before raising a finding",
 	}
 
 	for _, expected := range expectedElements {

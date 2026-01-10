@@ -340,9 +340,9 @@ func (e *Extractor) parseExtractionResponse(response string) (review.ThemeExtrac
 	case review.StrategySpecific:
 		return parseSpecificResponse(jsonStr, e.config.MaxThemes, e.strategy)
 	case review.StrategyComprehensive:
-		return parseComprehensiveResponse(jsonStr, e.config.MaxThemes, e.strategy)
+		return parseComprehensiveResponse(jsonStr, e.config, e.strategy)
 	default:
-		return parseComprehensiveResponse(jsonStr, e.config.MaxThemes, e.strategy)
+		return parseComprehensiveResponse(jsonStr, e.config, e.strategy)
 	}
 }
 
@@ -390,8 +390,8 @@ const (
 	maxRationaleLength   = 500
 	maxConclusions       = 20 // Max conclusions to prevent memory exhaustion
 	maxDisputedPatterns  = 20 // Max disputed patterns to prevent memory exhaustion
-	maxDisputePrinciples = 10 // Max principles to prevent memory exhaustion
-	maxPrincipleItems    = 10 // Max items in applies_to and do_not_flag arrays
+	maxDisputePrinciples = 5  // Max principles - reduced to limit context overhead
+	maxPrincipleItems    = 5  // Max items in applies_to and do_not_flag arrays
 )
 
 // parseAbstractResponse parses themes-only response.
@@ -422,7 +422,7 @@ func parseSpecificResponse(jsonStr string, maxThemes int, strategy review.Extrac
 }
 
 // parseComprehensiveResponse parses full response with disputed patterns and principles.
-func parseComprehensiveResponse(jsonStr string, maxThemes int, strategy review.ExtractionStrategy) (review.ThemeExtractionResult, error) {
+func parseComprehensiveResponse(jsonStr string, config review.ThemeExtractionConfig, strategy review.ExtractionStrategy) (review.ThemeExtractionResult, error) {
 	result := review.ThemeExtractionResult{Strategy: strategy}
 
 	var resp comprehensiveResponse
@@ -430,10 +430,20 @@ func parseComprehensiveResponse(jsonStr string, maxThemes int, strategy review.E
 		return result, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	result.Themes = sanitizeThemes(resp.Themes, maxThemes)
+	// Use config values with fallbacks to constants for backwards compatibility
+	maxPrinciples := config.MaxDisputePrinciples
+	if maxPrinciples <= 0 {
+		maxPrinciples = maxDisputePrinciples
+	}
+	maxItems := config.MaxPrincipleItems
+	if maxItems <= 0 {
+		maxItems = maxPrincipleItems
+	}
+
+	result.Themes = sanitizeThemes(resp.Themes, config.MaxThemes)
 	result.Conclusions = sanitizeConclusions(resp.Conclusions)
 	result.DisputedPatterns = sanitizePatterns(resp.DisputedPatterns)
-	result.DisputePrinciples = sanitizePrinciples(resp.DisputePrinciples)
+	result.DisputePrinciples = sanitizePrinciples(resp.DisputePrinciples, maxPrinciples, maxItems)
 	return result, nil
 }
 
@@ -508,13 +518,13 @@ func sanitizePatterns(patterns []patternResponse) []review.DisputedPattern {
 }
 
 // sanitizePrinciples validates and limits dispute principles.
-func sanitizePrinciples(principles []principleResponse) []review.DisputePrinciple {
-	result := make([]review.DisputePrinciple, 0, min(len(principles), maxDisputePrinciples))
+func sanitizePrinciples(principles []principleResponse, maxPrinciples, maxItems int) []review.DisputePrinciple {
+	result := make([]review.DisputePrinciple, 0, min(len(principles), maxPrinciples))
 	for _, p := range principles {
 		dp := review.DisputePrinciple{
 			Principle: truncateRunes(strings.TrimSpace(p.Principle), maxConclusionLength),
-			AppliesTo: sanitizeStringSlice(p.AppliesTo, maxPrincipleItems, maxThemeLength),
-			DoNotFlag: sanitizeStringSlice(p.DoNotFlag, maxPrincipleItems, maxThemeLength),
+			AppliesTo: sanitizeStringSlice(p.AppliesTo, maxItems, maxThemeLength),
+			DoNotFlag: sanitizeStringSlice(p.DoNotFlag, maxItems, maxThemeLength),
 			Rationale: truncateRunes(strings.TrimSpace(p.Rationale), maxRationaleLength),
 		}
 		// Skip principles with no meaningful content
@@ -523,7 +533,7 @@ func sanitizePrinciples(principles []principleResponse) []review.DisputePrincipl
 		}
 		result = append(result, dp)
 		// Enforce max count to prevent resource exhaustion
-		if len(result) >= maxDisputePrinciples {
+		if len(result) >= maxPrinciples {
 			break
 		}
 	}
