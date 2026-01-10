@@ -279,10 +279,10 @@ Respond with a JSON object:
   ],
   "dispute_principles": [
     {
-      "principle": "Internal data paths are trusted",
-      "applies_to": ["data from own database", "configured LLM provider responses", "config files"],
-      "do_not_flag": ["prompt injection", "input validation", "resource exhaustion"],
-      "rationale": "These data sources are not user-controlled input"
+      "principle": "Intentional conservative bounds",
+      "applies_to": ["size limit checks", "buffer boundaries", "timeout thresholds"],
+      "do_not_flag": ["off-by-one errors", "boundary condition issues"],
+      "rationale": "We use >= instead of > intentionally for safety margins"
     }
   ]
 }
@@ -304,18 +304,18 @@ For each disputed finding, analyze the rationale to extract TRANSFERABLE PRINCIP
 3. What CATEGORIES of findings should NOT be raised in these contexts?
 
 Example Analysis:
-- Disputed Finding: "Potential prompt injection from findings data"
-- Dispute Rationale: "Data comes from our own database, not user input"
+- Disputed Finding: "Off-by-one error in response size check"
+- Dispute Rationale: "We use >= intentionally as a conservative safety margin"
 - Extracted Principle:
-  - principle: "Internal data paths are trusted"
-  - applies_to: ["database data", "config files", "LLM provider responses"]
-  - do_not_flag: ["prompt injection", "input validation", "resource exhaustion"]
-  - rationale: "These data sources are not user-controlled input"
+  - principle: "Intentional conservative bounds"
+  - applies_to: ["size limit checks", "buffer boundaries", "timeout thresholds"]
+  - do_not_flag: ["off-by-one errors", "boundary condition issues"]
+  - rationale: "We use >= instead of > intentionally for safety margins"
 
 This principle would prevent future findings like:
-- "Resource exhaustion via LLM responses" (LLM responses are internal data)
-- "JSON parsing DoS" (config files are internal data)
-- "Attacker-controlled input from database" (database is internal data)
+- "Off-by-one in buffer size check" (intentional conservative bound)
+- "Timeout threshold could be tighter" (intentional safety margin)
+- "Response limit check is one byte too strict" (conservative by design)
 `, maxThemes))
 
 	return sb.String()
