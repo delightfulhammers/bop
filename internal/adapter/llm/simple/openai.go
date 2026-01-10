@@ -149,7 +149,12 @@ func (c *OpenAIClient) doRequest(ctx context.Context, prompt string, maxTokens i
 		return "", fmt.Errorf("no choices in response")
 	}
 
-	return apiResp.Choices[0].Message.Content, nil
+	content := apiResp.Choices[0].Message.Content
+	if content == "" {
+		return "", fmt.Errorf("empty content in response")
+	}
+
+	return content, nil
 }
 
 type openaiRequest struct {

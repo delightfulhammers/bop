@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"time"
 
 	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
@@ -88,13 +87,14 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s", geminiBaseURL, c.model, url.QueryEscape(c.apiKey))
+	apiURL := fmt.Sprintf("%s/v1beta/models/%s:generateContent", geminiBaseURL, c.model)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", c.apiKey) // Use header instead of query param to prevent log leakage
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

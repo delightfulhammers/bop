@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
@@ -115,14 +116,14 @@ func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxToken
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	var text string
+	var sb strings.Builder
 	for _, block := range apiResp.Content {
 		if block.Type == "text" {
-			text += block.Text
+			sb.WriteString(block.Text)
 		}
 	}
 
-	return text, nil
+	return sb.String(), nil
 }
 
 type anthropicRequest struct {

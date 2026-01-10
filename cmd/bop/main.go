@@ -1050,6 +1050,7 @@ func createSimpleClient(cfg config.Config, provider, model string) (simple.Clien
 		return client, fmt.Sprintf("gemini/%s", model)
 
 	default:
+		log.Printf("warning: theme extraction provider %q is not supported (only anthropic, openai, gemini); trying fallback", provider)
 		return nil, ""
 	}
 }
