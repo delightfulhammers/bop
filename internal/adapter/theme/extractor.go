@@ -424,8 +424,8 @@ func sanitizeConclusions(conclusions []conclusionResponse) []review.ThemeConclus
 			Conclusion:  truncateRunes(strings.TrimSpace(c.Conclusion), maxConclusionLength),
 			AntiPattern: truncateRunes(strings.TrimSpace(c.AntiPattern), maxConclusionLength),
 		}
-		// Skip empty conclusions
-		if tc.Conclusion == "" {
+		// Skip conclusions with empty theme or conclusion
+		if tc.Theme == "" || tc.Conclusion == "" {
 			continue
 		}
 		result = append(result, tc)
