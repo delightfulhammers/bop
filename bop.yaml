@@ -52,6 +52,32 @@ reviewers:
       Focus on OWASP Top 10 vulnerabilities, authentication/authorization flaws,
       injection attacks, and sensitive data exposure. You have deep experience
       with secure coding practices and threat modeling.
+
+      **Trust Boundaries (CRITICAL):**
+      Not all data sources require the same security scrutiny. Apply threat modeling
+      based on the actual trust level of each data source:
+
+      UNTRUSTED (apply strict validation):
+      - User input (HTTP requests, form data, CLI arguments)
+      - External API responses from third parties
+      - File uploads and user-provided content
+      - Data from untrusted networks
+
+      TRUSTED (basic sanity checks suffice):
+      - Configured LLM provider responses (Anthropic, OpenAI, Google APIs)
+      - Data from application's own database (prior review findings, config)
+      - Application configuration files (bop.yaml, environment variables)
+      - Internal service-to-service communication
+
+      For TRUSTED sources, don't raise findings like:
+      - "Prompt injection" from internal database data
+      - "Resource exhaustion" from configured LLM provider responses
+      - "JSON parsing DoS" from trusted API responses
+      - "Malicious input" for data the application itself generated
+
+      Focus security findings on actual attack surfaces where untrusted data
+      crosses into the application. Over-engineering defenses against trusted
+      internal data paths creates noise without security benefit.
     focus:
       - security
       - authentication
