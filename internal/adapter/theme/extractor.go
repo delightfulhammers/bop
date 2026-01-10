@@ -66,6 +66,9 @@ func (e *Extractor) ExtractThemes(ctx context.Context, findings []domain.Triaged
 		return result, err
 	}
 
+	// Preserve FindingCount from the input (parsing doesn't know about it)
+	parsed.FindingCount = len(findings)
+
 	return parsed, nil
 }
 
@@ -337,11 +340,13 @@ type patternResponse struct {
 	Rationale string `json:"rationale"`
 }
 
-// Length limits for validation (defense against prompt injection)
+// Length and count limits for validation (defense against prompt injection and resource exhaustion)
 const (
 	maxThemeLength      = 100
 	maxConclusionLength = 300
 	maxRationaleLength  = 500
+	maxConclusions      = 20 // Max conclusions to prevent memory exhaustion
+	maxDisputedPatterns = 20 // Max disputed patterns to prevent memory exhaustion
 )
 
 // parseAbstractResponse parses themes-only response.
@@ -388,7 +393,7 @@ func parseComprehensiveResponse(jsonStr string, maxThemes int, strategy review.E
 
 // sanitizeThemes validates and limits themes.
 func sanitizeThemes(themes []string, maxThemes int) []string {
-	var result []string
+	result := make([]string, 0, min(len(themes), maxThemes))
 	for _, theme := range themes {
 		theme = strings.TrimSpace(theme)
 		if theme == "" {
@@ -411,10 +416,11 @@ func sanitizeThemes(themes []string, maxThemes int) []string {
 
 // sanitizeConclusions validates and limits conclusions.
 func sanitizeConclusions(conclusions []conclusionResponse) []review.ThemeConclusion {
-	var result []review.ThemeConclusion
+	result := make([]review.ThemeConclusion, 0, min(len(conclusions), maxConclusions))
 	for _, c := range conclusions {
 		tc := review.ThemeConclusion{
-			Theme:       truncateRunes(strings.TrimSpace(c.Theme), maxThemeLength),
+			// Normalize theme to lowercase for consistency with extracted themes
+			Theme:       strings.ToLower(truncateRunes(strings.TrimSpace(c.Theme), maxThemeLength)),
 			Conclusion:  truncateRunes(strings.TrimSpace(c.Conclusion), maxConclusionLength),
 			AntiPattern: truncateRunes(strings.TrimSpace(c.AntiPattern), maxConclusionLength),
 		}
@@ -423,13 +429,17 @@ func sanitizeConclusions(conclusions []conclusionResponse) []review.ThemeConclus
 			continue
 		}
 		result = append(result, tc)
+		// Enforce max count to prevent resource exhaustion
+		if len(result) >= maxConclusions {
+			break
+		}
 	}
 	return result
 }
 
 // sanitizePatterns validates and limits disputed patterns.
 func sanitizePatterns(patterns []patternResponse) []review.DisputedPattern {
-	var result []review.DisputedPattern
+	result := make([]review.DisputedPattern, 0, min(len(patterns), maxDisputedPatterns))
 	for _, p := range patterns {
 		dp := review.DisputedPattern{
 			Pattern:   truncateRunes(strings.TrimSpace(p.Pattern), maxConclusionLength),
@@ -440,6 +450,10 @@ func sanitizePatterns(patterns []patternResponse) []review.DisputedPattern {
 			continue
 		}
 		result = append(result, dp)
+		// Enforce max count to prevent resource exhaustion
+		if len(result) >= maxDisputedPatterns {
+			break
+		}
 	}
 	return result
 }
