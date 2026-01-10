@@ -1019,7 +1019,7 @@ func createSimpleClient(cfg config.Config, provider, model string) (simple.Clien
 			return nil, ""
 		}
 		if model == "" {
-			model = "claude-sonnet-4-20250514" // Default to fast, capable model
+			model = "claude-haiku-4-5" // Default to fast, cheap model for theme extraction
 		}
 		providerCfg := cfg.Providers["anthropic"]
 		client := simple.NewAnthropicClient(apiKey, model, providerCfg, cfg.HTTP)
