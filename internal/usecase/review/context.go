@@ -30,10 +30,10 @@ type ProjectContext struct {
 	// concerns that have already been addressed.
 	TriagedFindings *domain.TriagedFindingContext
 
-	// Extracted themes from prior findings
-	// These are high-level conceptual areas that have been thoroughly explored.
+	// Extracted themes from prior findings (Issue #240)
+	// Contains themes, conclusions, and disputed patterns depending on strategy.
 	// Used to prevent the LLM from raising new angles on the same themes.
-	ExtractedThemes []string
+	ThemeContext *ThemeExtractionResult
 
 	// Metadata
 	ChangedPaths []string // Paths of changed files

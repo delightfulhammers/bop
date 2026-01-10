@@ -106,18 +106,9 @@ get_code_context(owner, repo, pr_number, file, start_line, end_line)
 get_suggestion(owner, repo, pr_number, finding_id)
 ```
 
-### Step 4: Apply Fixes
+### Step 4: Respond to ALL Findings FIRST
 
-For findings you're addressing:
-
-1. Use `get_suggestion` to extract the proposed fix (if available)
-2. Apply the fix using standard file editing
-3. Run **all quality gates**: `mage fmt && mage lint && mage test && mage build`
-4. Commit locally (**don't push yet** - respond to findings first!)
-
-### Step 5: Respond to ALL Findings
-
-**IMPORTANT:** Reply to every finding in the round, not just the ones you fixed. This provides a clear audit trail and shows you've reviewed each concern.
+**IMPORTANT:** Reply to every finding BEFORE making code changes. This creates a clear audit trail showing you evaluated each finding before acting.
 
 **For PR comment findings:**
 ```
@@ -130,31 +121,43 @@ post_comment(owner, repo, pr_number, file, line, body)
 ```
 
 **Reply patterns by category:**
-- **Fixed:** "Fixed. Added [description of fix]."
+- **Fixed:** "Will fix. [description of planned fix]." or "Fixed in [commit]."
 - **Already Addressed:** "Already addressed in [previous commit/fix]. [Brief explanation]."
 - **Already Tracked:** "Already tracked in Issue #XX. [Brief context]."
 - **Acknowledged:** "This is documented/intentional behavior. [Explanation of tradeoff]."
 - **Disputed:** "False positive. [Explanation of why analysis is incorrect]."
 
-### Step 6: Mark Threads Resolved
+### Step 5: Apply Fixes
 
-After addressing a finding:
-```
-mark_resolved(owner, repo, thread_id, resolved=true)
-```
+For findings you're addressing:
 
-### Step 7: Push and Check for New Findings
+1. Use `get_suggestion` to extract the proposed fix (if available)
+2. Apply the fix using standard file editing (bottom-up for same file)
+3. Run **all quality gates**: `mage fmt && mage lint && mage test && mage build`
+4. Commit locally with descriptive message
 
-After all fixes are committed and responses posted:
+### Step 6: Push and Re-Request Review
+
+After all fixes are committed:
 
 ```bash
 git push
 ```
 
-Then dismiss stale reviews:
+Then dismiss stale reviews (especially if blocking findings were addressed):
 ```
-request_rereview(owner, repo, pr_number, dismiss_stale=true)
+request_rereview(owner, repo, pr_number, dismiss_stale=true,
+                 message="Blocking findings addressed: [summary]")
 ```
+
+### Step 7: Mark Threads Resolved (Optional)
+
+After a finding is fully addressed and verified:
+```
+mark_resolved(owner, repo, thread_id, resolved=true)
+```
+
+Note: This is optional - many teams prefer to leave threads open for visibility.
 
 ### Step 8: Iterate Until Clean
 
@@ -296,25 +299,53 @@ Fix finding at line 50  -> Line 10 unaffected
 Fix finding at line 10  -> Correct location
 ```
 
+### Triage Workflow Order
+
+**The correct order is: respond → fix → commit → push → re-request**
+
+| Step | Action | Why This Order |
+|------|--------|----------------|
+| 1 | Gather all findings | Understand full scope before acting |
+| 2 | Analyze and categorize | Determine fix vs dispute vs acknowledge |
+| 3 | **Respond to findings** | Creates paper trail BEFORE code changes |
+| 4 | Apply code fixes | Fix valid issues locally |
+| 5 | Run quality gates | `mage fmt && mage lint && mage test` |
+| 6 | Commit locally | Group related fixes |
+| 7 | Push | Triggers new review cycle |
+| 8 | Re-request review | Dismiss stale reviews if blocking findings addressed |
+
+> ⚠️ **CRITICAL: Respond BEFORE Committing/Pushing**
+>
+> Always post responses to findings (step 3) BEFORE committing fixes (step 6). This ordering matters for several reasons:
+>
+> 1. **Paper trail:** Responses are anchored to the commit they were raised on, showing you evaluated each finding before acting
+> 2. **Race prevention:** Pushing triggers CI which may start a new review cycle before your responses post
+> 3. **Clean audit:** Reviewers see your reasoning alongside the original finding, not after the fix
+>
+> **Anti-pattern:** fix → commit → push → respond (responses arrive after new findings, creating confusion)
+
+### Re-Requesting Review
+
+After addressing **blocking findings** (fixed or disputed with rationale), re-request review:
+
+```
+request_rereview(owner, repo, pr_number, dismiss_stale=true,
+                 message="Blocking findings addressed: [summary]")
+```
+
+This dismisses stale bot reviews and allows the PR to proceed. Only do this when:
+- All blocking findings have been fixed, OR
+- Blocking findings have been disputed with clear rationale
+
 ### Batch Similar Operations
 
-Group operations by type for efficiency:
+For efficiency, group operations by type within each step:
 
-1. **First:** Gather all findings (both sources)
-2. **Second:** Read all needed context in parallel
-3. **Third:** Apply all code fixes
-4. **Fourth:** Post all responses
-5. **Fifth:** Mark threads resolved
-6. **Last:** Push and request re-review
-
-> ⚠️ **CRITICAL: Respond BEFORE Push**
->
-> Always post responses to findings (step 4) BEFORE pushing code (step 6). Pushing triggers CI which may start a new review cycle. If your responses aren't posted yet, there's a race condition where:
-> 1. You push → CI triggers bop
-> 2. Code-reviewer runs and posts new findings
-> 3. Your responses to OLD findings finally post (too late!)
->
-> The correct flow: **fix locally → respond to findings → push → re-review**
+- **Gather phase:** Query `list_annotations` and `list_findings` in parallel
+- **Context phase:** Batch `get_code_context` calls for all findings needing investigation
+- **Response phase:** Post all `reply_to_finding` calls before any commits
+- **Fix phase:** Apply all edits bottom-up (highest line numbers first)
+- **Quality phase:** Run all gates once after all fixes: `mage fmt && mage lint && mage test`
 
 ### Use Native Tools Together with MCP
 

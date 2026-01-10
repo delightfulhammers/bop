@@ -231,13 +231,21 @@ observability:
   metrics:
     enabled: true
 
-# Theme Extraction Configuration
-# Extracts high-level themes from prior findings to prevent thematic repetition.
-# When a PR has multiple review rounds, this identifies conceptual areas that have
-# already been covered (e.g., "input validation", "error handling") so the reviewer
-# doesn't raise new angles on the same themes.
+# Theme Extraction Configuration (Issue #240)
+# Extracts themes, conclusions, and disputed patterns from prior findings
+# to prevent repeat findings across review rounds.
 themeExtraction:
   enabled: true
+  # Extraction strategy determines what context is extracted:
+  # - "abstract": High-level themes only (e.g., "input validation", "error handling")
+  # - "specific": Themes + specific conclusions and anti-patterns
+  # - "comprehensive": Themes + conclusions + disputed patterns with rationales (default)
+  #
+  # "comprehensive" is most effective at preventing repeat findings because it:
+  # 1. Includes abstract themes for conceptual coverage
+  # 2. Adds specific conclusions (e.g., "truncation uses >= intentionally")
+  # 3. Extracts disputed patterns with WHY they were disputed
+  strategy: "comprehensive"
   # LLM provider for theme extraction - uses a small, fast model since the task
   # is simple (extracting 2-5 word phrases from finding descriptions)
   provider: "anthropic"

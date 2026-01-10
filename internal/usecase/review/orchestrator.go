@@ -562,10 +562,10 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
 			}
 
-			// Extract themes from prior findings to prevent thematic repetition (PR #75)
-			// This identifies high-level conceptual areas that have been thoroughly explored.
+			// Extract themes from prior findings to prevent thematic repetition (PR #75, Issue #240)
+			// This identifies high-level conceptual areas, specific conclusions, and disputed patterns.
 			if o.deps.ThemeExtractor != nil {
-				themes, err := o.deps.ThemeExtractor.ExtractThemes(ctx, triageCtx.Findings)
+				result, err := o.deps.ThemeExtractor.ExtractThemes(ctx, triageCtx.Findings)
 				if err != nil {
 					// Log warning but continue - theme extraction failure shouldn't block review
 					if o.deps.Logger != nil {
@@ -575,14 +575,26 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 					} else {
 						log.Printf("warning: theme extraction failed: %v\n", err)
 					}
-				} else if len(themes) > 0 {
-					projectContext.ExtractedThemes = themes
+				} else if !result.IsEmpty() {
+					projectContext.ThemeContext = &result
 					if o.deps.Logger != nil {
 						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
-							"themes": themes,
+							"strategy":          string(result.Strategy),
+							"themes":            result.Themes,
+							"conclusions_count": len(result.Conclusions),
+							"disputed_count":    len(result.DisputedPatterns),
+							"finding_count":     result.FindingCount,
 						})
 					} else {
-						log.Printf("Extracted %d themes from prior findings: %v\n", len(themes), themes)
+						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s)\n",
+							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy)
+					}
+				} else {
+					// Log when extraction succeeds but returns empty (helps debug missing themes)
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogInfo(ctx, "theme extraction returned empty results", map[string]interface{}{
+							"finding_count": result.FindingCount,
+						})
 					}
 				}
 			}
@@ -1067,10 +1079,10 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
 			}
 
-			// Extract themes from prior findings to prevent thematic repetition (PR #75)
-			// This identifies high-level conceptual areas that have been thoroughly explored.
+			// Extract themes from prior findings to prevent thematic repetition (PR #75, Issue #240)
+			// This identifies high-level conceptual areas, specific conclusions, and disputed patterns.
 			if o.deps.ThemeExtractor != nil {
-				themes, err := o.deps.ThemeExtractor.ExtractThemes(ctx, triageCtx.Findings)
+				result, err := o.deps.ThemeExtractor.ExtractThemes(ctx, triageCtx.Findings)
 				if err != nil {
 					// Log warning but continue - theme extraction failure shouldn't block review
 					if o.deps.Logger != nil {
@@ -1080,14 +1092,26 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 					} else {
 						log.Printf("warning: theme extraction failed: %v\n", err)
 					}
-				} else if len(themes) > 0 {
-					projectContext.ExtractedThemes = themes
+				} else if !result.IsEmpty() {
+					projectContext.ThemeContext = &result
 					if o.deps.Logger != nil {
 						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
-							"themes": themes,
+							"strategy":          string(result.Strategy),
+							"themes":            result.Themes,
+							"conclusions_count": len(result.Conclusions),
+							"disputed_count":    len(result.DisputedPatterns),
+							"finding_count":     result.FindingCount,
 						})
 					} else {
-						log.Printf("Extracted %d themes from prior findings: %v\n", len(themes), themes)
+						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s)\n",
+							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy)
+					}
+				} else {
+					// Log when extraction succeeds but returns empty (helps debug missing themes)
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogInfo(ctx, "theme extraction returned empty results", map[string]interface{}{
+							"finding_count": result.FindingCount,
+						})
 					}
 				}
 			}

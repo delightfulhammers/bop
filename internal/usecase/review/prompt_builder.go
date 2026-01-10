@@ -313,9 +313,9 @@ type TemplateData struct {
 	// Contains formatted text about findings that have been previously addressed.
 	PriorFindings string
 
-	// Extracted themes from prior findings
-	// High-level conceptual areas that have been thoroughly explored.
-	Themes string
+	// Theme context from prior findings (Issue #240)
+	// Contains themes, conclusions, and disputed patterns for comprehensive prevention.
+	ThemeContext string
 
 	// Request fields
 	BaseRef   string
@@ -343,7 +343,7 @@ func (b *EnhancedPromptBuilder) renderTemplate(
 		ChangeTypes:        context.ChangeTypes,
 		ChangedPaths:       context.ChangedPaths,
 		PriorFindings:      formatPriorFindings(context.TriagedFindings),
-		Themes:             formatExtractedThemes(context.ExtractedThemes),
+		ThemeContext:       formatThemeContext(context.ThemeContext),
 		BaseRef:            req.BaseRef,
 		TargetRef:          req.TargetRef,
 		Diff:               b.formatDiff(diff),
@@ -564,17 +564,52 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 	return sb.String()
 }
 
-// formatExtractedThemes formats extracted themes for inclusion in the prompt.
-// Returns empty string if no themes are provided.
-func formatExtractedThemes(themes []string) string {
-	if len(themes) == 0 {
+// formatThemeContext formats the full theme extraction result for prompt injection.
+// This includes themes, conclusions, and disputed patterns based on strategy.
+// Returns empty string if result is nil or empty.
+func formatThemeContext(ctx *ThemeExtractionResult) string {
+	if ctx == nil || ctx.IsEmpty() {
 		return ""
 	}
 
 	var sb strings.Builder
-	for _, theme := range themes {
-		sb.WriteString(fmt.Sprintf("- %s\n", theme))
+
+	// Section 1: High-level themes
+	if len(ctx.Themes) > 0 {
+		sb.WriteString("### High-Level Themes\n")
+		sb.WriteString("These conceptual areas have been thoroughly reviewed:\n")
+		for _, theme := range ctx.Themes {
+			sb.WriteString(fmt.Sprintf("- %s\n", theme))
+		}
+		sb.WriteString("\n")
 	}
+
+	// Section 2: Specific conclusions (for specific and comprehensive strategies)
+	if len(ctx.Conclusions) > 0 {
+		sb.WriteString("### Specific Conclusions (DO NOT CONTRADICT)\n")
+		sb.WriteString("These specific decisions have been made and should NOT be second-guessed:\n\n")
+		for _, c := range ctx.Conclusions {
+			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", c.Theme, c.Conclusion))
+			if c.AntiPattern != "" {
+				sb.WriteString(fmt.Sprintf("  - ⚠️ %s\n", c.AntiPattern))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Section 3: Disputed patterns (for comprehensive strategy)
+	if len(ctx.DisputedPatterns) > 0 {
+		sb.WriteString("### Disputed Patterns (ALREADY REJECTED - DO NOT RE-RAISE)\n")
+		sb.WriteString("These exact patterns have been disputed as false positives:\n\n")
+		for _, p := range ctx.DisputedPatterns {
+			sb.WriteString(fmt.Sprintf("- ❌ **%s**\n", p.Pattern))
+			if p.Rationale != "" {
+				sb.WriteString(fmt.Sprintf("  - Why rejected: %s\n", p.Rationale))
+			}
+		}
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
 }
 
@@ -616,14 +651,14 @@ DO NOT raise similar concerns - they have already been reviewed and resolved.
 {{.PriorFindings}}
 {{end}}
 
-{{if .Themes}}
-## Explored Themes (CRITICAL)
+{{if .ThemeContext}}
+## Explored Themes and Decisions (CRITICAL - READ CAREFULLY)
 
-The following THEMES have been thoroughly explored in previous review rounds.
-DO NOT raise new findings on these themes, even from different angles or perspectives.
+The following themes, conclusions, and disputed patterns have been established in previous review rounds.
+DO NOT raise findings that contradict these decisions or repeat disputed patterns.
 These areas have been sufficiently covered - focus your review on OTHER aspects of the code.
 
-{{.Themes}}
+{{.ThemeContext}}
 {{end}}
 
 ## Background Documentation (for reference only)

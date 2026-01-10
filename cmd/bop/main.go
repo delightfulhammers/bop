@@ -991,10 +991,24 @@ func createThemeExtractor(cfg config.Config) review.ThemeExtractor {
 		return nil
 	}
 
-	log.Printf("[INFO] Theme extraction enabled (provider=%s)", actualProvider)
+	// Parse strategy from config (default to comprehensive)
+	strategy := review.StrategyComprehensive
+	switch themeCfg.Strategy {
+	case "abstract":
+		strategy = review.StrategyAbstract
+	case "specific":
+		strategy = review.StrategySpecific
+	case "comprehensive", "":
+		strategy = review.StrategyComprehensive
+	default:
+		log.Printf("[WARN] Unknown theme extraction strategy %q, using comprehensive", themeCfg.Strategy)
+	}
+
+	log.Printf("[INFO] Theme extraction enabled (provider=%s, strategy=%s)", actualProvider, strategy)
 
 	// Create and return the theme extractor
 	extractorConfig := review.ThemeExtractionConfig{
+		Strategy:            strategy,
 		MaxThemes:           maxThemes,
 		MinFindingsForTheme: minFindings,
 		MaxTokens:           maxTokens,
