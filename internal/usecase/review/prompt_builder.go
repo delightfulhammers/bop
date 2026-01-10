@@ -317,10 +317,6 @@ type TemplateData struct {
 	// Contains themes, conclusions, and disputed patterns for comprehensive prevention.
 	ThemeContext string
 
-	// Extracted themes from prior findings (DEPRECATED - use ThemeContext)
-	// High-level conceptual areas that have been thoroughly explored.
-	Themes string
-
 	// Request fields
 	BaseRef   string
 	TargetRef string
@@ -348,7 +344,6 @@ func (b *EnhancedPromptBuilder) renderTemplate(
 		ChangedPaths:       context.ChangedPaths,
 		PriorFindings:      formatPriorFindings(context.TriagedFindings),
 		ThemeContext:       formatThemeContext(context.ThemeContext),
-		Themes:             formatExtractedThemes(context.ExtractedThemes), // Deprecated fallback
 		BaseRef:            req.BaseRef,
 		TargetRef:          req.TargetRef,
 		Diff:               b.formatDiff(diff),
@@ -569,21 +564,6 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 	return sb.String()
 }
 
-// formatExtractedThemes formats extracted themes for inclusion in the prompt.
-// Returns empty string if no themes are provided.
-// DEPRECATED: Use formatThemeContext for full ThemeExtractionResult support.
-func formatExtractedThemes(themes []string) string {
-	if len(themes) == 0 {
-		return ""
-	}
-
-	var sb strings.Builder
-	for _, theme := range themes {
-		sb.WriteString(fmt.Sprintf("- %s\n", theme))
-	}
-	return sb.String()
-}
-
 // formatThemeContext formats the full theme extraction result for prompt injection.
 // This includes themes, conclusions, and disputed patterns based on strategy.
 // Returns empty string if result is nil or empty.
@@ -679,14 +659,6 @@ DO NOT raise findings that contradict these decisions or repeat disputed pattern
 These areas have been sufficiently covered - focus your review on OTHER aspects of the code.
 
 {{.ThemeContext}}
-{{else if .Themes}}
-## Explored Themes (CRITICAL)
-
-The following THEMES have been thoroughly explored in previous review rounds.
-DO NOT raise new findings on these themes, even from different angles or perspectives.
-These areas have been sufficiently covered - focus your review on OTHER aspects of the code.
-
-{{.Themes}}
 {{end}}
 
 ## Background Documentation (for reference only)

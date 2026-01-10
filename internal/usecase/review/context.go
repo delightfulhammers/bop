@@ -35,10 +35,6 @@ type ProjectContext struct {
 	// Used to prevent the LLM from raising new angles on the same themes.
 	ThemeContext *ThemeExtractionResult
 
-	// ExtractedThemes is deprecated - use ThemeContext.Themes instead.
-	// Kept for backward compatibility during transition.
-	ExtractedThemes []string
-
 	// Metadata
 	ChangedPaths []string // Paths of changed files
 	ChangeTypes  []string // Types of changes (e.g., "auth", "database", "api")

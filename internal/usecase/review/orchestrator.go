@@ -577,8 +577,6 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 					}
 				} else if !result.IsEmpty() {
 					projectContext.ThemeContext = &result
-					// Also populate deprecated field for backward compatibility
-					projectContext.ExtractedThemes = result.Themes
 					if o.deps.Logger != nil {
 						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
 							"strategy":          string(result.Strategy),
@@ -1096,8 +1094,6 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 					}
 				} else if !result.IsEmpty() {
 					projectContext.ThemeContext = &result
-					// Also populate deprecated field for backward compatibility
-					projectContext.ExtractedThemes = result.Themes
 					if o.deps.Logger != nil {
 						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
 							"strategy":          string(result.Strategy),

@@ -1284,55 +1284,14 @@ func TestFormatPriorFindings_TruncatesLongRationale(t *testing.T) {
 	}
 }
 
-func TestFormatExtractedThemes(t *testing.T) {
-	tests := []struct {
-		name           string
-		themes         []string
-		expectedText   []string
-		unexpectedText []string
-	}{
-		{
-			name:           "empty themes",
-			themes:         nil,
-			expectedText:   nil,
-			unexpectedText: []string{"-"},
-		},
-		{
-			name:         "single theme",
-			themes:       []string{"input validation"},
-			expectedText: []string{"- input validation"},
-		},
-		{
-			name:         "multiple themes",
-			themes:       []string{"input validation", "error handling", "sql injection"},
-			expectedText: []string{"- input validation", "- error handling", "- sql injection"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := formatExtractedThemes(tt.themes)
-
-			for _, expected := range tt.expectedText {
-				if !strings.Contains(result, expected) {
-					t.Errorf("expected text %q not found in result:\n%s", expected, result)
-				}
-			}
-
-			for _, unexpected := range tt.unexpectedText {
-				if strings.Contains(result, unexpected) {
-					t.Errorf("unexpected text %q found in result:\n%s", unexpected, result)
-				}
-			}
-		})
-	}
-}
-
 func TestBuildPromptWithThemes(t *testing.T) {
 	builder := NewEnhancedPromptBuilder()
 
 	context := ProjectContext{
-		ExtractedThemes: []string{"input validation", "error handling", "null safety"},
+		ThemeContext: &ThemeExtractionResult{
+			Themes:   []string{"input validation", "error handling", "null safety"},
+			Strategy: StrategyAbstract,
+		},
 	}
 
 	diff := domain.Diff{
@@ -1353,11 +1312,11 @@ func TestBuildPromptWithThemes(t *testing.T) {
 
 	// Verify themes section appears in prompt
 	expectedElements := []string{
-		"Explored Themes",
+		"Explored Themes and Decisions",
 		"input validation",
 		"error handling",
 		"null safety",
-		"DO NOT raise new findings on these themes",
+		"DO NOT raise findings that contradict these decisions",
 	}
 
 	for _, expected := range expectedElements {
