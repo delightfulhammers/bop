@@ -56,10 +56,17 @@ The `finding_id` parameter in `reply_to_finding` and `get_finding` accepts both 
 ### Status Tags for `reply_to_finding`
 
 Use the `status` parameter to tag your response:
-- `acknowledged` - Noted, will address later
-- `disputed` - Won't fix, with explanation
-- `fixed` - Addressed in code
-- `wont_fix` - Intentionally not addressing
+
+| Status | When to Use | Typical Action |
+|--------|-------------|----------------|
+| `fixed` | Issue addressed in code | Describe the fix applied |
+| `acknowledged` | Valid observation, will address later | Create tracking issue, reference in reply |
+| `disputed` | Finding is incorrect or based on misunderstanding | Explain why the analysis is wrong |
+| `wont_fix` | Intentional design choice, not changing | Explain the deliberate tradeoff |
+
+**Key distinction: `acknowledged` vs `disputed`**
+- **Acknowledged:** The finding is *correct* but out of scope for this PR. Create an issue to track follow-up.
+- **Disputed:** The finding is *incorrect* - false positive, wrong analysis, or misunderstands the code.
 
 ---
 
@@ -88,10 +95,23 @@ For each finding, determine the category:
 | **Needs Fix** | Fix now | Security vulnerabilities, bugs, blocking errors |
 | **Already Addressed** | Reply noting prior fix | Fixed in earlier round, code already handles this |
 | **Already Tracked** | Reply with issue link | Scalability concern tracked in Issue #XX |
-| **Acknowledge** | Reply accepting tradeoff | Valid observation but acceptable for now |
-| **Disputed** | Reply with explanation | False positive, incorrect analysis, intentional design |
+| **Acknowledge + Track** | Create issue, reply with link | Valid but out of scope for this PR |
+| **Acknowledge** | Reply accepting tradeoff | Minor observation, acceptable as-is, no follow-up needed |
+| **Disputed** | Reply with explanation | False positive, incorrect analysis, misunderstands code |
 
-**Creating Tracking Issues:** For legitimate concerns that shouldn't block the PR (scalability, future enhancements), create a GitHub issue and reference it in your reply. This acknowledges the concern while deferring the work appropriately.
+**When to Create Tracking Issues:**
+
+Create a GitHub issue when a finding is:
+- ✅ Valid and correct (not a false positive)
+- ✅ Worth addressing eventually (not trivial)
+- ❌ Out of scope for the current PR (scope creep, different concern)
+
+Examples that warrant issues:
+- "Config inconsistency" when PR adds new feature, not refactoring config
+- "Missing tests for edge case X" when PR focuses on different functionality
+- "Performance optimization Y" when PR addresses correctness, not performance
+
+> **Don't dispute valid observations.** If the reviewer is correct but the work doesn't belong in this PR, acknowledge it with a tracking issue. Reserve "disputed" for findings that are genuinely incorrect.
 
 ### Step 3: Get Details for Complex Findings
 
@@ -124,8 +144,11 @@ post_comment(owner, repo, pr_number, file, line, body)
 - **Fixed:** "Will fix. [description of planned fix]." or "Fixed in [commit]."
 - **Already Addressed:** "Already addressed in [previous commit/fix]. [Brief explanation]."
 - **Already Tracked:** "Already tracked in Issue #XX. [Brief context]."
-- **Acknowledged:** "This is documented/intentional behavior. [Explanation of tradeoff]."
-- **Disputed:** "False positive. [Explanation of why analysis is incorrect]."
+- **Acknowledge + Track:** "Valid observation. Tracked in #XX for follow-up." (Create issue first!)
+- **Acknowledged:** "This is intentional/acceptable. [Explanation of tradeoff]."
+- **Disputed:** "This is incorrect because [explanation of why the analysis is wrong]."
+
+> **Tip:** For "Acknowledge + Track", create the issue first, then reply with the issue number. This ensures the finding is properly tracked before you move on.
 
 ### Step 5: Apply Fixes
 
@@ -184,18 +207,23 @@ Is it a blocking error, security issue, or real bug?
   YES -> Fix immediately
   NO  -> Continue...
 
-Is it a scalability/performance concern for the future?
-  YES -> Create tracking issue, reply with issue link
+Is it a FALSE POSITIVE or INCORRECT analysis?
+  (Reviewer misunderstands the code, wrong assumptions, factual error)
+  YES -> Reply "Disputed" with explanation of why analysis is wrong
   NO  -> Continue...
 
-Is it a false positive or incorrect analysis?
-  YES -> Reply "Disputed" with explanation
+Is it VALID but OUT OF SCOPE for this PR?
+  (Scope creep, different concern, would touch unrelated code)
+  YES -> Create tracking issue, reply "Acknowledged" with issue link
   NO  -> Continue...
 
-Is it a valid observation but acceptable tradeoff?
-  YES -> Reply "Acknowledged" explaining the tradeoff
+Is it a minor observation, acceptable as-is?
+  (True but trivial, documented tradeoff, intentional design)
+  YES -> Reply "Acknowledged" or "Won't fix" with brief explanation
   NO  -> Fix it
 ```
+
+> **Key principle:** If the finding is *correct*, don't dispute it. Either fix it, acknowledge it with a tracking issue, or explain why it's an acceptable tradeoff. Reserve "disputed" for findings that are genuinely *wrong*.
 
 ---
 
@@ -208,18 +236,23 @@ After triaging each round, provide a summary:
 
 | Category | Count | IDs |
 |----------|-------|-----|
-| Already tracked | N | ID1 (→#XX), ID2 (→#YY) |
-| Already addressed | N | ID3, ID4 |
-| Needs fix | N | ID5 (description), ID6 (description) |
-| Acknowledge | N | ID7, ID8 |
-| Disputed | N | ID9 |
+| Needs fix | N | ID1 (description), ID2 (description) |
+| Acknowledge + Track | N | ID3 (→#XX new), ID4 (→#YY new) |
+| Already tracked | N | ID5 (→#ZZ) |
+| Already addressed | N | ID6, ID7 |
+| Acknowledged | N | ID8, ID9 |
+| Disputed | N | ID10 |
 
 **Fixes needed:**
-1. ID5 - [brief description of issue and fix]
-2. ID6 - [brief description of issue and fix]
+1. ID1 - [brief description of issue and fix]
+2. ID2 - [brief description of issue and fix]
+
+**Issues created:**
+- #XX - [title] (for ID3)
+- #YY - [title] (for ID4)
 
 **Investigation required:** (if any findings need deeper analysis)
-- ID10 - Need to verify [specific concern]
+- ID11 - Need to verify [specific concern]
 ```
 
 After completing a round:
