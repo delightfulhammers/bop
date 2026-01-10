@@ -565,7 +565,8 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 }
 
 // formatThemeContext formats the full theme extraction result for prompt injection.
-// This includes themes, conclusions, and disputed patterns based on strategy.
+// This includes themes, conclusions, disputed patterns, and dispute principles.
+// Principles are formatted prominently to prevent semantic variations of disputed findings.
 // Returns empty string if result is nil or empty.
 func formatThemeContext(ctx *ThemeExtractionResult) string {
 	if ctx == nil || ctx.IsEmpty() {
@@ -574,7 +575,34 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 
 	var sb strings.Builder
 
-	// Section 1: High-level themes
+	// Section 1: Dispute principles (MOST IMPORTANT - appears first)
+	// These prevent semantic variations by establishing trust boundaries
+	if len(ctx.DisputePrinciples) > 0 {
+		sb.WriteString("### Established Trust Boundaries\n\n")
+		sb.WriteString("The following principles have been established through dispute resolution.\n")
+		sb.WriteString("Findings that contradict these principles are likely false positives unless\n")
+		sb.WriteString("there is evidence the trusted source has been compromised.\n\n")
+
+		for _, p := range ctx.DisputePrinciples {
+			sb.WriteString(fmt.Sprintf("**Principle: %s**\n", p.Principle))
+			if len(p.AppliesTo) > 0 {
+				sb.WriteString(fmt.Sprintf("- Applies to: %s\n", strings.Join(p.AppliesTo, ", ")))
+			}
+			if len(p.DoNotFlag) > 0 {
+				sb.WriteString(fmt.Sprintf("- Generally avoid flagging: %s\n", strings.Join(p.DoNotFlag, ", ")))
+			}
+			if p.Rationale != "" {
+				sb.WriteString(fmt.Sprintf("- Rationale: %s\n", p.Rationale))
+			}
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString("⚠️ **Before raising a finding**: Does it assume untrusted input from a source\n")
+		sb.WriteString("listed above? If so, reconsider whether it's a genuine concern or conflicts\n")
+		sb.WriteString("with an established trust boundary.\n\n")
+	}
+
+	// Section 2: High-level themes
 	if len(ctx.Themes) > 0 {
 		sb.WriteString("### High-Level Themes\n")
 		sb.WriteString("These conceptual areas have been thoroughly reviewed:\n")
@@ -584,7 +612,7 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 		sb.WriteString("\n")
 	}
 
-	// Section 2: Specific conclusions (for specific and comprehensive strategies)
+	// Section 3: Specific conclusions (for specific and comprehensive strategies)
 	if len(ctx.Conclusions) > 0 {
 		sb.WriteString("### Specific Conclusions (DO NOT CONTRADICT)\n")
 		sb.WriteString("These specific decisions have been made and should NOT be second-guessed:\n\n")
@@ -597,7 +625,7 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 		sb.WriteString("\n")
 	}
 
-	// Section 3: Disputed patterns (for comprehensive strategy)
+	// Section 4: Disputed patterns (for comprehensive strategy)
 	if len(ctx.DisputedPatterns) > 0 {
 		sb.WriteString("### Disputed Patterns (ALREADY REJECTED - DO NOT RE-RAISE)\n")
 		sb.WriteString("These exact patterns have been disputed as false positives:\n\n")

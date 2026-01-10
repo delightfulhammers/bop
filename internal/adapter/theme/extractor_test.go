@@ -332,6 +332,226 @@ func TestExtractor_ComprehensiveStrategy_ParsesDisputedPatterns(t *testing.T) {
 	assert.Equal(t, "LimitReader caps at n bytes, so >= is intentional", result.DisputedPatterns[0].Rationale)
 }
 
+func TestExtractor_ComprehensiveStrategy_ParsesDisputePrinciples(t *testing.T) {
+	client := &mockClient{
+		response: `{
+			"themes": ["trust boundaries"],
+			"conclusions": [],
+			"disputed_patterns": [],
+			"dispute_principles": [
+				{
+					"principle": "Internal data paths are trusted",
+					"applies_to": ["database data", "config files", "LLM responses"],
+					"do_not_flag": ["prompt injection", "input validation"],
+					"rationale": "These data sources are not user-controlled"
+				}
+			]
+		}`,
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:            review.StrategyComprehensive,
+		MaxThemes:           10,
+		MinFindingsForTheme: 3,
+		MaxTokens:           4096,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{
+			File:         "a.go",
+			Description:  "Prompt injection from database data",
+			Status:       domain.StatusDisputed,
+			StatusReason: "Data comes from our DB, not user input",
+		},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	require.Len(t, result.DisputePrinciples, 1)
+	assert.Equal(t, "Internal data paths are trusted", result.DisputePrinciples[0].Principle)
+	assert.Equal(t, []string{"database data", "config files", "llm responses"}, result.DisputePrinciples[0].AppliesTo)
+	assert.Equal(t, []string{"prompt injection", "input validation"}, result.DisputePrinciples[0].DoNotFlag)
+	assert.Equal(t, "These data sources are not user-controlled", result.DisputePrinciples[0].Rationale)
+}
+
+func TestExtractor_ComprehensiveStrategy_PrincipleLimitsEnforced(t *testing.T) {
+	// Response with more principles than the limit
+	client := &mockClient{
+		response: `{
+			"themes": [],
+			"conclusions": [],
+			"disputed_patterns": [],
+			"dispute_principles": [
+				{"principle": "P1", "applies_to": ["a"], "do_not_flag": ["x"], "rationale": "R1"},
+				{"principle": "P2", "applies_to": ["b"], "do_not_flag": ["y"], "rationale": "R2"},
+				{"principle": "P3", "applies_to": ["c"], "do_not_flag": ["z"], "rationale": "R3"},
+				{"principle": "P4", "applies_to": ["d"], "do_not_flag": ["w"], "rationale": "R4"}
+			]
+		}`,
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:             review.StrategyComprehensive,
+		MaxThemes:            10,
+		MinFindingsForTheme:  3,
+		MaxTokens:            4096,
+		MaxDisputePrinciples: 2, // Only allow 2
+		MaxPrincipleItems:    5,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{File: "a.go", Description: "Issue 1"},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	assert.Len(t, result.DisputePrinciples, 2, "should be limited to MaxDisputePrinciples")
+	assert.Equal(t, "P1", result.DisputePrinciples[0].Principle)
+	assert.Equal(t, "P2", result.DisputePrinciples[1].Principle)
+}
+
+func TestExtractor_ComprehensiveStrategy_PrincipleItemsLimited(t *testing.T) {
+	client := &mockClient{
+		response: `{
+			"themes": [],
+			"conclusions": [],
+			"disputed_patterns": [],
+			"dispute_principles": [
+				{
+					"principle": "Test",
+					"applies_to": ["a", "b", "c", "d", "e", "f", "g"],
+					"do_not_flag": ["x", "y", "z"],
+					"rationale": "Reason"
+				}
+			]
+		}`,
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:             review.StrategyComprehensive,
+		MaxThemes:            10,
+		MinFindingsForTheme:  3,
+		MaxTokens:            4096,
+		MaxDisputePrinciples: 5,
+		MaxPrincipleItems:    3, // Only allow 3 items per array
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{File: "a.go", Description: "Issue 1"},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	require.Len(t, result.DisputePrinciples, 1)
+	// Verify correct count
+	assert.Len(t, result.DisputePrinciples[0].AppliesTo, 3, "should be limited to MaxPrincipleItems")
+	assert.Len(t, result.DisputePrinciples[0].DoNotFlag, 3, "should be limited to MaxPrincipleItems")
+	// Verify first N items are preserved in order (lowercased by sanitizeStringSlice)
+	assert.Equal(t, []string{"a", "b", "c"}, result.DisputePrinciples[0].AppliesTo, "should keep first 3 items")
+	assert.Equal(t, []string{"x", "y", "z"}, result.DisputePrinciples[0].DoNotFlag, "should keep all 3 items")
+}
+
+func TestExtractor_ComprehensiveStrategy_SkipsEmptyOrIncomplete(t *testing.T) {
+	client := &mockClient{
+		response: `{
+			"themes": [],
+			"conclusions": [],
+			"disputed_patterns": [],
+			"dispute_principles": [
+				{"principle": "", "applies_to": ["a"], "do_not_flag": ["x"], "rationale": "R1"},
+				{"principle": "Valid", "applies_to": ["a"], "do_not_flag": ["x"], "rationale": ""},
+				{"principle": "NoArrays", "applies_to": [], "do_not_flag": [], "rationale": "R3"},
+				{"principle": "Good", "applies_to": ["a"], "do_not_flag": [], "rationale": "R4"}
+			]
+		}`,
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:             review.StrategyComprehensive,
+		MaxThemes:            10,
+		MinFindingsForTheme:  3,
+		MaxTokens:            4096,
+		MaxDisputePrinciples: 10,
+		MaxPrincipleItems:    10,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{File: "a.go", Description: "Issue 1"},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	// Only "Good" should pass: has principle, rationale, and at least one array
+	require.Len(t, result.DisputePrinciples, 1)
+	assert.Equal(t, "Good", result.DisputePrinciples[0].Principle)
+}
+
+func TestExtractor_ComprehensiveStrategy_DeduplicatesItems(t *testing.T) {
+	client := &mockClient{
+		response: `{
+			"themes": [],
+			"conclusions": [],
+			"disputed_patterns": [],
+			"dispute_principles": [
+				{
+					"principle": "Test",
+					"applies_to": ["Database Data", "database data", "DATABASE DATA", "config"],
+					"do_not_flag": ["SQL", "sql", "SQL"],
+					"rationale": "Reason"
+				}
+			]
+		}`,
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:             review.StrategyComprehensive,
+		MaxThemes:            10,
+		MinFindingsForTheme:  3,
+		MaxTokens:            4096,
+		MaxDisputePrinciples: 5,
+		MaxPrincipleItems:    10,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{File: "a.go", Description: "Issue 1"},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	require.Len(t, result.DisputePrinciples, 1)
+	// After lowercase normalization and dedup: "database data", "config"
+	assert.Len(t, result.DisputePrinciples[0].AppliesTo, 2, "duplicates should be removed")
+	assert.Equal(t, []string{"database data", "config"}, result.DisputePrinciples[0].AppliesTo)
+	// After lowercase normalization and dedup: "sql"
+	assert.Len(t, result.DisputePrinciples[0].DoNotFlag, 1, "duplicates should be removed")
+	assert.Equal(t, []string{"sql"}, result.DisputePrinciples[0].DoNotFlag)
+}
+
 func TestExtractor_ComprehensiveStrategy_PromptIncludesDisputedFindings(t *testing.T) {
 	client := &mockClient{
 		response: `{"themes": [], "conclusions": [], "disputed_patterns": []}`,
@@ -462,6 +682,13 @@ func TestExtractor_IsEmpty(t *testing.T) {
 			name: "has disputed patterns",
 			result: review.ThemeExtractionResult{
 				DisputedPatterns: []review.DisputedPattern{{Pattern: "test"}},
+			},
+			expected: false,
+		},
+		{
+			name: "has dispute principles",
+			result: review.ThemeExtractionResult{
+				DisputePrinciples: []review.DisputePrinciple{{Principle: "test", AppliesTo: []string{"data"}}},
 			},
 			expected: false,
 		},
