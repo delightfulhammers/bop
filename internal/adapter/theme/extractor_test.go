@@ -458,8 +458,12 @@ func TestExtractor_ComprehensiveStrategy_PrincipleItemsLimited(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, result.DisputePrinciples, 1)
+	// Verify correct count
 	assert.Len(t, result.DisputePrinciples[0].AppliesTo, 3, "should be limited to MaxPrincipleItems")
 	assert.Len(t, result.DisputePrinciples[0].DoNotFlag, 3, "should be limited to MaxPrincipleItems")
+	// Verify first N items are preserved in order (lowercased by sanitizeStringSlice)
+	assert.Equal(t, []string{"a", "b", "c"}, result.DisputePrinciples[0].AppliesTo, "should keep first 3 items")
+	assert.Equal(t, []string{"x", "y", "z"}, result.DisputePrinciples[0].DoNotFlag, "should keep all 3 items")
 }
 
 func TestExtractor_ComprehensiveStrategy_SkipsEmptyOrIncomplete(t *testing.T) {
