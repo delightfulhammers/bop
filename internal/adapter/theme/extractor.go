@@ -123,11 +123,16 @@ func parseExtractionResponse(response string, maxThemes int) ([]string, error) {
 	}
 
 	// Validate and limit themes
+	const maxThemeLength = 100 // Defense against overly long themes (prompt injection mitigation)
 	var themes []string
 	for _, theme := range resp.Themes {
 		theme = strings.TrimSpace(theme)
 		if theme == "" {
 			continue
+		}
+		// Limit theme length to prevent processing of excessively long strings
+		if len(theme) > maxThemeLength {
+			theme = theme[:maxThemeLength]
 		}
 		// Normalize to lowercase
 		theme = strings.ToLower(theme)

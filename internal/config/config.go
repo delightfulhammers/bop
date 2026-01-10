@@ -7,22 +7,22 @@ import (
 
 // Config represents the full application configuration.
 type Config struct {
-	Providers     map[string]ProviderConfig `yaml:"providers"`
-	HTTP          HTTPConfig                `yaml:"http"`
-	Merge         MergeConfig               `yaml:"merge"`
-	Planning      PlanningConfig            `yaml:"planning"`
-	Git           GitConfig                 `yaml:"git"`
-	Output        OutputConfig              `yaml:"output"`
-	Budget        BudgetConfig              `yaml:"budget"`
-	Redaction     RedactionConfig           `yaml:"redaction"`
-	Determinism   DeterminismConfig         `yaml:"determinism"`
-	Store         StoreConfig               `yaml:"store"`
-	Observability ObservabilityConfig       `yaml:"observability"`
-	Review        ReviewConfig              `yaml:"review"`
-	Verification  VerificationConfig        `yaml:"verification"`
-	Deduplication   DeduplicationConfig   `yaml:"deduplication"`
-	ThemeExtraction ThemeExtractionConfig `yaml:"themeExtraction"`
-	SizeGuards      SizeGuardsConfig      `yaml:"sizeGuards"`
+	Providers       map[string]ProviderConfig `yaml:"providers"`
+	HTTP            HTTPConfig                `yaml:"http"`
+	Merge           MergeConfig               `yaml:"merge"`
+	Planning        PlanningConfig            `yaml:"planning"`
+	Git             GitConfig                 `yaml:"git"`
+	Output          OutputConfig              `yaml:"output"`
+	Budget          BudgetConfig              `yaml:"budget"`
+	Redaction       RedactionConfig           `yaml:"redaction"`
+	Determinism     DeterminismConfig         `yaml:"determinism"`
+	Store           StoreConfig               `yaml:"store"`
+	Observability   ObservabilityConfig       `yaml:"observability"`
+	Review          ReviewConfig              `yaml:"review"`
+	Verification    VerificationConfig        `yaml:"verification"`
+	Deduplication   DeduplicationConfig       `yaml:"deduplication"`
+	ThemeExtraction ThemeExtractionConfig     `yaml:"themeExtraction"`
+	SizeGuards      SizeGuardsConfig          `yaml:"sizeGuards"`
 
 	// Phase 3.2: Reviewer Personas
 	// Reviewers configures the reviewer personas for code review.

@@ -101,6 +101,11 @@ func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxToken
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Check if response was truncated
+	if int64(len(body)) >= maxResponseSize {
+		return "", fmt.Errorf("response exceeded maximum size of %d bytes", maxResponseSize)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return "", mapAnthropicError(resp.StatusCode, body)
 	}

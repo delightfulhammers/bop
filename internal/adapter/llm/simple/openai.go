@@ -131,6 +131,11 @@ func (c *OpenAIClient) doRequest(ctx context.Context, prompt string, maxTokens i
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
+	// Check if response was truncated
+	if int64(len(body)) >= openaiMaxResponse {
+		return "", fmt.Errorf("response exceeded maximum size of %d bytes", openaiMaxResponse)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return "", mapOpenAIError(resp.StatusCode, body)
 	}

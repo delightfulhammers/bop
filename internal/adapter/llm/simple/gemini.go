@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
@@ -87,8 +88,8 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s", geminiBaseURL, c.model, c.apiKey)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	apiURL := fmt.Sprintf("%s/v1beta/models/%s:generateContent?key=%s", geminiBaseURL, c.model, url.QueryEscape(c.apiKey))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -105,6 +106,11 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Check if response was truncated
+	if int64(len(body)) >= geminiMaxResponse {
+		return "", fmt.Errorf("response exceeded maximum size of %d bytes", geminiMaxResponse)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -124,9 +130,9 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 }
 
 type geminiRequest struct {
-	Contents         []geminiContent        `json:"contents"`
-	GenerationConfig *geminiGenConfig       `json:"generationConfig,omitempty"`
-	SafetySettings   []geminiSafetySetting  `json:"safetySettings,omitempty"`
+	Contents         []geminiContent       `json:"contents"`
+	GenerationConfig *geminiGenConfig      `json:"generationConfig,omitempty"`
+	SafetySettings   []geminiSafetySetting `json:"safetySettings,omitempty"`
 }
 
 type geminiContent struct {

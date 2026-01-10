@@ -1298,14 +1298,14 @@ func TestFormatExtractedThemes(t *testing.T) {
 			unexpectedText: []string{"-"},
 		},
 		{
-			name:           "single theme",
-			themes:         []string{"input validation"},
-			expectedText:   []string{"- input validation"},
+			name:         "single theme",
+			themes:       []string{"input validation"},
+			expectedText: []string{"- input validation"},
 		},
 		{
-			name:           "multiple themes",
-			themes:         []string{"input validation", "error handling", "sql injection"},
-			expectedText:   []string{"- input validation", "- error handling", "- sql injection"},
+			name:         "multiple themes",
+			themes:       []string{"input validation", "error handling", "sql injection"},
+			expectedText: []string{"- input validation", "- error handling", "- sql injection"},
 		},
 	}
 
