@@ -462,9 +462,14 @@ func sanitizePatterns(patterns []patternResponse) []review.DisputedPattern {
 }
 
 // truncateRunes truncates a string to maxLen runes (UTF-8 safe).
+// Adds ellipsis suffix when truncation occurs to indicate content was cut off.
 func truncateRunes(s string, maxLen int) string {
 	runes := []rune(s)
 	if len(runes) > maxLen {
+		// Reserve space for ellipsis
+		if maxLen > 3 {
+			return string(runes[:maxLen-3]) + "..."
+		}
 		return string(runes[:maxLen])
 	}
 	return s

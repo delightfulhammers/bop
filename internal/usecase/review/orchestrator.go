@@ -591,6 +591,13 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s)\n",
 							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy)
 					}
+				} else {
+					// Log when extraction succeeds but returns empty (helps debug missing themes)
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogInfo(ctx, "theme extraction returned empty results", map[string]interface{}{
+							"finding_count": result.FindingCount,
+						})
+					}
 				}
 			}
 		}
@@ -1102,6 +1109,13 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 					} else {
 						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s)\n",
 							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy)
+					}
+				} else {
+					// Log when extraction succeeds but returns empty (helps debug missing themes)
+					if o.deps.Logger != nil {
+						o.deps.Logger.LogInfo(ctx, "theme extraction returned empty results", map[string]interface{}{
+							"finding_count": result.FindingCount,
+						})
 					}
 				}
 			}
