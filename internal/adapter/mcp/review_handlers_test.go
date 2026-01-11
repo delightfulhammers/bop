@@ -959,6 +959,85 @@ func TestHandlePostFindings(t *testing.T) {
 		assert.Equal(t, 1, output.SkippedDuplicates)
 		assert.Contains(t, output.Message, "already exist")
 	})
+
+	t.Run("skip_duplicates fails open when ListFindings errors", func(t *testing.T) {
+		// Create PRService with a mock that returns an error
+		prService := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: &mockCommentReaderForDedup{
+				err: errors.New("API rate limit exceeded"),
+			},
+		})
+
+		server := &Server{
+			deps: ServerDeps{
+				FindingPoster: &mockFindingPoster{
+					result: &review.GitHubPostResult{CommentsPosted: 2},
+				},
+				RemoteGitHubClient: &mockPRMetadataFetcher{
+					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
+					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
+				},
+				PRService: prService,
+			},
+		}
+
+		input := PostFindingsInput{
+			Owner:          "owner",
+			Repo:           "repo",
+			PRNumber:       42,
+			SkipDuplicates: true,
+			Findings: []FindingInput{
+				{File: "test.go", LineStart: 1, LineEnd: 1, Severity: "high", Category: "bug", Description: "Finding 1"},
+				{File: "test.go", LineStart: 2, LineEnd: 2, Severity: "medium", Category: "bug", Description: "Finding 2"},
+			},
+		}
+
+		result, output, err := server.handlePostFindings(context.Background(), nil, input)
+
+		// Should succeed despite ListFindings error (fail open)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Equal(t, 2, output.Posted) // All findings posted since dedup couldn't run
+	})
+
+	t.Run("skip_duplicates detects duplicates within same batch", func(t *testing.T) {
+		// PRService with no existing findings
+		prService := createPRServiceForDedup([]domain.PRFinding{})
+
+		server := &Server{
+			deps: ServerDeps{
+				FindingPoster: &mockFindingPoster{
+					result: &review.GitHubPostResult{CommentsPosted: 1},
+				},
+				RemoteGitHubClient: &mockPRMetadataFetcher{
+					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
+					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
+				},
+				PRService: prService,
+			},
+		}
+
+		// Two findings with the same fingerprint in the same batch
+		input := PostFindingsInput{
+			Owner:          "owner",
+			Repo:           "repo",
+			PRNumber:       42,
+			SkipDuplicates: true,
+			Findings: []FindingInput{
+				{File: "test.go", LineStart: 1, LineEnd: 1, Severity: "high", Category: "bug", Description: "Same issue", Fingerprint: "duplicate-fp"},
+				{File: "test.go", LineStart: 1, LineEnd: 1, Severity: "high", Category: "bug", Description: "Same issue", Fingerprint: "duplicate-fp"},
+			},
+		}
+
+		result, output, err := server.handlePostFindings(context.Background(), nil, input)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Equal(t, 1, output.Posted)            // Only 1 should be posted
+		assert.Equal(t, 1, output.SkippedDuplicates) // 1 skipped as batch duplicate
+	})
 }
 
 func TestCountBySeverity(t *testing.T) {

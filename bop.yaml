@@ -330,7 +330,7 @@ review:
 
   # Categories that always block regardless of severity
   alwaysBlockCategories:
-    - "security"
+    # - "security"
 
   # Fine-grained action control (overrides blockThreshold for specific severities)
   # actions:

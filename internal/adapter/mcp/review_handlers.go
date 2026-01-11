@@ -374,7 +374,7 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 				}
 			}
 
-			// Filter out findings that already exist
+			// Filter out findings that already exist (including duplicates within this batch)
 			filtered := make([]FindingInput, 0, len(input.Findings))
 			for _, f := range input.Findings {
 				fp := getFingerprintFromInput(f)
@@ -382,6 +382,7 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 					skippedDuplicates++
 				} else {
 					filtered = append(filtered, f)
+					existingFPs[fp] = true // Prevent duplicates within the same batch
 				}
 			}
 			findingsToPost = filtered
