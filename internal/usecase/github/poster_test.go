@@ -1339,9 +1339,11 @@ func TestReviewPoster_PostReview_NewFindingsStillBlock(t *testing.T) {
 	require.NoError(t, err)
 	// New high-severity finding blocks even though existing one is acknowledged
 	assert.Equal(t, github.EventRequestChanges, result.Event, "new high-severity finding should block")
-	// Only 1 comment posted (new finding), existing is deduplicated
+	// Only 1 comment posted (new finding), existing is skipped
 	assert.Equal(t, 1, result.CommentsPosted)
-	assert.Equal(t, 1, result.DuplicatesSkipped)
+	// Issue #253: Acknowledged findings are now skipped via dispute inheritance, not fingerprint dedup
+	assert.Equal(t, 1, result.DisputeInheritedSkipped, "acknowledged finding skipped via dispute inheritance")
+	assert.Equal(t, 0, result.DuplicatesSkipped, "no fingerprint duplicates")
 }
 
 func TestReviewPoster_PostReview_StatusCountsZeroWithoutBotUsername(t *testing.T) {
@@ -1782,8 +1784,9 @@ func TestReviewPoster_PostReview_RegeneratedTriagedFindings(t *testing.T) {
 	require.NoError(t, err)
 	// Should APPROVE because all findings are triaged (acknowledged/disputed)
 	assert.Equal(t, github.EventApprove, result.Event, "all triaged findings should APPROVE")
-	// All findings should be deduplicated (already posted)
-	assert.Equal(t, 3, result.DuplicatesSkipped, "all 3 should be skipped as duplicates")
+	// Issue #253: Triaged findings are now skipped via dispute inheritance (Stage 0), not fingerprint dedup (Stage 1)
+	assert.Equal(t, 3, result.DisputeInheritedSkipped, "all 3 should be skipped via dispute inheritance")
+	assert.Equal(t, 0, result.DuplicatesSkipped, "none should be counted as fingerprint duplicates")
 	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
 	assert.Equal(t, 1, result.AcknowledgedCount, "1 acknowledged")
 	assert.Equal(t, 2, result.DisputedCount, "2 disputed")
@@ -1935,4 +1938,196 @@ func TestReviewPoster_PostReview_SemanticDuplicatesDontBlock(t *testing.T) {
 	assert.Equal(t, 1, result.SemanticDuplicatesSkipped, "should identify 1 semantic duplicate")
 	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
 	assert.Equal(t, 1, result.AcknowledgedCount, "should count 1 acknowledged")
+}
+
+// TestReviewPoster_PostReview_DisputeInheritance_DisputedFinding tests Issue #253:
+// When a new finding has the same fingerprint as an existing DISPUTED finding,
+// it should be skipped via dispute inheritance (Stage 0), not fingerprint dedup (Stage 1).
+// This gives better telemetry about why findings were skipped.
+func TestReviewPoster_PostReview_DisputeInheritance_DisputedFinding(t *testing.T) {
+	// Create a finding that will match the existing disputed comment
+	finding := makeFinding("config.go", 10, "high", "Potential security issue")
+	fp := domain.FingerprintFromFinding(finding)
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Existing bot comment with fingerprint
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(fp) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				// Reply indicating disputed (false positive)
+				{ID: 2, Body: "This is a false positive - not applicable here", User: github.User{Login: "author"}, InReplyToID: 1},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	// LLM regenerates the same finding (same fingerprint)
+	findings := []github.PositionedFinding{
+		{Finding: finding, DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+
+	// Issue #253: Finding should be counted as dispute-inherited, NOT fingerprint duplicate
+	assert.Equal(t, 1, result.DisputeInheritedSkipped, "disputed finding should be skipped via dispute inheritance")
+	assert.Equal(t, 0, result.DuplicatesSkipped, "should NOT be counted as fingerprint duplicate")
+	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
+	assert.Equal(t, github.EventApprove, result.Event, "disputed finding should not block")
+}
+
+// TestReviewPoster_PostReview_DisputeInheritance_AcknowledgedFinding tests Issue #253:
+// Acknowledged findings should also be skipped via dispute inheritance.
+func TestReviewPoster_PostReview_DisputeInheritance_AcknowledgedFinding(t *testing.T) {
+	finding := makeFinding("auth.go", 20, "high", "Missing validation")
+	fp := domain.FingerprintFromFinding(finding)
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(fp) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 2, Body: "Acknowledged, tracking in separate issue", User: github.User{Login: "author"}, InReplyToID: 1},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: finding, DiffPosition: diff.IntPtr(10)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+
+	// Acknowledged findings should be skipped via dispute inheritance
+	assert.Equal(t, 1, result.DisputeInheritedSkipped, "acknowledged finding should be skipped via dispute inheritance")
+	assert.Equal(t, 0, result.DuplicatesSkipped, "should NOT be counted as fingerprint duplicate")
+	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
+	assert.Equal(t, github.EventApprove, result.Event, "acknowledged finding should not block")
+}
+
+// TestReviewPoster_PostReview_DisputeInheritance_OpenFinding tests that findings
+// matching an OPEN (unreplied) comment are skipped via fingerprint dedup, not dispute inheritance.
+func TestReviewPoster_PostReview_DisputeInheritance_OpenFinding(t *testing.T) {
+	finding := makeFinding("handler.go", 30, "high", "Error not handled")
+	fp := domain.FingerprintFromFinding(finding)
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Existing bot comment with fingerprint but NO reply (open status)
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(fp) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: finding, DiffPosition: diff.IntPtr(15)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+
+	// Open findings should be skipped via fingerprint dedup (Stage 1), not dispute inheritance (Stage 0)
+	assert.Equal(t, 0, result.DisputeInheritedSkipped, "open finding should NOT be dispute-inherited")
+	assert.Equal(t, 1, result.DuplicatesSkipped, "open finding should be fingerprint duplicate")
+	assert.Equal(t, 0, result.CommentsPosted, "no new comments")
+	// Open finding still blocks (REQUEST_CHANGES) even though it's a duplicate
+	assert.Equal(t, github.EventRequestChanges, result.Event, "open finding should still block")
+}
+
+// TestReviewPoster_PostReview_DisputeInheritance_MixedFindings tests Issue #253
+// with a mix of disputed, acknowledged, open, and new findings.
+func TestReviewPoster_PostReview_DisputeInheritance_MixedFindings(t *testing.T) {
+	// 4 findings: 1 disputed, 1 acknowledged, 1 open (high), 1 new (low)
+	findingDisputed := makeFinding("a.go", 10, "high", "Disputed issue")
+	findingAcked := makeFinding("b.go", 20, "high", "Acknowledged issue")
+	findingOpen := makeFinding("c.go", 30, "high", "Open issue") // high severity so it blocks
+	findingNew := makeFinding("d.go", 40, "low", "New issue")
+
+	fpDisputed := domain.FingerprintFromFinding(findingDisputed)
+	fpAcked := domain.FingerprintFromFinding(findingAcked)
+	fpOpen := domain.FingerprintFromFinding(findingOpen)
+
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				// Disputed finding
+				{ID: 1, Body: "<!-- CR_FINGERPRINT:" + string(fpDisputed) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 2, Body: "false positive", User: github.User{Login: "author"}, InReplyToID: 1},
+				// Acknowledged finding
+				{ID: 3, Body: "<!-- CR_FINGERPRINT:" + string(fpAcked) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				{ID: 4, Body: "acknowledged", User: github.User{Login: "author"}, InReplyToID: 3},
+				// Open finding (no reply) - high severity
+				{ID: 5, Body: "<!-- CR_FINGERPRINT:" + string(fpOpen) + " -->\n**Severity:** high", User: github.User{Login: "bot[bot]"}},
+				// No comment for new finding
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+	poster := usecasegithub.NewReviewPoster(client)
+
+	findings := []github.PositionedFinding{
+		{Finding: findingDisputed, DiffPosition: diff.IntPtr(5)},
+		{Finding: findingAcked, DiffPosition: diff.IntPtr(10)},
+		{Finding: findingOpen, DiffPosition: diff.IntPtr(15)},
+		{Finding: findingNew, DiffPosition: diff.IntPtr(20)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	require.NoError(t, err)
+
+	// Disputed and acknowledged should be dispute-inherited
+	assert.Equal(t, 2, result.DisputeInheritedSkipped, "2 findings (disputed + acknowledged) should be dispute-inherited")
+	// Open should be fingerprint duplicate
+	assert.Equal(t, 1, result.DuplicatesSkipped, "1 open finding should be fingerprint duplicate")
+	// New should be posted
+	assert.Equal(t, 1, result.CommentsPosted, "1 new finding should be posted")
+	// The open finding (high severity) still blocks because it's open, even though it's a duplicate
+	// Event determination uses original findings and their statuses
+	assert.Equal(t, github.EventRequestChanges, result.Event, "open high-severity finding should still block")
 }

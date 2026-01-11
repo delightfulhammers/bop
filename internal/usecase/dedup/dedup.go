@@ -117,7 +117,7 @@ func DefaultConfig() Config {
 		Provider:      "anthropic",
 		Model:         "claude-haiku-4-5",
 		MaxTokens:     64000,
-		LineThreshold: 50, // Increased from 10 to catch more duplicates (Issue #165)
-		MaxCandidates: 50,
+		LineThreshold: 50,  // Max line distance for candidate pairing (Issue #165)
+		MaxCandidates: 200, // Increased from 50 to handle large PRs (Issue #253)
 	}
 }

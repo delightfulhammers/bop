@@ -841,7 +841,7 @@ type SemanticDeduplicationConfig struct {
 
 	// MaxCandidates is the maximum number of candidate pairs to send for
 	// semantic comparison per review. This acts as a cost guard.
-	// Default: 50
+	// Default: 200
 	MaxCandidates int `yaml:"maxCandidates"`
 }
 
