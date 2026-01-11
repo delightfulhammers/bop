@@ -298,9 +298,9 @@ deduplication:
     model: "claude-haiku-4-5"
     maxTokens: 64000
     # Only compare findings within this line distance
-    lineThreshold: 10
+    lineThreshold: 50
     # Cost guard: max pairs to compare per review
-    maxCandidates: 50
+    maxCandidates: 200
 
 # Size Guards Configuration
 # Prevents context overflow when reviewing large PRs
