@@ -359,6 +359,9 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 	// Filter out duplicates if requested
 	var skippedDuplicates int
 	findingsToPost := input.Findings
+	if input.SkipDuplicates && s.deps.PRService == nil {
+		log.Printf("[WARN] skip_duplicates requested but PRService not available, proceeding without dedup")
+	}
 	if input.SkipDuplicates && s.deps.PRService != nil {
 		existingFindings, err := s.deps.PRService.ListFindings(ctx, input.Owner, input.Repo, input.PRNumber, nil, nil, nil)
 		if err != nil {
