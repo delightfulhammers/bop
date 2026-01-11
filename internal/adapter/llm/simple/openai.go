@@ -44,24 +44,26 @@ func NewOpenAIClient(apiKey, model string, providerCfg config.ProviderConfig, ht
 }
 
 // Call implements Client.
-func (c *OpenAIClient) Call(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (c *OpenAIClient) Call(ctx context.Context, prompt string, maxTokens int) (string, Usage, error) {
 	var result string
+	var usage Usage
 
 	operation := func(ctx context.Context) error {
-		resp, err := c.doRequest(ctx, prompt, maxTokens)
+		resp, u, err := c.doRequest(ctx, prompt, maxTokens)
 		if err != nil {
 			return err
 		}
 		result = resp
+		usage = u
 		return nil
 	}
 
 	err := llmhttp.RetryWithBackoff(ctx, operation, c.retryConf)
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 
-	return result, nil
+	return result, usage, nil
 }
 
 // isReasoningModel checks if the model is an OpenAI reasoning model.
@@ -91,7 +93,7 @@ func usesMaxCompletionTokens(model string) bool {
 	return false
 }
 
-func (c *OpenAIClient) doRequest(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (c *OpenAIClient) doRequest(ctx context.Context, prompt string, maxTokens int) (string, Usage, error) {
 	reqBody := openaiRequest{
 		Model: c.model,
 		Messages: []openaiMessage{
@@ -108,12 +110,12 @@ func (c *OpenAIClient) doRequest(ctx context.Context, prompt string, maxTokens i
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openaiBaseURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -121,40 +123,45 @@ func (c *OpenAIClient) doRequest(ctx context.Context, prompt string, maxTokens i
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", classifyHTTPError(err)
+		return "", Usage{}, classifyHTTPError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	limitedReader := io.LimitReader(resp.Body, openaiMaxResponse)
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	// Check if response was truncated
 	if int64(len(body)) >= openaiMaxResponse {
-		return "", fmt.Errorf("response exceeded maximum size of %d bytes", openaiMaxResponse)
+		return "", Usage{}, fmt.Errorf("response exceeded maximum size of %d bytes", openaiMaxResponse)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", mapOpenAIError(resp.StatusCode, body)
+		return "", Usage{}, mapOpenAIError(resp.StatusCode, body)
 	}
 
 	var apiResp openaiResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(apiResp.Choices) == 0 {
-		return "", fmt.Errorf("no choices in response")
+		return "", Usage{}, fmt.Errorf("no choices in response")
 	}
 
 	content := apiResp.Choices[0].Message.Content
 	if content == "" {
-		return "", fmt.Errorf("empty content in response")
+		return "", Usage{}, fmt.Errorf("empty content in response")
 	}
 
-	return content, nil
+	usage := Usage{
+		InputTokens:  apiResp.Usage.PromptTokens,
+		OutputTokens: apiResp.Usage.CompletionTokens,
+	}
+
+	return content, usage, nil
 }
 
 type openaiRequest struct {
@@ -171,6 +178,10 @@ type openaiMessage struct {
 
 type openaiResponse struct {
 	Choices []openaiChoice `json:"choices"`
+	Usage   struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
 }
 
 type openaiChoice struct {

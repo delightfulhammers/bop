@@ -53,7 +53,7 @@ func (e *Extractor) ExtractThemes(ctx context.Context, findings []domain.Triaged
 	prompt := e.buildExtractionPrompt(findings)
 
 	// Call the LLM
-	response, err := e.client.Call(ctx, prompt, e.config.MaxTokens)
+	response, usage, err := e.client.Call(ctx, prompt, e.config.MaxTokens)
 	if err != nil {
 		log.Printf("warning: theme extraction LLM call failed: %v", err)
 		return result, err
@@ -68,6 +68,10 @@ func (e *Extractor) ExtractThemes(ctx context.Context, findings []domain.Triaged
 
 	// Preserve FindingCount from the input (parsing doesn't know about it)
 	parsed.FindingCount = len(findings)
+
+	// Capture token usage for cost accounting
+	parsed.TokensIn = usage.InputTokens
+	parsed.TokensOut = usage.OutputTokens
 
 	return parsed, nil
 }

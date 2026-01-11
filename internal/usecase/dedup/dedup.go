@@ -76,6 +76,22 @@ type SemanticComparer interface {
 	Compare(ctx context.Context, candidates []CandidatePair) (*ComparisonResult, error)
 }
 
+// Usage contains token consumption metrics from semantic comparison.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+}
+
+// UsageProvider is an optional interface for comparers that track token usage.
+// Callers can check if a SemanticComparer implements this interface to retrieve
+// accumulated usage for cost accounting.
+type UsageProvider interface {
+	// TotalUsage returns the accumulated token usage.
+	TotalUsage() Usage
+	// ResetUsage clears the accumulated usage.
+	ResetUsage()
+}
+
 // Config holds configuration for semantic deduplication.
 type Config struct {
 	// Provider is the LLM provider name (e.g., "anthropic").

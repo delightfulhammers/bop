@@ -44,27 +44,29 @@ func NewGeminiClient(apiKey, model string, providerCfg config.ProviderConfig, ht
 }
 
 // Call implements Client.
-func (c *GeminiClient) Call(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (c *GeminiClient) Call(ctx context.Context, prompt string, maxTokens int) (string, Usage, error) {
 	var result string
+	var usage Usage
 
 	operation := func(ctx context.Context) error {
-		resp, err := c.doRequest(ctx, prompt, maxTokens)
+		resp, u, err := c.doRequest(ctx, prompt, maxTokens)
 		if err != nil {
 			return err
 		}
 		result = resp
+		usage = u
 		return nil
 	}
 
 	err := llmhttp.RetryWithBackoff(ctx, operation, c.retryConf)
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 
-	return result, nil
+	return result, usage, nil
 }
 
-func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens int) (string, Usage, error) {
 	reqBody := geminiRequest{
 		Contents: []geminiContent{
 			{
@@ -85,13 +87,13 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	apiURL := fmt.Sprintf("%s/v1beta/models/%s:generateContent", geminiBaseURL, c.model)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -99,32 +101,32 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", classifyHTTPError(err)
+		return "", Usage{}, classifyHTTPError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	limitedReader := io.LimitReader(resp.Body, geminiMaxResponse)
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	// Check if response was truncated
 	if int64(len(body)) >= geminiMaxResponse {
-		return "", fmt.Errorf("response exceeded maximum size of %d bytes", geminiMaxResponse)
+		return "", Usage{}, fmt.Errorf("response exceeded maximum size of %d bytes", geminiMaxResponse)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", mapGeminiError(resp.StatusCode, body)
+		return "", Usage{}, mapGeminiError(resp.StatusCode, body)
 	}
 
 	var apiResp geminiResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(apiResp.Candidates) == 0 || len(apiResp.Candidates[0].Content.Parts) == 0 {
-		return "", fmt.Errorf("no content in response")
+		return "", Usage{}, fmt.Errorf("no content in response")
 	}
 
 	// Concatenate all parts (Gemini can return multiple parts for complex responses)
@@ -133,7 +135,12 @@ func (c *GeminiClient) doRequest(ctx context.Context, prompt string, maxTokens i
 		sb.WriteString(part.Text)
 	}
 
-	return sb.String(), nil
+	usage := Usage{
+		InputTokens:  apiResp.UsageMetadata.PromptTokenCount,
+		OutputTokens: apiResp.UsageMetadata.CandidatesTokenCount,
+	}
+
+	return sb.String(), usage, nil
 }
 
 type geminiRequest struct {
@@ -161,7 +168,11 @@ type geminiSafetySetting struct {
 }
 
 type geminiResponse struct {
-	Candidates []geminiCandidate `json:"candidates"`
+	Candidates    []geminiCandidate `json:"candidates"`
+	UsageMetadata struct {
+		PromptTokenCount     int `json:"promptTokenCount"`
+		CandidatesTokenCount int `json:"candidatesTokenCount"`
+	} `json:"usageMetadata"`
 }
 
 type geminiCandidate struct {

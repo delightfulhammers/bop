@@ -69,6 +69,14 @@ type ThemeExtractionResult struct {
 
 	// FindingCount is the number of findings that were analyzed.
 	FindingCount int
+
+	// TokensIn is the number of input tokens used for extraction.
+	// Used for cost accounting.
+	TokensIn int
+
+	// TokensOut is the number of output tokens used for extraction.
+	// Used for cost accounting.
+	TokensOut int
 }
 
 // ThemeConclusion represents a specific decision made during review.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/delightfulhammers/bop/internal/adapter/llm/simple"
 	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/stretchr/testify/assert"
@@ -14,15 +15,16 @@ import (
 // mockClient is a test double for the simple.Client interface.
 type mockClient struct {
 	response string
+	usage    simple.Usage
 	err      error
 	called   bool
 	prompt   string
 }
 
-func (m *mockClient) Call(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (m *mockClient) Call(ctx context.Context, prompt string, maxTokens int) (string, simple.Usage, error) {
 	m.called = true
 	m.prompt = prompt
-	return m.response, m.err
+	return m.response, m.usage, m.err
 }
 
 func TestExtractor_ExtractThemes_Success(t *testing.T) {
@@ -699,4 +701,59 @@ func TestExtractor_IsEmpty(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.result.IsEmpty())
 		})
 	}
+}
+
+func TestExtractor_ExtractThemes_CapturesUsage(t *testing.T) {
+	client := &mockClient{
+		response: `{"themes": ["validation"]}`,
+		usage:    simple.Usage{InputTokens: 500, OutputTokens: 100},
+	}
+
+	config := review.ThemeExtractionConfig{
+		Strategy:            review.StrategyAbstract,
+		MaxThemes:           10,
+		MinFindingsForTheme: 3,
+		MaxTokens:           4096,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{File: "a.go", Description: "Issue 1"},
+		{File: "b.go", Description: "Issue 2"},
+		{File: "c.go", Description: "Issue 3"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	assert.Equal(t, 500, result.TokensIn)
+	assert.Equal(t, 100, result.TokensOut)
+}
+
+func TestExtractor_ExtractThemes_TooFewFindings_NoUsage(t *testing.T) {
+	client := &mockClient{
+		usage: simple.Usage{InputTokens: 500, OutputTokens: 100},
+	}
+
+	config := review.ThemeExtractionConfig{
+		MaxThemes:           10,
+		MinFindingsForTheme: 5, // Require 5, only provide 2
+		MaxTokens:           4096,
+	}
+
+	extractor := NewExtractor(client, config)
+
+	findings := []domain.TriagedFinding{
+		{File: "a.go", Description: "Issue 1"},
+		{File: "b.go", Description: "Issue 2"},
+	}
+
+	result, err := extractor.ExtractThemes(context.Background(), findings)
+
+	require.NoError(t, err)
+	assert.False(t, client.called, "LLM should not be called when too few findings")
+	// No LLM call means no usage
+	assert.Equal(t, 0, result.TokensIn)
+	assert.Equal(t, 0, result.TokensOut)
 }
