@@ -584,10 +584,13 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 							"conclusions_count": len(result.Conclusions),
 							"disputed_count":    len(result.DisputedPatterns),
 							"finding_count":     result.FindingCount,
+							"tokens_in":         result.TokensIn,
+							"tokens_out":        result.TokensOut,
 						})
 					} else {
-						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s)\n",
-							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy)
+						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s, tokens: %d/%d)\n",
+							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy,
+							result.TokensIn, result.TokensOut)
 					}
 				} else {
 					// Log when extraction succeeds but returns empty (helps debug missing themes)
@@ -1101,10 +1104,13 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 							"conclusions_count": len(result.Conclusions),
 							"disputed_count":    len(result.DisputedPatterns),
 							"finding_count":     result.FindingCount,
+							"tokens_in":         result.TokensIn,
+							"tokens_out":        result.TokensOut,
 						})
 					} else {
-						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s)\n",
-							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy)
+						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s, tokens: %d/%d)\n",
+							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy,
+							result.TokensIn, result.TokensOut)
 					}
 				} else {
 					// Log when extraction succeeds but returns empty (helps debug missing themes)

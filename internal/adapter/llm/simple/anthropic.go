@@ -47,27 +47,29 @@ func NewAnthropicClient(apiKey, model string, providerCfg config.ProviderConfig,
 }
 
 // Call implements Client.
-func (c *AnthropicClient) Call(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (c *AnthropicClient) Call(ctx context.Context, prompt string, maxTokens int) (string, Usage, error) {
 	var result string
+	var usage Usage
 
 	operation := func(ctx context.Context) error {
-		resp, err := c.doRequest(ctx, prompt, maxTokens)
+		resp, u, err := c.doRequest(ctx, prompt, maxTokens)
 		if err != nil {
 			return err
 		}
 		result = resp
+		usage = u
 		return nil
 	}
 
 	err := llmhttp.RetryWithBackoff(ctx, operation, c.retryConf)
 	if err != nil {
-		return "", err
+		return "", Usage{}, err
 	}
 
-	return result, nil
+	return result, usage, nil
 }
 
-func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxTokens int) (string, error) {
+func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxTokens int) (string, Usage, error) {
 	reqBody := anthropicRequest{
 		Model:     c.model,
 		MaxTokens: maxTokens,
@@ -78,12 +80,12 @@ func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxToken
 
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicBaseURL, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -92,28 +94,28 @@ func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxToken
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", classifyHTTPError(err)
+		return "", Usage{}, classifyHTTPError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	limitedReader := io.LimitReader(resp.Body, maxResponseSize)
 	body, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	// Check if response was truncated
 	if int64(len(body)) >= maxResponseSize {
-		return "", fmt.Errorf("response exceeded maximum size of %d bytes", maxResponseSize)
+		return "", Usage{}, fmt.Errorf("response exceeded maximum size of %d bytes", maxResponseSize)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", mapAnthropicError(resp.StatusCode, body)
+		return "", Usage{}, mapAnthropicError(resp.StatusCode, body)
 	}
 
 	var apiResp anthropicResponse
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return "", Usage{}, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	var sb strings.Builder
@@ -123,7 +125,12 @@ func (c *AnthropicClient) doRequest(ctx context.Context, prompt string, maxToken
 		}
 	}
 
-	return sb.String(), nil
+	usage := Usage{
+		InputTokens:  apiResp.Usage.InputTokens,
+		OutputTokens: apiResp.Usage.OutputTokens,
+	}
+
+	return sb.String(), usage, nil
 }
 
 type anthropicRequest struct {
@@ -139,6 +146,10 @@ type anthropicMessage struct {
 
 type anthropicResponse struct {
 	Content []anthropicContent `json:"content"`
+	Usage   struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
 }
 
 type anthropicContent struct {

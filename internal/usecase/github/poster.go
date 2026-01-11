@@ -856,6 +856,15 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 		return findings, 0, nil
 	}
 
+	// Log token usage for cost accounting if the comparer tracks it
+	if up, ok := p.semanticComparer.(dedup.UsageProvider); ok {
+		usage := up.TotalUsage()
+		if usage.InputTokens > 0 || usage.OutputTokens > 0 {
+			log.Printf("semantic dedup: tokens=%d/%d, candidates=%d, duplicates=%d",
+				usage.InputTokens, usage.OutputTokens, len(candidates), len(result.Duplicates))
+		}
+	}
+
 	// Mark original finding indices that are semantic duplicates.
 	// Only consider indices that were actually sent as candidates (not overflow).
 	// Also build a map of new fingerprints -> existing fingerprints for status inheritance.

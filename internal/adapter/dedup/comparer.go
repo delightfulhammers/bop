@@ -19,6 +19,21 @@ type Client interface {
 	Compare(ctx context.Context, prompt string, maxTokens int) (string, error)
 }
 
+// UsageProvider is an optional interface for clients that track token usage.
+// If the client implements this interface, usage can be retrieved for cost accounting.
+type UsageProvider interface {
+	// TotalUsage returns the accumulated token usage.
+	TotalUsage() Usage
+	// ResetUsage clears the accumulated usage.
+	ResetUsage()
+}
+
+// Usage contains token consumption metrics.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+}
+
 // Comparer implements semantic comparison using an LLM.
 type Comparer struct {
 	client    Client
@@ -30,6 +45,28 @@ func NewComparer(client Client, maxTokens int) *Comparer {
 	return &Comparer{
 		client:    client,
 		maxTokens: maxTokens,
+	}
+}
+
+// TotalUsage returns the accumulated token usage if the client tracks it.
+// Returns zero usage if the client doesn't implement UsageProvider.
+// This implements dedup.UsageProvider for cost accounting.
+func (c *Comparer) TotalUsage() dedup.Usage {
+	if up, ok := c.client.(UsageProvider); ok {
+		u := up.TotalUsage()
+		return dedup.Usage{
+			InputTokens:  u.InputTokens,
+			OutputTokens: u.OutputTokens,
+		}
+	}
+	return dedup.Usage{}
+}
+
+// ResetUsage clears the accumulated token usage if the client tracks it.
+// This implements dedup.UsageProvider for cost accounting.
+func (c *Comparer) ResetUsage() {
+	if up, ok := c.client.(UsageProvider); ok {
+		up.ResetUsage()
 	}
 }
 
