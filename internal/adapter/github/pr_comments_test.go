@@ -659,3 +659,190 @@ func TestResolveFindingID(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+// =============================================================================
+// ListAllFindings Tests
+// =============================================================================
+
+func TestClient_ListAllFindings(t *testing.T) {
+	// Setup mock server that returns both review comments and issue comments
+	reviewComments := []PullRequestComment{
+		{
+			ID:          1001,
+			Body:        "**Severity: high**\nReview comment\n<!-- CR_FP:abc123def456abc123def456abc12345 -->",
+			Path:        "main.go",
+			Line:        intPtr(10),
+			User:        User{Login: "bot", Type: "Bot"},
+			CreatedAt:   "2024-01-15T10:00:00Z",
+			InReplyToID: 0,
+		},
+	}
+
+	issueComments := []IssueComment{
+		{
+			ID:        2001,
+			Body:      "**⚠️ Finding Outside Diff**\n\n📁 `deleted.go` (line 50)\n\n**Severity: medium**\n\nOut of diff finding\n\n<!-- CR_FP:def456abc123def456abc123def45678 CR_OOD:true CR_FILE:deleted.go CR_LINE:50 -->",
+			User:      User{Login: "github-actions[bot]", Type: "Bot"},
+			CreatedAt: "2024-01-15T11:00:00Z",
+		},
+		{
+			ID:        2002,
+			Body:      "Regular issue comment without markers",
+			User:      User{Login: "developer", Type: "User"},
+			CreatedAt: "2024-01-15T12:00:00Z",
+		},
+	}
+
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		// Route based on path
+		switch r.URL.Path {
+		case "/repos/owner/repo/pulls/42/comments":
+			_ = json.NewEncoder(w).Encode(reviewComments)
+		case "/repos/owner/repo/issues/42/comments":
+			_ = json.NewEncoder(w).Encode(issueComments)
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	findings, err := client.ListAllFindings(context.Background(), "owner", "repo", 42, true)
+	require.NoError(t, err)
+
+	// Should have 2 findings: 1 review comment + 1 issue comment with fingerprint
+	// The regular issue comment (2002) should be filtered out
+	assert.Len(t, findings, 2)
+
+	// Verify in-diff finding (review comment)
+	var inDiffFinding, outDiffFinding *domain.PRFinding
+	for i := range findings {
+		if findings[i].IsOutOfDiff {
+			outDiffFinding = &findings[i]
+		} else {
+			inDiffFinding = &findings[i]
+		}
+	}
+
+	require.NotNil(t, inDiffFinding, "should have in-diff finding")
+	assert.Equal(t, int64(1001), inDiffFinding.CommentID)
+	assert.Equal(t, "main.go", inDiffFinding.Path)
+	assert.Equal(t, 10, inDiffFinding.Line)
+	assert.False(t, inDiffFinding.IsOutOfDiff)
+
+	require.NotNil(t, outDiffFinding, "should have out-of-diff finding")
+	assert.Equal(t, int64(2001), outDiffFinding.CommentID)
+	assert.Equal(t, "deleted.go", outDiffFinding.Path)
+	assert.Equal(t, 50, outDiffFinding.Line)
+	assert.True(t, outDiffFinding.IsOutOfDiff)
+	assert.Equal(t, "medium", outDiffFinding.Severity)
+}
+
+func TestClient_ListAllFindings_WithReplies(t *testing.T) {
+	reviewComments := []PullRequestComment{}
+
+	issueComments := []IssueComment{
+		{
+			ID:        2001,
+			Body:      "OOD finding\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_OOD:true CR_FILE:file.go CR_LINE:10 -->",
+			User:      User{Login: "bot", Type: "Bot"},
+			CreatedAt: "2024-01-15T10:00:00Z",
+		},
+		{
+			ID:        2002,
+			Body:      "<!-- CR_REPLY_TO:abc123def456abc123def456abc12345 -->\n\n> Replying to finding in `file.go`\n\nFixed!",
+			User:      User{Login: "developer", Type: "User"},
+			CreatedAt: "2024-01-15T11:00:00Z",
+		},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repo/pulls/42/comments":
+			_ = json.NewEncoder(w).Encode(reviewComments)
+		case "/repos/owner/repo/issues/42/comments":
+			_ = json.NewEncoder(w).Encode(issueComments)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	findings, err := client.ListAllFindings(context.Background(), "owner", "repo", 42, true)
+	require.NoError(t, err)
+
+	// Should have 1 finding (the OOD finding, not the reply)
+	assert.Len(t, findings, 1)
+	assert.Equal(t, int64(2001), findings[0].CommentID)
+	assert.Equal(t, 1, findings[0].ReplyCount)
+	assert.True(t, findings[0].HasReply)
+}
+
+func TestIssueCommentToFinding(t *testing.T) {
+	comment := IssueComment{
+		ID:        2001,
+		Body:      "**⚠️ Finding Outside Diff**\n\n📁 `auth/handler.go` (line 142)\n\n**Severity: high** | **Category: security**\n\nSQL injection\n\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_OOD:true CR_FILE:auth/handler.go CR_LINE:142 CR_REVIEWER:security -->",
+		User:      User{Login: "github-actions[bot]", Type: "Bot"},
+		CreatedAt: "2024-01-15T10:00:00Z",
+	}
+
+	meta := replyMetadata{count: 2}
+	finding := issueCommentToFinding(comment, "abc123def456abc123def456abc12345", meta)
+
+	assert.Equal(t, int64(2001), finding.CommentID)
+	assert.Equal(t, "abc123def456abc123def456abc12345", finding.Fingerprint)
+	assert.Equal(t, "auth/handler.go", finding.Path)
+	assert.Equal(t, 142, finding.Line)
+	assert.Equal(t, "github-actions[bot]", finding.Author)
+	assert.Equal(t, "high", finding.Severity)
+	assert.Equal(t, "security", finding.Category)
+	assert.Equal(t, "security", finding.Reviewer)
+	assert.True(t, finding.IsOutOfDiff)
+	assert.Equal(t, 2, finding.ReplyCount)
+	assert.True(t, finding.HasReply)
+}
+
+func TestBuildIssueCommentReplyMap(t *testing.T) {
+	comments := []IssueComment{
+		{
+			ID:        2001,
+			Body:      "Finding\n<!-- CR_FP:abc123 CR_OOD:true -->",
+			User:      User{Login: "bot"},
+			CreatedAt: "2024-01-15T10:00:00Z",
+		},
+		{
+			ID:        2002,
+			Body:      "<!-- CR_REPLY_TO:abc123 -->\n\nReply 1",
+			User:      User{Login: "dev1"},
+			CreatedAt: "2024-01-15T11:00:00Z",
+		},
+		{
+			ID:        2003,
+			Body:      "<!-- CR_REPLY_TO:abc123 -->\n\nReply 2",
+			User:      User{Login: "dev2"},
+			CreatedAt: "2024-01-15T12:00:00Z",
+		},
+		{
+			ID:        2004,
+			Body:      "Finding 2\n<!-- CR_FP:def456 CR_OOD:true -->",
+			User:      User{Login: "bot"},
+			CreatedAt: "2024-01-15T13:00:00Z",
+		},
+	}
+
+	metadata := buildIssueCommentReplyMap(comments)
+
+	// abc123 has 2 replies
+	assert.Equal(t, 2, metadata["abc123"].count)
+	assert.Equal(t, "dev2", metadata["abc123"].lastReplyBy) // dev2 posted last
+
+	// def456 has no replies
+	assert.Equal(t, 0, metadata["def456"].count)
+}

@@ -332,6 +332,16 @@ review:
   alwaysBlockCategories:
     # - "security"
 
+  # Post out-of-diff findings as individual issue comments (default: true)
+  # Out-of-diff findings are on lines not included in the PR diff (deleted lines,
+  # unchanged context) and cannot be posted as inline review comments.
+  # When enabled (default), these findings are posted as issue comments with
+  # fingerprint markers, making them visible to MCP tools for triage.
+  # The summary comment still includes an "Findings Outside Diff" section for
+  # human readability, but the individual comments enable machine interaction.
+  # Set to false to only include out-of-diff findings in the summary comment.
+  postOutOfDiffAsComments: true
+
   # Fine-grained action control (overrides blockThreshold for specific severities)
   # actions:
   #   onCritical: "request_changes"

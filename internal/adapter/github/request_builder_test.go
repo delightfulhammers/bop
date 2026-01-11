@@ -1377,3 +1377,238 @@ without proper fingerprint markers`,
 		})
 	}
 }
+
+// =============================================================================
+// Out-of-Diff Finding Tests
+// =============================================================================
+
+func TestFormatOutOfDiffFindingComment(t *testing.T) {
+	finding := domain.Finding{
+		ID:          "test-id",
+		File:        "src/auth/handler.go",
+		LineStart:   142,
+		LineEnd:     142,
+		Severity:    "high",
+		Category:    "security",
+		Description: "SQL injection vulnerability in authentication handler",
+		Suggestion:  "Use parameterized queries",
+	}
+	fingerprint := domain.FingerprintFromFinding(finding)
+	actions := github.ReviewActions{}
+
+	comment := github.FormatOutOfDiffFindingComment(finding, fingerprint, actions)
+
+	// Should contain standard finding content
+	assert.Contains(t, comment, "**Severity:** high")
+	assert.Contains(t, comment, "**Category:** security")
+	assert.Contains(t, comment, "SQL injection vulnerability")
+	assert.Contains(t, comment, "Use parameterized queries")
+
+	// Should contain OOD marker
+	assert.Contains(t, comment, "CR_OOD:true")
+
+	// Should contain file and line markers
+	assert.Contains(t, comment, "CR_FILE:src/auth/handler.go")
+	assert.Contains(t, comment, "CR_LINE:142")
+
+	// Should contain fingerprint
+	assert.Contains(t, comment, "CR_FP:")
+}
+
+func TestFormatOutOfDiffFindingComment_WithReviewer(t *testing.T) {
+	finding := domain.Finding{
+		ID:           "test-id",
+		File:         "main.go",
+		LineStart:    50,
+		LineEnd:      55,
+		Severity:     "medium",
+		Category:     "maintainability",
+		Description:  "Long function should be refactored",
+		ReviewerName: "architecture",
+	}
+	fingerprint := domain.FingerprintFromFinding(finding)
+	actions := github.ReviewActions{}
+
+	comment := github.FormatOutOfDiffFindingComment(finding, fingerprint, actions)
+
+	// Should contain reviewer marker
+	assert.Contains(t, comment, "CR_REVIEWER:architecture")
+
+	// Should contain all other markers
+	assert.Contains(t, comment, "CR_OOD:true")
+	assert.Contains(t, comment, "CR_FILE:main.go")
+	assert.Contains(t, comment, "CR_LINE:50")
+}
+
+func TestExtractOutOfDiffMarker(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "has OOD marker",
+			body: "Content\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_OOD:true CR_FILE:main.go CR_LINE:42 -->",
+			want: true,
+		},
+		{
+			name: "no OOD marker",
+			body: "Content\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_FILE:main.go CR_LINE:42 -->",
+			want: false,
+		},
+		{
+			name: "regular in-diff comment",
+			body: "Content\n<!-- CR_FP:abc123def456abc123def456abc12345 CR_REVIEWER:security -->",
+			want: false,
+		},
+		{
+			name: "empty body",
+			body: "",
+			want: false,
+		},
+		{
+			name: "OOD marker with wrong value",
+			body: "Content\n<!-- CR_FP:abc CR_OOD:false -->",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := github.ExtractOutOfDiffMarker(tt.body)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestExtractFileLineFromComment(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		wantFile string
+		wantLine int
+		wantOK   bool
+	}{
+		{
+			name:     "full OOD comment",
+			body:     "Content\n<!-- CR_FP:abc123 CR_OOD:true CR_FILE:src/auth/handler.go CR_LINE:142 -->",
+			wantFile: "src/auth/handler.go",
+			wantLine: 142,
+			wantOK:   true,
+		},
+		{
+			name:     "file with spaces in path",
+			body:     "<!-- CR_FILE:path/to/my file.go CR_LINE:50 -->",
+			wantFile: "path/to/my file.go",
+			wantLine: 50,
+			wantOK:   true,
+		},
+		{
+			name:     "no file marker",
+			body:     "<!-- CR_FP:abc123 CR_OOD:true CR_LINE:42 -->",
+			wantFile: "",
+			wantLine: 0,
+			wantOK:   false,
+		},
+		{
+			name:     "no line marker",
+			body:     "<!-- CR_FP:abc123 CR_OOD:true CR_FILE:main.go -->",
+			wantFile: "",
+			wantLine: 0,
+			wantOK:   false,
+		},
+		{
+			name:     "invalid line number",
+			body:     "<!-- CR_FILE:main.go CR_LINE:abc -->",
+			wantFile: "",
+			wantLine: 0,
+			wantOK:   false,
+		},
+		{
+			name:     "empty body",
+			body:     "",
+			wantFile: "",
+			wantLine: 0,
+			wantOK:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, line, ok := github.ExtractFileLineFromComment(tt.body)
+			assert.Equal(t, tt.wantOK, ok, "ok mismatch")
+			if ok {
+				assert.Equal(t, tt.wantFile, file, "file mismatch")
+				assert.Equal(t, tt.wantLine, line, "line mismatch")
+			}
+		})
+	}
+}
+
+func TestFormatReplyToOutOfDiffFinding(t *testing.T) {
+	tests := []struct {
+		name        string
+		fingerprint string
+		file        string
+		body        string
+		wantMarker  bool
+	}{
+		{
+			name:        "standard reply",
+			fingerprint: "abc123def456",
+			file:        "main.go",
+			body:        "This has been fixed in the latest commit.",
+			wantMarker:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reply := github.FormatReplyToOutOfDiffFinding(tt.fingerprint, tt.file, tt.body)
+
+			if tt.wantMarker {
+				assert.Contains(t, reply, "CR_REPLY_TO:"+tt.fingerprint)
+				assert.Contains(t, reply, tt.file)
+				assert.Contains(t, reply, tt.body)
+			}
+		})
+	}
+}
+
+func TestExtractReplyToMarker(t *testing.T) {
+	tests := []struct {
+		name   string
+		body   string
+		wantFP string
+		wantOK bool
+	}{
+		{
+			name:   "has reply marker",
+			body:   "<!-- CR_REPLY_TO:abc123def456 -->\n\n> Replying to finding in `main.go`\n\nFixed!",
+			wantFP: "abc123def456",
+			wantOK: true,
+		},
+		{
+			name:   "no reply marker",
+			body:   "Regular comment without markers",
+			wantFP: "",
+			wantOK: false,
+		},
+		{
+			name:   "empty fingerprint in marker",
+			body:   "<!-- CR_REPLY_TO: -->",
+			wantFP: "",
+			wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fp, ok := github.ExtractReplyToMarker(tt.body)
+			assert.Equal(t, tt.wantOK, ok, "ok mismatch")
+			if ok {
+				assert.Equal(t, tt.wantFP, fp, "fingerprint mismatch")
+			}
+		})
+	}
+}

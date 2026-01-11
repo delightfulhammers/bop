@@ -72,6 +72,10 @@ func (m *mockCommentReaderForDedup) GetThreadHistory(ctx context.Context, owner,
 	return nil, nil
 }
 
+func (m *mockCommentReaderForDedup) ListAllFindings(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	return m.findings, m.err
+}
+
 // createPRServiceForDedup creates a PRService with a mock CommentReader for testing skip_duplicates.
 func createPRServiceForDedup(findings []domain.PRFinding) *triage.PRService {
 	return triage.NewPRService(triage.PRServiceDeps{

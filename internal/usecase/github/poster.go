@@ -21,14 +21,23 @@ type ReviewClient interface {
 	ListPullRequestComments(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error)
 }
 
+// IssueCommentClient defines the interface for posting issue comments.
+// Issue comments are used for out-of-diff findings since they don't require diff positions.
+// This interface allows for mocking in tests.
+type IssueCommentClient interface {
+	CreateIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error)
+	ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error)
+}
+
 // ReviewPoster orchestrates posting code review findings to GitHub as PR reviews.
 // It determines the appropriate review event based on finding severities,
 // filters out findings that are not in the diff, and delegates the actual
 // API call to the ReviewClient.
 type ReviewPoster struct {
-	client           ReviewClient
-	semanticComparer dedup.SemanticComparer
-	semanticConfig   SemanticDedupConfig
+	client             ReviewClient
+	issueCommentClient IssueCommentClient
+	semanticComparer   dedup.SemanticComparer
+	semanticConfig     SemanticDedupConfig
 }
 
 // SemanticDedupConfig configures semantic deduplication behavior.
@@ -56,6 +65,15 @@ func WithSemanticComparer(comparer dedup.SemanticComparer, config SemanticDedupC
 	return func(p *ReviewPoster) {
 		p.semanticComparer = comparer
 		p.semanticConfig = config
+	}
+}
+
+// WithIssueCommentClient sets the client for posting out-of-diff findings as issue comments.
+// If set, out-of-diff findings are posted as individual issue comments in the PR conversation
+// immediately after the review is created.
+func WithIssueCommentClient(client IssueCommentClient) ReviewPosterOption {
+	return func(p *ReviewPoster) {
+		p.issueCommentClient = client
 	}
 }
 
@@ -111,6 +129,13 @@ type PostReviewRequest struct {
 	// Cost is the total cost of this review in USD.
 	// Used for cost tracking in the summary.
 	Cost float64
+
+	// PostOutOfDiffAsComments enables posting out-of-diff findings as individual
+	// issue comments rather than only including them in the summary section.
+	// When enabled, these findings appear immediately after the review in the
+	// PR conversation and are visible to MCP triage tools.
+	// Requires IssueCommentClient to be configured on the ReviewPoster.
+	PostOutOfDiffAsComments bool
 }
 
 // PostReviewResult contains the result of posting a review.
@@ -176,6 +201,13 @@ type PostReviewResult struct {
 
 	// CumulativeCost is the total cost across all reviews (CurrentCost + PriorCost).
 	CumulativeCost float64
+
+	// Out-of-diff tracking fields
+	// OutOfDiffPosted is the number of out-of-diff findings posted as issue comments.
+	OutOfDiffPosted int
+
+	// OutOfDiffSkipped is the number of out-of-diff findings skipped (already posted).
+	OutOfDiffSkipped int
 }
 
 // PostReview posts a code review to GitHub.
@@ -349,6 +381,18 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		return nil, fmt.Errorf("CreateReview returned nil response")
 	}
 
+	// Post out-of-diff findings as issue comments immediately after the review.
+	// This ensures they appear in the conversation right after the summary comment.
+	// Use req.Findings (original) to capture all out-of-diff findings, even those
+	// that were deduplicated from the inline comments.
+	var outOfDiffPosted, outOfDiffSkipped int
+	if req.PostOutOfDiffAsComments {
+		outOfDiffPosted, outOfDiffSkipped = p.postOutOfDiffFindings(
+			ctx, req.Owner, req.Repo, req.PullNumber,
+			req.Findings, req.ReviewActions, req.BotUsername,
+		)
+	}
+
 	// Dismiss previous bot reviews AFTER successful post
 	// This ensures PR always has review signal - if post failed, old reviews remain
 	// Pass the new review ID to avoid dismissing the review we just created
@@ -382,6 +426,8 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		CurrentCost:               costStats.CurrentCost,
 		PriorCost:                 costStats.PriorCost,
 		CumulativeCost:            costStats.CumulativeCost,
+		OutOfDiffPosted:           outOfDiffPosted,
+		OutOfDiffSkipped:          outOfDiffSkipped,
 	}, nil
 }
 
@@ -1014,4 +1060,91 @@ func extractExistingFindings(comments []github.PullRequestComment, botUsername s
 	}
 
 	return existing
+}
+
+// postOutOfDiffFindings posts out-of-diff findings as individual issue comments.
+// These findings don't have a valid diff position, so they can't be posted as
+// inline review comments. Instead, they're posted to the PR conversation thread
+// immediately after the review.
+//
+// Returns the count of findings posted and skipped (already exist).
+// Errors for individual comments are logged but don't stop processing.
+func (p *ReviewPoster) postOutOfDiffFindings(
+	ctx context.Context,
+	owner, repo string,
+	prNumber int,
+	findings []github.PositionedFinding,
+	actions github.ReviewActions,
+	botUsername string,
+) (posted int, skipped int) {
+	if p.issueCommentClient == nil {
+		return 0, 0
+	}
+
+	// Filter to only out-of-diff findings
+	var outOfDiffFindings []github.PositionedFinding
+	for _, pf := range findings {
+		if !pf.InDiff() {
+			outOfDiffFindings = append(outOfDiffFindings, pf)
+		}
+	}
+
+	if len(outOfDiffFindings) == 0 {
+		return 0, 0
+	}
+
+	// Fetch existing issue comments for deduplication
+	var existingFingerprints map[domain.FindingFingerprint]bool
+	if botUsername != "" {
+		issueComments, err := p.issueCommentClient.ListIssueComments(ctx, owner, repo, prNumber)
+		if err != nil {
+			log.Printf("warning: failed to fetch issue comments for dedup: %v", err)
+		} else {
+			existingFingerprints = extractIssueCommentFingerprints(issueComments, botUsername)
+		}
+	}
+
+	// Post each out-of-diff finding as an issue comment
+	for _, pf := range outOfDiffFindings {
+		fp := domain.FingerprintFromFinding(pf.Finding)
+
+		// Skip if already posted
+		if existingFingerprints != nil && existingFingerprints[fp] {
+			skipped++
+			continue
+		}
+
+		// Format the comment with prominent out-of-diff marker
+		body := github.FormatOutOfDiffFindingComment(pf.Finding, fp, actions)
+
+		_, err := p.issueCommentClient.CreateIssueComment(ctx, owner, repo, prNumber, body)
+		if err != nil {
+			log.Printf("warning: failed to post out-of-diff finding for %s: %v", pf.Finding.File, err)
+			continue
+		}
+		posted++
+	}
+
+	log.Printf("out-of-diff findings: %d posted, %d skipped (already exist)", posted, skipped)
+	return posted, skipped
+}
+
+// extractIssueCommentFingerprints extracts fingerprints from issue comments authored by the bot.
+// Returns a map of fingerprints for O(1) lookup.
+func extractIssueCommentFingerprints(comments []github.IssueComment, botUsername string) map[domain.FindingFingerprint]bool {
+	fingerprints := make(map[domain.FindingFingerprint]bool)
+
+	for _, comment := range comments {
+		// Skip comments not from the bot (case-insensitive)
+		if !strings.EqualFold(comment.User.Login, botUsername) {
+			continue
+		}
+
+		// Try to extract fingerprint from comment body
+		if fp, ok := github.ExtractFingerprintFromComment(comment.Body); ok {
+			fingerprints[fp] = true
+		}
+	}
+
+	return fingerprints
 }

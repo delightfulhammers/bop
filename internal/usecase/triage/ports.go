@@ -32,6 +32,12 @@ type CommentReader interface {
 	// OR if they are from bot users. This ensures all automated review feedback is captured.
 	ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error)
 
+	// ListAllFindings retrieves both review comments AND issue comments with CR_FP markers.
+	// This provides a unified view of all findings, including out-of-diff findings posted
+	// as issue comments. Findings from issue comments will have IsOutOfDiff set to true.
+	// If filterByFingerprint is true, only comments with CR_FP markers are included.
+	ListAllFindings(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error)
+
 	// GetPRComment retrieves a single comment by ID.
 	// Returns ErrCommentNotFound if the comment doesn't exist or doesn't belong to the PR.
 	// The prNumber is required to validate the comment belongs to the expected PR.
@@ -103,6 +109,43 @@ type CommentWriter interface {
 	// Comments are placed on the RIGHT side of the diff (new file version).
 	// Returns the ID of the newly created comment.
 	CreateComment(ctx context.Context, owner, repo string, prNumber int, commitSHA, path string, line int, body string) (int64, error)
+}
+
+// IssueCommentWriter provides write access to PR issue comments (conversation thread).
+// Issue comments are different from review comments - they don't require a diff position,
+// making them suitable for out-of-diff findings.
+// This is a port that must be implemented by the GitHub adapter layer.
+type IssueCommentWriter interface {
+	// CreateIssueComment posts an issue comment on a PR (in the conversation thread).
+	// Unlike review comments, issue comments don't require a file path or line number.
+	// Returns the ID of the newly created comment.
+	CreateIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error)
+}
+
+// IssueCommentReader provides read access to PR issue comments (conversation thread).
+// Issue comments include both regular conversation and out-of-diff findings posted
+// with CR_OOD markers.
+// This is a port that must be implemented by the GitHub adapter layer.
+type IssueCommentReader interface {
+	// ListIssueComments retrieves all issue comments on a PR.
+	// Returns comments in chronological order (oldest first).
+	ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]IssueComment, error)
+
+	// GetIssueComment retrieves a single issue comment by ID.
+	// Returns ErrCommentNotFound if the comment doesn't exist.
+	GetIssueComment(ctx context.Context, owner, repo string, commentID int64) (*IssueComment, error)
+}
+
+// IssueComment represents a GitHub issue comment (PR conversation comment).
+// Unlike review comments, issue comments don't have file paths or line numbers.
+type IssueComment struct {
+	ID          int64
+	Body        string
+	Author      string
+	AuthorType  string // "User" or "Bot"
+	CreatedAt   string
+	IsOutOfDiff bool   // True if this comment has CR_OOD:true marker
+	Fingerprint string // CR_FP marker value, if present
 }
 
 // ReviewManager provides operations for managing PR review state.

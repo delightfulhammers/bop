@@ -226,6 +226,8 @@ type FindingsSummary struct {
 	Total         int            `json:"total"`
 	Replied       int            `json:"replied"`
 	Unreplied     int            `json:"unreplied"`
+	InDiff        int            `json:"in_diff"`     // Findings with diff position (review comments)
+	OutOfDiff     int            `json:"out_of_diff"` // Findings without diff position (issue comments)
 	BySeverity    map[string]int `json:"by_severity"`
 	TriagePercent float64        `json:"triage_percent"`
 }
@@ -246,6 +248,7 @@ type PRFindingOutput struct {
 	LastReplyAt  *string `json:"last_reply_at,omitempty"`
 	LastReplyBy  string  `json:"last_reply_by,omitempty"`
 	ThreadStatus string  `json:"thread_status"`
+	IsOutOfDiff  bool    `json:"is_out_of_diff"` // True if finding is from an issue comment (outside PR diff)
 }
 
 // GetFindingInput is the input for the get_finding tool.

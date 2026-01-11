@@ -105,6 +105,14 @@ func (m *MockCommentReader) ListPRComments(ctx context.Context, owner, repo stri
 	return args.Get(0).([]domain.PRFinding), args.Error(1)
 }
 
+func (m *MockCommentReader) ListAllFindings(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	args := m.Called(ctx, owner, repo, prNumber, filterByFingerprint)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.PRFinding), args.Error(1)
+}
+
 func (m *MockCommentReader) GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error) {
 	args := m.Called(ctx, owner, repo, prNumber, commentID)
 	if args.Get(0) == nil {
@@ -526,7 +534,7 @@ func TestServer_handleListFindings(t *testing.T) {
 			{CommentID: 1, Fingerprint: "fp1", Path: "main.go", Line: 10, Severity: "high", Body: "Issue 1"},
 			{CommentID: 2, Fingerprint: "fp2", Path: "util.go", Line: 20, Severity: "medium", Body: "Issue 2"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -571,7 +579,7 @@ func TestServer_handleListFindings(t *testing.T) {
 			{CommentID: 2, Fingerprint: "fp2", Severity: "medium"},
 			{CommentID: 3, Fingerprint: "fp3", Severity: "high"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -618,7 +626,7 @@ func TestServer_handleListFindings(t *testing.T) {
 	t.Run("returns empty list when no findings", func(t *testing.T) {
 		mockComment := new(MockCommentReader)
 
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return([]domain.PRFinding{}, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return([]domain.PRFinding{}, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
