@@ -43,8 +43,8 @@ type SemanticDedupConfig struct {
 // DefaultSemanticDedupConfig returns sensible defaults for semantic deduplication.
 func DefaultSemanticDedupConfig() SemanticDedupConfig {
 	return SemanticDedupConfig{
-		LineThreshold: 50, // Increased from 10 to catch more duplicates (Issue #165)
-		MaxCandidates: 50,
+		LineThreshold: 50,  // Max line distance for candidate pairing (Issue #165)
+		MaxCandidates: 200, // Increased from 50 to handle large PRs (Issue #253)
 	}
 }
 
@@ -124,6 +124,11 @@ type PostReviewResult struct {
 
 	// CommentsSkipped is the number of findings skipped (not in diff).
 	CommentsSkipped int
+
+	// DisputeInheritedSkipped is the number of findings skipped because their
+	// fingerprint matches an existing disputed or acknowledged finding (Issue #253).
+	// This is Stage 0 of deduplication - runs before fingerprint dedup.
+	DisputeInheritedSkipped int
 
 	// DuplicatesSkipped is the number of findings skipped because they were
 	// already posted in previous reviews (exact fingerprint match).
@@ -217,6 +222,7 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 	}
 
 	findings := req.Findings
+	var disputeInheritedSkipped int
 	var duplicatesSkipped int
 	var semanticDuplicatesSkipped int
 	var semanticDupMap SemanticDuplicateMap
@@ -235,17 +241,22 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		if err != nil {
 			log.Printf("warning: failed to fetch comments: %v", err)
 		} else {
+			// Analyze reply statuses FIRST (needed for Stage 0) - Issue #108
+			existingStatuses, statusCounts = analyzeFindingStatuses(comments, req.BotUsername)
+
+			// Stage 0: Dispute inheritance (zero cost) - Issue #253
+			// Skip findings whose fingerprint matches a disputed/acknowledged finding.
+			// This prevents re-posting findings users have already addressed.
+			findings, disputeInheritedSkipped = filterDisputedFindings(req.Findings, existingStatuses)
+
 			// Stage 1: Fingerprint deduplication (exact match)
-			findings, duplicatesSkipped = filterDuplicateFindings(req.Findings, comments, req.BotUsername)
+			findings, duplicatesSkipped = filterDuplicateFindings(findings, comments, req.BotUsername)
 
 			// Stage 2: Semantic deduplication (LLM-based) - Issue #111
 			// Also returns a mapping from new fingerprints to existing fingerprints for status inheritance
 			if p.semanticComparer != nil && len(findings) > 0 {
 				findings, semanticDuplicatesSkipped, semanticDupMap = p.filterSemanticDuplicates(ctx, findings, comments, req.BotUsername)
 			}
-
-			// Analyze reply statuses (Issue #108)
-			existingStatuses, statusCounts = analyzeFindingStatuses(comments, req.BotUsername)
 		}
 
 		// Fetch reviews for prior cost calculation and later dismissal
@@ -276,18 +287,19 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		event = determineEffectiveEvent(req.Findings, existingStatuses, semanticDupMap, req.ReviewActions)
 	}
 
-	// Build dedup stats for summary and logging (Issue #126, #127)
+	// Build dedup stats for summary and logging (Issue #126, #127, #253)
 	dedupStats := DedupStats{
 		TotalFindings:         len(req.Findings),
+		DisputeInherited:      disputeInheritedSkipped,
 		FingerprintDuplicates: duplicatesSkipped,
 		SemanticDuplicates:    semanticDuplicatesSkipped,
 		NewFindings:           len(findings),
 	}
 
 	// Log deduplication breakdown (Issue #127) - always log so users know dedup was checked
-	log.Printf("deduplication: %d findings → %d new (%d fingerprint, %d semantic duplicates)",
+	log.Printf("deduplication: %d findings → %d new (%d dispute-inherited, %d fingerprint, %d semantic duplicates)",
 		dedupStats.TotalFindings, dedupStats.NewFindings,
-		dedupStats.FingerprintDuplicates, dedupStats.SemanticDuplicates)
+		dedupStats.DisputeInherited, dedupStats.FingerprintDuplicates, dedupStats.SemanticDuplicates)
 
 	// Build cost stats for summary
 	costStats := CostStats{
@@ -356,6 +368,7 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		ReviewID:                  resp.ID,
 		CommentsPosted:            inDiffCount,
 		CommentsSkipped:           skippedCount,
+		DisputeInheritedSkipped:   disputeInheritedSkipped,
 		DuplicatesSkipped:         duplicatesSkipped,
 		SemanticDuplicatesSkipped: semanticDuplicatesSkipped,
 		Event:                     event,
@@ -487,6 +500,36 @@ type StatusCounts struct {
 	Open         int
 	Acknowledged int
 	Disputed     int
+}
+
+// filterDisputedFindings filters out findings whose fingerprint matches an existing
+// disputed or acknowledged finding. This is Stage 0 of deduplication - zero LLM cost.
+// It runs before fingerprint dedup to give better telemetry (dispute-inherited vs duplicate).
+//
+// This prevents re-posting findings that users have already addressed, even if the
+// semantic dedup stage overflows (Issue #253).
+func filterDisputedFindings(
+	findings []github.PositionedFinding,
+	statuses map[domain.FindingFingerprint]domain.FindingStatus,
+) ([]github.PositionedFinding, int) {
+	if len(statuses) == 0 {
+		return findings, 0
+	}
+
+	filtered := make([]github.PositionedFinding, 0, len(findings))
+	var skipped int
+	for _, pf := range findings {
+		fp := domain.FingerprintFromFinding(pf.Finding)
+		if status, ok := statuses[fp]; ok {
+			if status == domain.StatusAcknowledged || status == domain.StatusDisputed {
+				skipped++
+				continue
+			}
+		}
+		filtered = append(filtered, pf)
+	}
+
+	return filtered, skipped
 }
 
 // filterDuplicateFindings filters out findings that have already been posted.
@@ -627,6 +670,10 @@ type DedupStats struct {
 	// TotalFindings is the total findings before deduplication.
 	TotalFindings int
 
+	// DisputeInherited is the count of findings skipped because their fingerprint
+	// matches an existing disputed or acknowledged finding (Issue #253).
+	DisputeInherited int
+
 	// FingerprintDuplicates is the count of exact fingerprint matches skipped.
 	FingerprintDuplicates int
 
@@ -650,12 +697,23 @@ func formatDedupSection(stats DedupStats) string {
 	sb.WriteString("\n\n---\n\n")
 	sb.WriteString("### Deduplication\n\n")
 
-	totalDuplicates := stats.FingerprintDuplicates + stats.SemanticDuplicates
-	if totalDuplicates == 0 {
+	totalSkipped := stats.DisputeInherited + stats.FingerprintDuplicates + stats.SemanticDuplicates
+	if totalSkipped == 0 {
 		sb.WriteString(fmt.Sprintf("🔄 **%d findings** | 0 duplicates\n", stats.NewFindings))
 	} else {
-		sb.WriteString(fmt.Sprintf("🔄 **%d new** | %d fingerprint | %d semantic duplicates skipped\n",
-			stats.NewFindings, stats.FingerprintDuplicates, stats.SemanticDuplicates))
+		// Build detailed breakdown of what was skipped
+		var parts []string
+		if stats.DisputeInherited > 0 {
+			parts = append(parts, fmt.Sprintf("%d dispute-inherited", stats.DisputeInherited))
+		}
+		if stats.FingerprintDuplicates > 0 {
+			parts = append(parts, fmt.Sprintf("%d fingerprint", stats.FingerprintDuplicates))
+		}
+		if stats.SemanticDuplicates > 0 {
+			parts = append(parts, fmt.Sprintf("%d semantic", stats.SemanticDuplicates))
+		}
+		sb.WriteString(fmt.Sprintf("🔄 **%d new** | %s duplicates skipped\n",
+			stats.NewFindings, strings.Join(parts, " | ")))
 	}
 
 	return sb.String()
