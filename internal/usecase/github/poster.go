@@ -516,7 +516,7 @@ func filterDisputedFindings(
 		return findings, 0
 	}
 
-	var filtered []github.PositionedFinding
+	filtered := make([]github.PositionedFinding, 0, len(findings))
 	var skipped int
 	for _, pf := range findings {
 		fp := domain.FingerprintFromFinding(pf.Finding)
