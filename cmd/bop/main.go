@@ -887,7 +887,7 @@ func defaultVerificationModel(provider string) string {
 
 // createSemanticComparer creates a semantic comparer for deduplication.
 // Returns nil if semantic deduplication is disabled or no suitable provider is available.
-// Currently only supports Anthropic as the provider.
+// Supports Anthropic, OpenAI, and Gemini providers.
 func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 	semanticCfg := cfg.Deduplication.Semantic
 
@@ -899,46 +899,37 @@ func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 	// Start with defaults, override with user config if provided
 	defaults := usecasedeup.DefaultConfig()
 
-	provider := defaults.Provider
-	if semanticCfg.Provider != "" {
-		provider = semanticCfg.Provider
-	}
-
-	model := defaults.Model
-	if semanticCfg.Model != "" {
-		model = semanticCfg.Model
-	}
-
 	maxTokens := defaults.MaxTokens
 	if semanticCfg.MaxTokens > 0 {
 		maxTokens = semanticCfg.MaxTokens
 	}
 
-	// Currently only Anthropic is supported for semantic dedup
-	if provider != "anthropic" {
-		log.Printf("[WARN] Semantic deduplication only supports anthropic provider, got: %s", provider)
+	// Try to create a client for the configured provider (or first available)
+	simpleClient, actualProvider := createSimpleClient(cfg, semanticCfg.Provider, semanticCfg.Model)
+	if simpleClient == nil {
+		// Try fallback providers in order of preference
+		fallbackProviders := []string{"anthropic", "openai", "gemini"}
+		for _, fallback := range fallbackProviders {
+			if fallback == semanticCfg.Provider {
+				continue // Already tried this one
+			}
+			simpleClient, actualProvider = createSimpleClient(cfg, fallback, "")
+			if simpleClient != nil {
+				break
+			}
+		}
+	}
+
+	if simpleClient == nil {
+		log.Println("[INFO] Semantic deduplication disabled: no LLM provider API key available")
 		return nil
 	}
 
-	// Get the Anthropic API key
-	providerCfg, ok := cfg.Providers["anthropic"]
-	if !ok || providerCfg.APIKey == "" {
-		// Try environment variable as fallback
-		apiKey := os.Getenv("ANTHROPIC_API_KEY")
-		if apiKey == "" {
-			log.Println("[WARN] Semantic deduplication disabled: no Anthropic API key available")
-			return nil
-		}
-		providerCfg.APIKey = apiKey
-	}
+	log.Printf("[INFO] Semantic deduplication enabled (provider=%s)", actualProvider)
 
-	// Create the Anthropic client for semantic comparison
-	anthropicClient := dedupadapter.NewAnthropicClient(providerCfg.APIKey, model, providerCfg, cfg.HTTP)
-
-	log.Printf("[INFO] Semantic deduplication enabled (provider=%s, model=%s)", provider, model)
-
-	// Create and return the semantic comparer
-	return dedupadapter.NewComparer(anthropicClient, maxTokens)
+	// Adapt simple.Client to dedup.Client and create the comparer
+	dedupClient := dedupadapter.NewSimpleClientAdapter(simpleClient)
+	return dedupadapter.NewComparer(dedupClient, maxTokens)
 }
 
 // createThemeExtractor creates a theme extractor for reducing thematic repetition.
