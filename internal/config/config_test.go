@@ -1502,3 +1502,110 @@ defaultReviewers:
 		t.Errorf("expected second default reviewer 'maintainability', got %s", cfg.DefaultReviewers[1])
 	}
 }
+
+// PostOutOfDiffAsComments tests
+
+func TestPostOutOfDiffAsComments_DefaultsToTrue(t *testing.T) {
+	// ReviewConfig with nil PostOutOfDiffAsComments should default to true
+	cfg := config.ReviewConfig{}
+
+	if !cfg.ShouldPostOutOfDiff() {
+		t.Error("expected ShouldPostOutOfDiff() to return true by default")
+	}
+}
+
+func TestPostOutOfDiffAsComments_ExplicitTrue(t *testing.T) {
+	enabled := true
+	cfg := config.ReviewConfig{
+		PostOutOfDiffAsComments: &enabled,
+	}
+
+	if !cfg.ShouldPostOutOfDiff() {
+		t.Error("expected ShouldPostOutOfDiff() to return true when explicitly set")
+	}
+}
+
+func TestPostOutOfDiffAsComments_ExplicitFalse(t *testing.T) {
+	disabled := false
+	cfg := config.ReviewConfig{
+		PostOutOfDiffAsComments: &disabled,
+	}
+
+	if cfg.ShouldPostOutOfDiff() {
+		t.Error("expected ShouldPostOutOfDiff() to return false when explicitly disabled")
+	}
+}
+
+func TestPostOutOfDiffAsComments_FromFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "bop.yaml")
+	content := `
+review:
+  postOutOfDiffAsComments: false
+`
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	cfg, err := config.Load(config.LoaderOptions{
+		ConfigPaths: []string{dir},
+		FileName:    "bop",
+		EnvPrefix:   "CR_TEST_OOD_FILE",
+	})
+	if err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+
+	if cfg.Review.ShouldPostOutOfDiff() {
+		t.Error("expected ShouldPostOutOfDiff() to return false from file config")
+	}
+}
+
+func TestPostOutOfDiffAsComments_MergeOverlayWins(t *testing.T) {
+	enabled := true
+	disabled := false
+
+	base := config.Config{
+		Review: config.ReviewConfig{
+			PostOutOfDiffAsComments: &enabled,
+		},
+	}
+	overlay := config.Config{
+		Review: config.ReviewConfig{
+			PostOutOfDiffAsComments: &disabled,
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if merged.Review.ShouldPostOutOfDiff() {
+		t.Error("expected ShouldPostOutOfDiff() to return false from overlay")
+	}
+}
+
+func TestPostOutOfDiffAsComments_MergePreservesBase(t *testing.T) {
+	disabled := false
+
+	base := config.Config{
+		Review: config.ReviewConfig{
+			PostOutOfDiffAsComments: &disabled,
+		},
+	}
+	overlay := config.Config{
+		Review: config.ReviewConfig{
+			// No PostOutOfDiffAsComments set - should preserve base
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if merged.Review.ShouldPostOutOfDiff() {
+		t.Error("expected ShouldPostOutOfDiff() to return false (preserved from base)")
+	}
+}

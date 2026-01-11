@@ -359,3 +359,33 @@ func TestPRMetadata(t *testing.T) {
 	assert.Equal(t, "delightfulhammers/bop", meta.FullName())
 	assert.True(t, meta.IsOpen())
 }
+
+func TestPRFinding_IsOutOfDiff(t *testing.T) {
+	tests := []struct {
+		name        string
+		finding     PRFinding
+		wantOutDiff bool
+	}{
+		{
+			name:        "default is false (in-diff)",
+			finding:     PRFinding{CommentID: 123},
+			wantOutDiff: false,
+		},
+		{
+			name:        "explicitly set to true",
+			finding:     PRFinding{CommentID: 456, IsOutOfDiff: true},
+			wantOutDiff: true,
+		},
+		{
+			name:        "explicitly set to false",
+			finding:     PRFinding{CommentID: 789, IsOutOfDiff: false},
+			wantOutDiff: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.wantOutDiff, tt.finding.IsOutOfDiff)
+		})
+	}
+}

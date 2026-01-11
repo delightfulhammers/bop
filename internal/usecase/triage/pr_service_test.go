@@ -367,6 +367,14 @@ func (m *MockCommentReader) ListPRComments(ctx context.Context, owner, repo stri
 	return args.Get(0).([]domain.PRFinding), args.Error(1)
 }
 
+func (m *MockCommentReader) ListAllFindings(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	args := m.Called(ctx, owner, repo, prNumber, filterByFingerprint)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.PRFinding), args.Error(1)
+}
+
 func (m *MockCommentReader) GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error) {
 	args := m.Called(ctx, owner, repo, prNumber, commentID)
 	if args.Get(0) == nil {
@@ -615,6 +623,17 @@ func (m *MockCommentWriter) CreateComment(ctx context.Context, owner, repo strin
 	return id, args.Error(1)
 }
 
+// MockIssueCommentWriter implements triage.IssueCommentWriter for testing.
+type MockIssueCommentWriter struct {
+	mock.Mock
+}
+
+func (m *MockIssueCommentWriter) CreateIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error) {
+	args := m.Called(ctx, owner, repo, prNumber, body)
+	id, _ := args.Get(0).(int64)
+	return id, args.Error(1)
+}
+
 // MockReviewManager implements triage.ReviewManager for testing.
 type MockReviewManager struct {
 	mock.Mock
@@ -663,14 +682,15 @@ func (m *MockReviewManager) FindThreadForComment(ctx context.Context, owner, rep
 func TestPRService_ReplyToFinding(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("successfully replies to finding by comment ID", func(t *testing.T) {
+	t.Run("successfully replies to in-diff finding by comment ID", func(t *testing.T) {
 		mockComment := new(MockCommentReader)
 		mockWriter := new(MockCommentWriter)
 
 		finding := &domain.PRFinding{
-			CommentID: 12345,
-			Path:      "main.go",
-			Body:      "Test finding",
+			CommentID:   12345,
+			Path:        "main.go",
+			Body:        "Test finding",
+			IsOutOfDiff: false,
 		}
 
 		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(12345)).
@@ -691,12 +711,63 @@ func TestPRService_ReplyToFinding(t *testing.T) {
 		mockWriter.AssertExpectations(t)
 	})
 
-	t.Run("returns ErrNotImplemented when writer is nil", func(t *testing.T) {
-		svc := triage.NewPRService(triage.PRServiceDeps{})
+	t.Run("successfully replies to out-of-diff finding via issue comment", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockIssueWriter := new(MockIssueCommentWriter)
 
-		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "123", "reply")
+		finding := &domain.PRFinding{
+			CommentID:   67890,
+			Fingerprint: "abc123def456",
+			Path:        "deleted.go",
+			Body:        "Out of diff finding",
+			IsOutOfDiff: true,
+		}
+
+		mockComment.On("GetPRCommentByFingerprint", ctx, "owner", "repo", 42, "abc123def456").
+			Return(finding, nil)
+
+		// The reply should be formatted with CR_REPLY_TO marker
+		expectedBody := "**Re: deleted.go**\n\nAcknowledged, will fix.\n\n<!-- CR_REPLY_TO:abc123def456 -->"
+		mockIssueWriter.On("CreateIssueComment", ctx, "owner", "repo", 42, expectedBody).
+			Return(int64(88888), nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader:      mockComment,
+			IssueCommentWriter: mockIssueWriter,
+		})
+
+		replyID, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "CR_FP:abc123def456", "Acknowledged, will fix.")
+		require.NoError(t, err)
+		assert.Equal(t, int64(88888), replyID)
+
+		mockComment.AssertExpectations(t)
+		mockIssueWriter.AssertExpectations(t)
+	})
+
+	t.Run("returns ErrNotImplemented for out-of-diff when IssueCommentWriter is nil", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		mockWriter := new(MockCommentWriter)
+
+		finding := &domain.PRFinding{
+			CommentID:   67890,
+			Fingerprint: "abc123",
+			Path:        "deleted.go",
+			IsOutOfDiff: true,
+		}
+
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(67890)).
+			Return(finding, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+			CommentWriter: mockWriter,
+			// IssueCommentWriter is nil
+		})
+
+		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "67890", "reply")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+		assert.Contains(t, err.Error(), "IssueCommentWriter required")
 	})
 
 	t.Run("returns ErrNotImplemented when reader is nil", func(t *testing.T) {
@@ -707,6 +778,28 @@ func TestPRService_ReplyToFinding(t *testing.T) {
 		})
 
 		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "123", "reply")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, triage.ErrNotImplemented)
+	})
+
+	t.Run("returns ErrNotImplemented for in-diff when CommentWriter is nil", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+
+		finding := &domain.PRFinding{
+			CommentID:   12345,
+			Path:        "main.go",
+			IsOutOfDiff: false,
+		}
+
+		mockComment.On("GetPRComment", ctx, "owner", "repo", 42, int64(12345)).
+			Return(finding, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+			// CommentWriter is nil
+		})
+
+		_, err := svc.ReplyToFinding(ctx, "owner", "repo", 42, "12345", "reply")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, triage.ErrNotImplemented)
 	})
@@ -931,7 +1024,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 1, Fingerprint: "fp1", Severity: "high", Category: "security"},
 			{CommentID: 2, Fingerprint: "fp2", Severity: "medium", Category: "style"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -943,6 +1036,36 @@ func TestPRService_ListFindings(t *testing.T) {
 		mockComment.AssertExpectations(t)
 	})
 
+	t.Run("returns both in-diff and out-of-diff findings", func(t *testing.T) {
+		mockComment := new(MockCommentReader)
+		findings := []domain.PRFinding{
+			{CommentID: 1, Fingerprint: "fp1", Severity: "high", IsOutOfDiff: false},
+			{CommentID: 2, Fingerprint: "fp2", Severity: "high", IsOutOfDiff: true},
+		}
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
+
+		svc := triage.NewPRService(triage.PRServiceDeps{
+			CommentReader: mockComment,
+		})
+
+		result, err := svc.ListFindings(ctx, "owner", "repo", 42, nil, nil, nil)
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+
+		// Verify we get both types
+		var inDiff, outOfDiff int
+		for _, f := range result {
+			if f.IsOutOfDiff {
+				outOfDiff++
+			} else {
+				inDiff++
+			}
+		}
+		assert.Equal(t, 1, inDiff)
+		assert.Equal(t, 1, outOfDiff)
+		mockComment.AssertExpectations(t)
+	})
+
 	t.Run("filters by severity", func(t *testing.T) {
 		mockComment := new(MockCommentReader)
 		findings := []domain.PRFinding{
@@ -950,7 +1073,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 2, Fingerprint: "fp2", Severity: "medium", Category: "style"},
 			{CommentID: 3, Fingerprint: "fp3", Severity: "high", Category: "bug"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -972,7 +1095,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 1, Fingerprint: "fp1", Severity: "high", Category: "security"},
 			{CommentID: 2, Fingerprint: "fp2", Severity: "medium", Category: "style"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -993,7 +1116,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 2, Fingerprint: "fp2", Severity: "high", Category: "style"},
 			{CommentID: 3, Fingerprint: "fp3", Severity: "medium", Category: "security"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -1030,7 +1153,7 @@ func TestPRService_ListFindings(t *testing.T) {
 
 	t.Run("propagates errors from CommentReader", func(t *testing.T) {
 		mockComment := new(MockCommentReader)
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(nil, errors.New("api error"))
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(nil, errors.New("api error"))
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -1047,7 +1170,7 @@ func TestPRService_ListFindings(t *testing.T) {
 		findings := []domain.PRFinding{
 			{CommentID: 1, Fingerprint: "fp1", Severity: "low", Category: "style"},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -1067,7 +1190,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 2, Fingerprint: "fp2", HasReply: false, ReplyCount: 0},
 			{CommentID: 3, Fingerprint: "fp3", HasReply: true, ReplyCount: 1},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -1090,7 +1213,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 2, Fingerprint: "fp2", HasReply: false, ReplyCount: 0},
 			{CommentID: 3, Fingerprint: "fp3", HasReply: true, ReplyCount: 1},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -1110,7 +1233,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 1, Fingerprint: "fp1", HasReply: true},
 			{CommentID: 2, Fingerprint: "fp2", HasReply: false},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,
@@ -1142,7 +1265,7 @@ func TestPRService_ListFindings(t *testing.T) {
 			{CommentID: 3, Fingerprint: "fp3", Severity: "low", HasReply: false},
 			{CommentID: 4, Fingerprint: "fp4", Severity: "low", HasReply: true},
 		}
-		mockComment.On("ListPRComments", ctx, "owner", "repo", 42, true).Return(findings, nil)
+		mockComment.On("ListAllFindings", ctx, "owner", "repo", 42, true).Return(findings, nil)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComment,

@@ -97,6 +97,14 @@ func (m *MockIntegrationCommentReader) GetThreadHistory(ctx context.Context, own
 	return args.Get(0).([]domain.ThreadComment), args.Error(1)
 }
 
+func (m *MockIntegrationCommentReader) ListAllFindings(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	args := m.Called(ctx, owner, repo, prNumber, filterByFingerprint)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.PRFinding), args.Error(1)
+}
+
 // MockIntegrationCommentWriter provides mock comment write operations.
 type MockIntegrationCommentWriter struct {
 	mock.Mock
@@ -218,7 +226,7 @@ func TestIntegration_TriageWorkflow(t *testing.T) {
 	mockPR.On("GetPRMetadata", ctx, "testorg", "testrepo", 123).Return(prMeta, nil)
 	mockAnnotations.On("ListCheckRuns", ctx, "testorg", "testrepo", "abc123def", (*string)(nil)).Return(checkRuns, nil)
 	mockAnnotations.On("GetAnnotations", ctx, "testorg", "testrepo", int64(1001)).Return(annotations, nil)
-	mockComments.On("ListPRComments", ctx, "testorg", "testrepo", 123, true).Return(findings, nil)
+	mockComments.On("ListAllFindings", ctx, "testorg", "testrepo", 123, true).Return(findings, nil)
 	mockComments.On("GetPRCommentByFingerprint", ctx, "testorg", "testrepo", 123, "abc123").Return(&findings[0], nil)
 	mockCommentWriter.On("ReplyToComment", ctx, "testorg", "testrepo", 123, int64(2001), mock.AnythingOfType("string")).Return(int64(3001), nil)
 	// Note: FindThreadForComment is not called by reply - it's used by get_thread handler
@@ -358,7 +366,7 @@ func TestIntegration_ErrorPropagation(t *testing.T) {
 
 	t.Run("comment reader error propagates to handler", func(t *testing.T) {
 		mockComments := new(MockIntegrationCommentReader)
-		mockComments.On("ListPRComments", ctx, "testorg", "testrepo", 123, true).Return(nil, assert.AnError)
+		mockComments.On("ListAllFindings", ctx, "testorg", "testrepo", 123, true).Return(nil, assert.AnError)
 
 		svc := triage.NewPRService(triage.PRServiceDeps{
 			CommentReader: mockComments,
@@ -373,7 +381,7 @@ func TestIntegration_ErrorPropagation(t *testing.T) {
 
 		_, _, err := server.handleListFindings(ctx, nil, input)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "list PR comments")
+		assert.Contains(t, err.Error(), "list findings")
 	})
 }
 

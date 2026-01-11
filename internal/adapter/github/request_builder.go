@@ -33,6 +33,18 @@ const costMarkerStart = "<!-- CR_COST:"
 // costMarkerEnd closes the cost HTML comment.
 const costMarkerEnd = " -->"
 
+// outOfDiffMarkerPrefix marks findings posted as issue comments (outside PR diff).
+const outOfDiffMarkerPrefix = " CR_OOD:"
+
+// fileMarkerPrefix embeds the file path in issue comments for out-of-diff findings.
+const fileMarkerPrefix = " CR_FILE:"
+
+// lineMarkerPrefix embeds the line number in issue comments for out-of-diff findings.
+const lineMarkerPrefix = " CR_LINE:"
+
+// replyToMarkerStart is the prefix for linking issue comment replies to parent findings.
+const replyToMarkerStart = "<!-- CR_REPLY_TO:"
+
 // ReviewActions configures the GitHub review action for each finding severity level.
 // This mirrors config.ReviewActions but lives in the adapter layer to avoid coupling.
 type ReviewActions struct {
@@ -276,12 +288,17 @@ func ExtractFingerprintFromComment(body string) (domain.FindingFingerprint, bool
 		return "", false
 	}
 
-	// Extract content between markers (may include reviewer tag)
+	// Extract content between markers (may include reviewer/OOD tags)
 	content := remaining[:endIdx]
 
 	// If there's a reviewer tag, fingerprint is before it
 	if reviewerIdx := strings.Index(content, reviewerMarkerPrefix); reviewerIdx != -1 {
 		content = content[:reviewerIdx]
+	}
+
+	// If there's an out-of-diff tag, fingerprint is before it
+	if oodIdx := strings.Index(content, outOfDiffMarkerPrefix); oodIdx != -1 {
+		content = content[:oodIdx]
 	}
 
 	// Extract, trim, and normalize case (fingerprints are stored lowercase internally,
@@ -644,4 +661,158 @@ func ExtractCostFromReview(body string) (float64, bool) {
 	}
 
 	return cost, true
+}
+
+// =============================================================================
+// Out-of-Diff Finding Helpers
+// =============================================================================
+
+// FormatOutOfDiffFindingComment formats a finding for posting as an issue comment.
+// Unlike regular review comments, issue comments don't have file path and line number
+// metadata from GitHub, so we embed them in the comment body along with the CR_OOD marker.
+//
+// Format includes:
+// - Standard finding content (severity, category, description, suggestion)
+// - Fingerprint marker (CR_FP:xxx)
+// - Out-of-diff marker (CR_OOD:true)
+// - File path (CR_FILE:path/to/file.go)
+// - Line number (CR_LINE:42)
+// - Optional reviewer marker (CR_REVIEWER:security)
+func FormatOutOfDiffFindingComment(f domain.Finding, fingerprint domain.FindingFingerprint, actions ReviewActions) string {
+	var sb strings.Builder
+
+	// Add header explaining this is an out-of-diff finding
+	sb.WriteString("**⚠️ Finding Outside Diff**\n\n")
+	sb.WriteString(fmt.Sprintf("📁 `%s` (line %d)\n\n", f.File, f.LineStart))
+
+	// Add standard finding format
+	sb.WriteString(FormatFindingCommentWithActions(f, actions))
+
+	// Add metadata markers in hidden HTML comment
+	sb.WriteString("\n")
+	sb.WriteString(fingerprintMarkerStart)
+	sb.WriteString(string(fingerprint))
+	sb.WriteString(outOfDiffMarkerPrefix)
+	sb.WriteString("true")
+	sb.WriteString(fileMarkerPrefix)
+	sb.WriteString(f.File)
+	sb.WriteString(lineMarkerPrefix)
+	sb.WriteString(fmt.Sprintf("%d", f.LineStart))
+
+	// Include reviewer name if present
+	if f.ReviewerName != "" {
+		sb.WriteString(reviewerMarkerPrefix)
+		sb.WriteString(f.ReviewerName)
+	}
+
+	sb.WriteString(fingerprintMarkerEnd)
+
+	return sb.String()
+}
+
+// ExtractOutOfDiffMarker returns true if the comment body contains CR_OOD:true marker.
+// This indicates the comment was posted as an issue comment for an out-of-diff finding.
+func ExtractOutOfDiffMarker(body string) bool {
+	return strings.Contains(body, outOfDiffMarkerPrefix+"true")
+}
+
+// ExtractFileLineFromComment extracts file path and line number from an out-of-diff
+// finding comment. Returns (file, line, true) if both markers are found and valid,
+// or ("", 0, false) otherwise.
+func ExtractFileLineFromComment(body string) (file string, line int, ok bool) {
+	// Find file marker
+	fileIdx := strings.Index(body, fileMarkerPrefix)
+	if fileIdx == -1 {
+		return "", 0, false
+	}
+
+	fileStart := fileIdx + len(fileMarkerPrefix)
+
+	// Find the end of the file path (at the next marker or end of comment)
+	remaining := body[fileStart:]
+	fileEnd := len(remaining)
+
+	// File ends at the next marker (CR_LINE, CR_REVIEWER, or -->)
+	for _, marker := range []string{lineMarkerPrefix, reviewerMarkerPrefix, fingerprintMarkerEnd} {
+		if idx := strings.Index(remaining, marker); idx != -1 && idx < fileEnd {
+			fileEnd = idx
+		}
+	}
+
+	file = strings.TrimSpace(remaining[:fileEnd])
+	if file == "" {
+		return "", 0, false
+	}
+
+	// Find line marker
+	lineIdx := strings.Index(body, lineMarkerPrefix)
+	if lineIdx == -1 {
+		return "", 0, false
+	}
+
+	lineStart := lineIdx + len(lineMarkerPrefix)
+	remaining = body[lineStart:]
+
+	// Parse line number (ends at next marker or end)
+	lineEnd := 0
+	for lineEnd < len(remaining) && remaining[lineEnd] >= '0' && remaining[lineEnd] <= '9' {
+		lineEnd++
+	}
+
+	if lineEnd == 0 {
+		return "", 0, false
+	}
+
+	_, err := fmt.Sscanf(remaining[:lineEnd], "%d", &line)
+	if err != nil {
+		return "", 0, false
+	}
+
+	return file, line, true
+}
+
+// FormatReplyToOutOfDiffFinding formats a reply to an out-of-diff finding.
+// Since GitHub issue comments don't have native threading, we include a reference
+// marker (CR_REPLY_TO:fingerprint) to track reply relationships programmatically.
+func FormatReplyToOutOfDiffFinding(fingerprint, file, body string) string {
+	var sb strings.Builder
+
+	// Add reply-to marker
+	sb.WriteString(replyToMarkerStart)
+	sb.WriteString(fingerprint)
+	sb.WriteString(fingerprintMarkerEnd)
+	sb.WriteString("\n\n")
+
+	// Add quote context
+	sb.WriteString(fmt.Sprintf("> Replying to finding in `%s`\n\n", file))
+
+	// Add the actual reply content
+	sb.WriteString(body)
+
+	return sb.String()
+}
+
+// ExtractReplyToMarker extracts the fingerprint from a CR_REPLY_TO marker.
+// Returns (fingerprint, true) if found and non-empty, or ("", false) otherwise.
+// This is used to build reply chains for out-of-diff findings.
+func ExtractReplyToMarker(body string) (string, bool) {
+	startIdx := strings.Index(body, replyToMarkerStart)
+	if startIdx == -1 {
+		return "", false
+	}
+
+	contentStart := startIdx + len(replyToMarkerStart)
+	remaining := body[contentStart:]
+
+	endIdx := strings.Index(remaining, fingerprintMarkerEnd)
+	if endIdx == -1 {
+		return "", false
+	}
+
+	fp := strings.TrimSpace(remaining[:endIdx])
+	if fp == "" {
+		return "", false
+	}
+
+	return fp, true
 }

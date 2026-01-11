@@ -515,3 +515,119 @@ func (c *Client) getReplyMetadata(ctx context.Context, owner, repo string, prNum
 	metadataMap := buildReplyMetadataMap(comments)
 	return metadataMap[parentID], nil
 }
+
+// ListAllFindings retrieves both review comments AND issue comments that contain
+// CR_FP markers. This unified view includes in-diff findings (review comments)
+// and out-of-diff findings (issue comments with CR_OOD markers).
+//
+// The returned findings have the IsOutOfDiff field set appropriately:
+// - Review comments: IsOutOfDiff = false
+// - Issue comments with CR_OOD:true: IsOutOfDiff = true
+//
+// Reply tracking for out-of-diff findings uses CR_REPLY_TO markers since GitHub
+// issue comments don't have native threading.
+func (c *Client) ListAllFindings(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	// 1. Fetch review comments (in-diff findings)
+	reviewFindings, err := c.ListPRComments(ctx, owner, repo, prNumber, filterByFingerprint)
+	if err != nil {
+		return nil, fmt.Errorf("list review comments: %w", err)
+	}
+
+	// 2. Fetch issue comments
+	issueComments, err := c.ListIssueComments(ctx, owner, repo, prNumber)
+	if err != nil {
+		return nil, fmt.Errorf("list issue comments: %w", err)
+	}
+
+	// 3. Build reply metadata for issue comments (CR_REPLY_TO markers)
+	issueReplyMap := buildIssueCommentReplyMap(issueComments)
+
+	// 4. Convert issue comments with CR_FP markers to findings
+	for _, ic := range issueComments {
+		// Parse fingerprint
+		fingerprint := parseFingerprint(ic.Body)
+
+		// Apply fingerprint filter
+		isTrustedBot := ic.User.Type == "Bot" && trustedBots[strings.ToLower(ic.User.Login)]
+		if filterByFingerprint && fingerprint == "" && !isTrustedBot {
+			continue
+		}
+
+		// Skip replies (they have CR_REPLY_TO markers)
+		if _, isReply := ExtractReplyToMarker(ic.Body); isReply {
+			continue
+		}
+
+		// Convert to domain finding
+		finding := issueCommentToFinding(ic, fingerprint, issueReplyMap[fingerprint])
+		reviewFindings = append(reviewFindings, finding)
+	}
+
+	return reviewFindings, nil
+}
+
+// buildIssueCommentReplyMap builds a map from fingerprint to reply metadata.
+// Issue comments use CR_REPLY_TO markers to link replies to parent findings.
+func buildIssueCommentReplyMap(comments []IssueComment) map[string]replyMetadata {
+	metadata := make(map[string]replyMetadata)
+
+	for _, c := range comments {
+		parentFP, isReply := ExtractReplyToMarker(c.Body)
+		if !isReply || parentFP == "" {
+			continue
+		}
+
+		createdAt, err := time.Parse(time.RFC3339, c.CreatedAt)
+		existing := metadata[parentFP]
+		existing.count++
+
+		// Track the most recent reply
+		if err == nil && createdAt.After(existing.lastReplyAt) {
+			existing.lastReplyAt = createdAt
+			existing.lastReplyBy = c.User.Login
+		}
+		metadata[parentFP] = existing
+	}
+
+	return metadata
+}
+
+// issueCommentToFinding converts an IssueComment to a domain.PRFinding.
+// This is used for out-of-diff findings posted as issue comments.
+func issueCommentToFinding(comment IssueComment, fingerprint string, meta replyMetadata) domain.PRFinding {
+	createdAt, _ := time.Parse(time.RFC3339, comment.CreatedAt)
+
+	// Extract file and line from CR_FILE/CR_LINE markers
+	file, line, _ := ExtractFileLineFromComment(comment.Body)
+
+	// Extract reviewer name
+	reviewer, _ := ExtractReviewerFromComment(comment.Body)
+
+	// Determine if this is an out-of-diff finding
+	isOutOfDiff := ExtractOutOfDiffMarker(comment.Body)
+
+	finding := domain.PRFinding{
+		CommentID:   comment.ID,
+		Fingerprint: fingerprint,
+		Path:        file,
+		Line:        line,
+		Body:        comment.Body,
+		Author:      comment.User.Login,
+		CreatedAt:   createdAt,
+		IsResolved:  false, // Issue comments don't have resolution status
+		ReplyCount:  meta.count,
+		HasReply:    meta.count > 0,
+		Severity:    parseSeverity(comment.Body),
+		Category:    parseCategory(comment.Body),
+		Reviewer:    reviewer,
+		IsOutOfDiff: isOutOfDiff,
+	}
+
+	// Set last reply info if there are replies
+	if meta.count > 0 {
+		finding.LastReplyAt = &meta.lastReplyAt
+		finding.LastReplyBy = meta.lastReplyBy
+	}
+
+	return finding
+}

@@ -2131,3 +2131,212 @@ func TestReviewPoster_PostReview_DisputeInheritance_MixedFindings(t *testing.T) 
 	// Event determination uses original findings and their statuses
 	assert.Equal(t, github.EventRequestChanges, result.Event, "open high-severity finding should still block")
 }
+
+// ==== Out-of-Diff Findings Tests ====
+
+// MockIssueCommentClient is a mock implementation of the IssueCommentClient interface.
+type MockIssueCommentClient struct {
+	mu                     sync.Mutex
+	CreateIssueCommentFunc func(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error)
+	ListIssueCommentsFunc  func(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error)
+	CreatedComments        []string
+	NextCommentID          int64
+}
+
+func (m *MockIssueCommentClient) CreateIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error) {
+	m.mu.Lock()
+	m.CreatedComments = append(m.CreatedComments, body)
+	m.NextCommentID++
+	id := m.NextCommentID
+	m.mu.Unlock()
+	if m.CreateIssueCommentFunc != nil {
+		return m.CreateIssueCommentFunc(ctx, owner, repo, prNumber, body)
+	}
+	return id, nil
+}
+
+func (m *MockIssueCommentClient) ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error) {
+	if m.ListIssueCommentsFunc != nil {
+		return m.ListIssueCommentsFunc(ctx, owner, repo, prNumber)
+	}
+	return []github.IssueComment{}, nil
+}
+
+// GetCreatedComments returns a copy of created comments in a thread-safe manner.
+func (m *MockIssueCommentClient) GetCreatedComments() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]string, len(m.CreatedComments))
+	copy(result, m.CreatedComments)
+	return result
+}
+
+func TestReviewPoster_PostReview_PostsOutOfDiffAsIssueComments(t *testing.T) {
+	// Test that out-of-diff findings are posted as issue comments when enabled.
+	findingInDiff := makeFinding("in_diff.go", 10, "high", "In diff finding")
+	findingOutOfDiff := makeFinding("out_of_diff.go", 20, "medium", "Out of diff finding")
+
+	mockReviewClient := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123, State: "COMMENTED"}, nil
+		},
+	}
+	mockIssueClient := &MockIssueCommentClient{}
+
+	poster := usecasegithub.NewReviewPoster(mockReviewClient,
+		usecasegithub.WithIssueCommentClient(mockIssueClient),
+	)
+
+	// In-diff finding has a position, out-of-diff does not
+	findings := []github.PositionedFinding{
+		{Finding: findingInDiff, DiffPosition: diff.IntPtr(5)}, // In diff
+		{Finding: findingOutOfDiff, DiffPosition: nil},         // Out of diff
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:                   "owner",
+		Repo:                    "repo",
+		PullNumber:              1,
+		CommitSHA:               "sha",
+		Findings:                findings,
+		BotUsername:             "bot[bot]",
+		PostOutOfDiffAsComments: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CommentsPosted, "1 in-diff finding should be posted as inline comment")
+	assert.Equal(t, 1, result.OutOfDiffPosted, "1 out-of-diff finding should be posted as issue comment")
+	assert.Equal(t, 0, result.OutOfDiffSkipped, "no out-of-diff findings should be skipped")
+
+	// Verify the issue comment contains the out-of-diff marker
+	comments := mockIssueClient.GetCreatedComments()
+	require.Len(t, comments, 1)
+	assert.Contains(t, comments[0], "Finding Outside Diff")
+	assert.Contains(t, comments[0], "out_of_diff.go")
+	assert.Contains(t, comments[0], "CR_OOD:true")
+}
+
+func TestReviewPoster_PostReview_OutOfDiffDisabledByDefault(t *testing.T) {
+	// Test that out-of-diff findings are NOT posted when PostOutOfDiffAsComments is false.
+	findingOutOfDiff := makeFinding("out_of_diff.go", 20, "medium", "Out of diff finding")
+
+	mockReviewClient := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123, State: "COMMENTED"}, nil
+		},
+	}
+	mockIssueClient := &MockIssueCommentClient{}
+
+	poster := usecasegithub.NewReviewPoster(mockReviewClient,
+		usecasegithub.WithIssueCommentClient(mockIssueClient),
+	)
+
+	findings := []github.PositionedFinding{
+		{Finding: findingOutOfDiff, DiffPosition: nil}, // Out of diff
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:                   "owner",
+		Repo:                    "repo",
+		PullNumber:              1,
+		CommitSHA:               "sha",
+		Findings:                findings,
+		BotUsername:             "bot[bot]",
+		PostOutOfDiffAsComments: false, // Disabled
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.OutOfDiffPosted, "no out-of-diff findings should be posted when disabled")
+	assert.Equal(t, 0, result.OutOfDiffSkipped)
+
+	// No issue comments should have been created
+	comments := mockIssueClient.GetCreatedComments()
+	assert.Empty(t, comments)
+}
+
+func TestReviewPoster_PostReview_OutOfDiffDeduplicates(t *testing.T) {
+	// Test that out-of-diff findings are deduplicated against existing issue comments.
+	finding1 := makeFinding("old_finding.go", 10, "high", "Already posted")
+	finding2 := makeFinding("new_finding.go", 20, "medium", "New finding")
+
+	// Create fingerprint for the existing finding
+	fp1 := domain.FingerprintFromFinding(finding1)
+	existingCommentBody := "<!-- CR_FP:" + string(fp1) + " CR_OOD:true -->"
+
+	mockReviewClient := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123, State: "COMMENTED"}, nil
+		},
+	}
+	mockIssueClient := &MockIssueCommentClient{
+		ListIssueCommentsFunc: func(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error) {
+			return []github.IssueComment{
+				{
+					ID:   100,
+					Body: existingCommentBody,
+					User: github.User{Login: "bot[bot]", Type: "Bot"},
+				},
+			}, nil
+		},
+	}
+
+	poster := usecasegithub.NewReviewPoster(mockReviewClient,
+		usecasegithub.WithIssueCommentClient(mockIssueClient),
+	)
+
+	// Both findings are out of diff
+	findings := []github.PositionedFinding{
+		{Finding: finding1, DiffPosition: nil}, // Already exists
+		{Finding: finding2, DiffPosition: nil}, // New
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:                   "owner",
+		Repo:                    "repo",
+		PullNumber:              1,
+		CommitSHA:               "sha",
+		Findings:                findings,
+		BotUsername:             "bot[bot]",
+		PostOutOfDiffAsComments: true,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.OutOfDiffPosted, "1 new out-of-diff finding should be posted")
+	assert.Equal(t, 1, result.OutOfDiffSkipped, "1 existing out-of-diff finding should be skipped")
+
+	// Only the new finding should have been posted
+	comments := mockIssueClient.GetCreatedComments()
+	require.Len(t, comments, 1)
+	assert.Contains(t, comments[0], "new_finding.go")
+}
+
+func TestReviewPoster_PostReview_OutOfDiffWithoutIssueClient(t *testing.T) {
+	// Test that out-of-diff posting is silently skipped when IssueCommentClient is nil.
+	findingOutOfDiff := makeFinding("out_of_diff.go", 20, "medium", "Out of diff finding")
+
+	mockReviewClient := &MockReviewClient{
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123, State: "COMMENTED"}, nil
+		},
+	}
+
+	// No IssueCommentClient configured
+	poster := usecasegithub.NewReviewPoster(mockReviewClient)
+
+	findings := []github.PositionedFinding{
+		{Finding: findingOutOfDiff, DiffPosition: nil},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:                   "owner",
+		Repo:                    "repo",
+		PullNumber:              1,
+		CommitSHA:               "sha",
+		Findings:                findings,
+		PostOutOfDiffAsComments: true, // Enabled, but no client
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 0, result.OutOfDiffPosted)
+	assert.Equal(t, 0, result.OutOfDiffSkipped)
+}

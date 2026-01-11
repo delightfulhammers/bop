@@ -243,6 +243,12 @@ type PRFinding struct {
 	// Reviewer is the persona name extracted from the comment body (if present).
 	// This is set from the CR_REVIEWER marker in Phase 3.2 findings.
 	Reviewer string `json:"reviewer,omitempty"`
+
+	// IsOutOfDiff indicates this finding came from an issue comment rather than
+	// a review comment because the line is not in the PR diff. Out-of-diff findings
+	// are posted as issue comments with CR_OOD:true markers since GitHub's review
+	// comment API requires a valid diff position.
+	IsOutOfDiff bool `json:"isOutOfDiff,omitempty"`
 }
 
 // ThreadStatus returns the discussion status of this finding.

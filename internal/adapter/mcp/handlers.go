@@ -877,6 +877,13 @@ func computeFindingsSummary(findings []domain.PRFinding) *FindingsSummary {
 			summary.Unreplied++
 		}
 
+		// Track in-diff vs out-of-diff
+		if f.IsOutOfDiff {
+			summary.OutOfDiff++
+		} else {
+			summary.InDiff++
+		}
+
 		// Track by severity (use "unknown" for empty)
 		sev := f.Severity
 		if sev == "" {
@@ -908,6 +915,7 @@ func findingToOutput(f domain.PRFinding) PRFindingOutput {
 		HasReply:     f.HasReply,
 		LastReplyBy:  f.LastReplyBy,
 		ThreadStatus: f.ThreadStatus(),
+		IsOutOfDiff:  f.IsOutOfDiff,
 	}
 
 	// Format LastReplyAt as RFC3339 if present and non-zero

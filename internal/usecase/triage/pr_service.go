@@ -19,8 +19,9 @@ type PRServiceDeps struct {
 	SuggestionExtractor SuggestionExtractor
 
 	// Write operations (optional - set to nil for read-only mode)
-	CommentWriter CommentWriter
-	ReviewManager ReviewManager
+	CommentWriter      CommentWriter
+	IssueCommentWriter IssueCommentWriter
+	ReviewManager      ReviewManager
 }
 
 // PRService implements read-only triage operations for a PR.
@@ -90,7 +91,9 @@ func (s *PRService) GetAnnotation(ctx context.Context, owner, repo string, check
 }
 
 // ListFindings returns all PR comments that are code reviewer findings.
-// Optionally filters by severity, category, and/or reply status.
+// This includes both in-diff findings (review comments) and out-of-diff findings
+// (issue comments with CR_OOD markers). Optionally filters by severity, category,
+// and/or reply status.
 func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumber int, severity, category *string, replyStatus *ReplyStatus) ([]domain.PRFinding, error) {
 	if s.deps.CommentReader == nil {
 		return nil, ErrNotImplemented
@@ -106,10 +109,10 @@ func (s *PRService) ListFindings(ctx context.Context, owner, repo string, prNumb
 		return nil, fmt.Errorf("%w: reply_status %q (valid: %v)", ErrInvalidFilter, *replyStatus, ValidReplyStatuses)
 	}
 
-	// Get all comments with fingerprints (code reviewer findings)
-	findings, err := s.deps.CommentReader.ListPRComments(ctx, owner, repo, prNumber, true)
+	// Get all findings - both review comments (in-diff) and issue comments (out-of-diff)
+	findings, err := s.deps.CommentReader.ListAllFindings(ctx, owner, repo, prNumber, true)
 	if err != nil {
-		return nil, fmt.Errorf("list PR comments: %w", err)
+		return nil, fmt.Errorf("list findings: %w", err)
 	}
 
 	// Apply filters
@@ -286,18 +289,33 @@ func parseAnnotationID(id string) (checkRunID int64, index int, ok bool) {
 // ReplyToFinding posts a reply to a code reviewer finding.
 // The findingID can be a fingerprint (CR_FP:xxx) or a GitHub comment ID.
 // Returns the ID of the newly created reply comment.
+//
+// For out-of-diff findings (posted as issue comments), the reply is posted as
+// a new issue comment with a CR_REPLY_TO:fingerprint marker to track the relationship.
 func (s *PRService) ReplyToFinding(ctx context.Context, owner, repo string, prNumber int, findingID, body string) (int64, error) {
-	if s.deps.CommentWriter == nil {
-		return 0, ErrNotImplemented
-	}
 	if s.deps.CommentReader == nil {
 		return 0, fmt.Errorf("CommentReader required to look up finding: %w", ErrNotImplemented)
 	}
 
-	// Look up the finding to get its comment ID
+	// Look up the finding to get its details
 	finding, err := s.GetFinding(ctx, owner, repo, prNumber, findingID)
 	if err != nil {
 		return 0, fmt.Errorf("get finding: %w", err)
+	}
+
+	// Handle out-of-diff findings (posted as issue comments)
+	if finding.IsOutOfDiff {
+		if s.deps.IssueCommentWriter == nil {
+			return 0, fmt.Errorf("IssueCommentWriter required for out-of-diff replies: %w", ErrNotImplemented)
+		}
+		// Format reply with CR_REPLY_TO marker
+		replyBody := formatOutOfDiffReply(finding.Fingerprint, finding.Path, body)
+		return s.deps.IssueCommentWriter.CreateIssueComment(ctx, owner, repo, prNumber, replyBody)
+	}
+
+	// In-diff findings use review comment replies
+	if s.deps.CommentWriter == nil {
+		return 0, ErrNotImplemented
 	}
 
 	// SARIF annotations have CommentID=0 since they're not PR comments.
@@ -309,6 +327,12 @@ func (s *PRService) ReplyToFinding(ctx context.Context, owner, repo string, prNu
 
 	// Reply to the finding's comment
 	return s.deps.CommentWriter.ReplyToComment(ctx, owner, repo, prNumber, finding.CommentID, body)
+}
+
+// formatOutOfDiffReply formats a reply to an out-of-diff finding.
+// The reply includes a CR_REPLY_TO marker to track the relationship.
+func formatOutOfDiffReply(fingerprint, file, body string) string {
+	return fmt.Sprintf("**Re: %s**\n\n%s\n\n<!-- CR_REPLY_TO:%s -->", file, body, fingerprint)
 }
 
 // PostComment creates a new review comment at a specific file and line.

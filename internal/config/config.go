@@ -288,6 +288,15 @@ type ReviewConfig struct {
 	// Default: 0 (unlimited - all reviewers run in parallel)
 	// Recommended: 3-5 for most deployments
 	MaxConcurrentReviewers int `yaml:"maxConcurrentReviewers"`
+
+	// PostOutOfDiffAsComments enables posting out-of-diff findings as individual
+	// issue comments rather than only including them in the summary.
+	// Out-of-diff findings are on lines not included in the PR diff (deleted lines,
+	// unchanged context) and cannot be posted as inline review comments.
+	// When enabled, these findings are posted as issue comments with fingerprint
+	// markers, making them visible to MCP tools for triage.
+	// Default: true (enabled by default)
+	PostOutOfDiffAsComments *bool `yaml:"postOutOfDiffAsComments,omitempty"`
 }
 
 // ReviewActions maps finding severities to GitHub review actions.
@@ -311,6 +320,15 @@ type ReviewActions struct {
 	// OnNonBlocking is the action when findings exist but none trigger REQUEST_CHANGES.
 	// This allows posting APPROVE with informational comments for low-severity issues.
 	OnNonBlocking string `yaml:"onNonBlocking"`
+}
+
+// ShouldPostOutOfDiff returns whether out-of-diff findings should be posted as individual
+// issue comments. Defaults to true if not explicitly set.
+func (c ReviewConfig) ShouldPostOutOfDiff() bool {
+	if c.PostOutOfDiffAsComments == nil {
+		return true // Default enabled
+	}
+	return *c.PostOutOfDiffAsComments
 }
 
 // VerificationConfig configures the agent verification behavior.
@@ -555,6 +573,16 @@ func chooseReview(base, overlay ReviewConfig) ReviewConfig {
 
 	// AlwaysBlockCategories: union of base and overlay (additive)
 	result.AlwaysBlockCategories = mergeCategories(base.AlwaysBlockCategories, overlay.AlwaysBlockCategories)
+
+	// MaxConcurrentReviewers: overlay wins if non-zero
+	if overlay.MaxConcurrentReviewers != 0 {
+		result.MaxConcurrentReviewers = overlay.MaxConcurrentReviewers
+	}
+
+	// PostOutOfDiffAsComments: overlay wins if set (not nil)
+	if overlay.PostOutOfDiffAsComments != nil {
+		result.PostOutOfDiffAsComments = overlay.PostOutOfDiffAsComments
+	}
 
 	return result
 }
