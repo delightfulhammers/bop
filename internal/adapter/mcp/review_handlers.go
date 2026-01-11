@@ -355,22 +355,70 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 		return notImplementedResult("post_findings - RemoteGitHubClient not configured"), PostFindingsOutput{}, nil
 	}
 
+	// Filter out duplicates if requested
+	var skippedDuplicates int
+	findingsToPost := input.Findings
+	if input.SkipDuplicates && s.deps.PRService != nil {
+		existingFindings, err := s.deps.PRService.ListFindings(ctx, input.Owner, input.Repo, input.PRNumber, nil, nil, nil)
+		if err == nil {
+			// Build set of existing fingerprints
+			existingFPs := make(map[string]bool, len(existingFindings))
+			for _, f := range existingFindings {
+				if f.Fingerprint != "" {
+					existingFPs[f.Fingerprint] = true
+				}
+			}
+
+			// Filter out findings that already exist
+			filtered := make([]FindingInput, 0, len(input.Findings))
+			for _, f := range input.Findings {
+				fp := getFingerprintFromInput(f)
+				if existingFPs[fp] {
+					skippedDuplicates++
+				} else {
+					filtered = append(filtered, f)
+				}
+			}
+			findingsToPost = filtered
+		}
+		// If ListFindings fails, proceed without dedup (lenient behavior)
+	}
+
+	// If all findings were duplicates, return early
+	if len(findingsToPost) == 0 {
+		return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("All %d findings already exist on the PR", skippedDuplicates)},
+				},
+			}, PostFindingsOutput{
+				Success:           true,
+				Posted:            0,
+				SkippedDuplicates: skippedDuplicates,
+				Message:           fmt.Sprintf("All %d findings already exist on the PR", skippedDuplicates),
+			}, nil
+	}
+
 	// Dry run mode - just validate and return what would be posted
 	if input.DryRun {
-		fingerprints := make([]string, len(input.Findings))
-		for i, f := range input.Findings {
+		fingerprints := make([]string, len(findingsToPost))
+		for i, f := range findingsToPost {
 			fingerprints[i] = getFingerprintFromInput(f)
+		}
+		msg := fmt.Sprintf("Dry run: would post %d findings", len(findingsToPost))
+		if skippedDuplicates > 0 {
+			msg = fmt.Sprintf("Dry run: would post %d findings (%d duplicates skipped)", len(findingsToPost), skippedDuplicates)
 		}
 		return &mcp.CallToolResult{
 				Content: []mcp.Content{
-					&mcp.TextContent{Text: fmt.Sprintf("Dry run: would post %d findings", len(input.Findings))},
+					&mcp.TextContent{Text: msg},
 				},
 			}, PostFindingsOutput{
 				Success:            true,
-				Posted:             len(input.Findings),
+				Posted:             len(findingsToPost),
+				SkippedDuplicates:  skippedDuplicates,
 				ReviewAction:       determineReviewAction(nil, input.ReviewAction, input.BlockingFindings, nil),
 				PostedFingerprints: fingerprints,
-				Message:            fmt.Sprintf("Dry run: would post %d findings", len(input.Findings)),
+				Message:            msg,
 			}, nil
 	}
 
@@ -387,8 +435,8 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	// Convert findings to domain type
-	domainFindings := make([]domain.Finding, len(input.Findings))
-	for i, f := range input.Findings {
+	domainFindings := make([]domain.Finding, len(findingsToPost))
+	for i, f := range findingsToPost {
 		domainFindings[i] = findingInputToDomain(f)
 	}
 
@@ -399,13 +447,13 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 	}
 
 	// Build fingerprints for blocking check (preserve original if provided)
-	inputFingerprints := make([]string, len(input.Findings))
-	for i, f := range input.Findings {
-		inputFingerprints[i] = getFingerprintFromInput(f)
+	postedFingerprints := make([]string, len(findingsToPost))
+	for i, f := range findingsToPost {
+		postedFingerprints[i] = getFingerprintFromInput(f)
 	}
 
 	// Determine review action using preserved fingerprints
-	reviewAction := determineReviewAction(domainFindings, input.ReviewAction, input.BlockingFindings, inputFingerprints)
+	reviewAction := determineReviewAction(domainFindings, input.ReviewAction, input.BlockingFindings, postedFingerprints)
 
 	// Build post request
 	postReq := review.GitHubPostRequest{
@@ -435,16 +483,21 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 		return nil, PostFindingsOutput{}, fmt.Errorf("post review: %w", err)
 	}
 
-	// Reuse inputFingerprints computed earlier for blocking check
+	// Build output with both pre-filtered and post-filtered duplicate counts
+	totalSkippedDuplicates := skippedDuplicates + result.DuplicatesSkipped
+	msg := fmt.Sprintf("Posted %d findings to PR #%d", result.CommentsPosted, input.PRNumber)
+	if totalSkippedDuplicates > 0 {
+		msg = fmt.Sprintf("Posted %d findings to PR #%d (%d duplicates skipped)", result.CommentsPosted, input.PRNumber, totalSkippedDuplicates)
+	}
 	output := PostFindingsOutput{
 		Success:            true,
 		Posted:             result.CommentsPosted,
 		Skipped:            result.CommentsSkipped,
-		SkippedDuplicates:  result.DuplicatesSkipped,
+		SkippedDuplicates:  totalSkippedDuplicates,
 		ReviewID:           result.ReviewID,
 		ReviewAction:       reviewAction,
-		PostedFingerprints: inputFingerprints,
-		Message:            fmt.Sprintf("Posted %d findings to PR #%d", result.CommentsPosted, input.PRNumber),
+		PostedFingerprints: postedFingerprints,
+		Message:            msg,
 	}
 
 	return &mcp.CallToolResult{

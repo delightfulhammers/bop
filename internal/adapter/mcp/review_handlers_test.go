@@ -10,6 +10,7 @@ import (
 
 	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -47,6 +48,35 @@ func (m *mockPRMetadataFetcher) GetPRMetadata(ctx context.Context, owner, repo s
 
 func (m *mockPRMetadataFetcher) GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error) {
 	return m.diff, m.diffErr
+}
+
+// mockCommentReaderForDedup is a minimal mock for triage.CommentReader used in skip_duplicates tests.
+type mockCommentReaderForDedup struct {
+	findings []domain.PRFinding
+	err      error
+}
+
+func (m *mockCommentReaderForDedup) ListPRComments(ctx context.Context, owner, repo string, prNumber int, filterByFingerprint bool) ([]domain.PRFinding, error) {
+	return m.findings, m.err
+}
+
+func (m *mockCommentReaderForDedup) GetPRComment(ctx context.Context, owner, repo string, prNumber int, commentID int64) (*domain.PRFinding, error) {
+	return nil, nil
+}
+
+func (m *mockCommentReaderForDedup) GetPRCommentByFingerprint(ctx context.Context, owner, repo string, prNumber int, fingerprint string) (*domain.PRFinding, error) {
+	return nil, nil
+}
+
+func (m *mockCommentReaderForDedup) GetThreadHistory(ctx context.Context, owner, repo string, commentID int64) ([]domain.ThreadComment, error) {
+	return nil, nil
+}
+
+// createPRServiceForDedup creates a PRService with a mock CommentReader for testing skip_duplicates.
+func createPRServiceForDedup(findings []domain.PRFinding) *triage.PRService {
+	return triage.NewPRService(triage.PRServiceDeps{
+		CommentReader: &mockCommentReaderForDedup{findings: findings},
+	})
 }
 
 func TestHandleEditFinding(t *testing.T) {
@@ -849,6 +879,85 @@ func TestHandlePostFindings(t *testing.T) {
 		assert.NotEmpty(t, output.PostedFingerprints[0], "fingerprint should be computed when not provided")
 		// Computed fingerprints are MD5 hex, should be 32 chars
 		assert.Len(t, output.PostedFingerprints[0], 32)
+	})
+
+	t.Run("skip_duplicates filters existing fingerprints", func(t *testing.T) {
+		prService := createPRServiceForDedup([]domain.PRFinding{
+			{CommentID: 1, Fingerprint: "existing-fp-1"},
+			{CommentID: 2, Fingerprint: "existing-fp-2"},
+		})
+
+		server := &Server{
+			deps: ServerDeps{
+				FindingPoster: &mockFindingPoster{
+					result: &review.GitHubPostResult{CommentsPosted: 1},
+				},
+				RemoteGitHubClient: &mockPRMetadataFetcher{
+					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
+					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
+				},
+				PRService: prService,
+			},
+		}
+
+		input := PostFindingsInput{
+			Owner:          "owner",
+			Repo:           "repo",
+			PRNumber:       42,
+			SkipDuplicates: true,
+			Findings: []FindingInput{
+				{File: "test.go", LineStart: 1, LineEnd: 1, Severity: "high", Category: "bug", Description: "New finding", Fingerprint: "new-fp"},
+				{File: "test.go", LineStart: 2, LineEnd: 2, Severity: "high", Category: "bug", Description: "Duplicate", Fingerprint: "existing-fp-1"},
+			},
+		}
+
+		result, output, err := server.handlePostFindings(context.Background(), nil, input)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Equal(t, 1, output.Posted)
+		assert.Equal(t, 1, output.SkippedDuplicates)
+		require.Len(t, output.PostedFingerprints, 1)
+		assert.Equal(t, "new-fp", output.PostedFingerprints[0])
+	})
+
+	t.Run("skip_duplicates returns early when all duplicates", func(t *testing.T) {
+		prService := createPRServiceForDedup([]domain.PRFinding{
+			{CommentID: 1, Fingerprint: "existing-fp-1"},
+		})
+
+		server := &Server{
+			deps: ServerDeps{
+				FindingPoster: &mockFindingPoster{
+					result: &review.GitHubPostResult{},
+				},
+				RemoteGitHubClient: &mockPRMetadataFetcher{
+					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
+					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
+				},
+				PRService: prService,
+			},
+		}
+
+		input := PostFindingsInput{
+			Owner:          "owner",
+			Repo:           "repo",
+			PRNumber:       42,
+			SkipDuplicates: true,
+			Findings: []FindingInput{
+				{File: "test.go", LineStart: 1, LineEnd: 1, Severity: "high", Category: "bug", Description: "Duplicate", Fingerprint: "existing-fp-1"},
+			},
+		}
+
+		result, output, err := server.handlePostFindings(context.Background(), nil, input)
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.False(t, result.IsError)
+		assert.Equal(t, 0, output.Posted)
+		assert.Equal(t, 1, output.SkippedDuplicates)
+		assert.Contains(t, output.Message, "already exist")
 	})
 }
 
