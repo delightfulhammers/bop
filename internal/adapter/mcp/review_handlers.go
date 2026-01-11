@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -360,7 +361,11 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 	findingsToPost := input.Findings
 	if input.SkipDuplicates && s.deps.PRService != nil {
 		existingFindings, err := s.deps.PRService.ListFindings(ctx, input.Owner, input.Repo, input.PRNumber, nil, nil, nil)
-		if err == nil {
+		if err != nil {
+			// Log error but proceed without dedup (lenient behavior - fail open)
+			log.Printf("[WARN] skip_duplicates: failed to list existing findings for %s/%s#%d: %v (proceeding without dedup)",
+				input.Owner, input.Repo, input.PRNumber, err)
+		} else {
 			// Build set of existing fingerprints
 			existingFPs := make(map[string]bool, len(existingFindings))
 			for _, f := range existingFindings {
@@ -381,7 +386,6 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 			}
 			findingsToPost = filtered
 		}
-		// If ListFindings fails, proceed without dedup (lenient behavior)
 	}
 
 	// If all findings were duplicates, return early
