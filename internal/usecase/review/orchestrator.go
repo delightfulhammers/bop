@@ -145,6 +145,12 @@ type GitHubPostRequest struct {
 
 	// Cost is the total cost of this review in USD (for cost tracking in summary).
 	Cost float64
+
+	// PostOutOfDiffAsComments enables posting out-of-diff findings as individual
+	// issue comments rather than only including them in the summary section.
+	// When enabled, these findings appear in the PR conversation and are visible
+	// to MCP triage tools.
+	PostOutOfDiffAsComments bool
 }
 
 // GitHubPostResult contains the result of posting a review.
@@ -160,6 +166,10 @@ type GitHubPostResult struct {
 	CurrentCost    float64
 	PriorCost      float64
 	CumulativeCost float64
+
+	// Out-of-diff tracking
+	OutOfDiffPosted  int
+	OutOfDiffSkipped int
 }
 
 // StorePrecisionPrior represents precision tracking for a provider/category combination.
@@ -308,6 +318,12 @@ type BranchRequest struct {
 	// Set to empty string to disable auto-dismiss (use "none" in config).
 	// Default: "github-actions[bot]"
 	BotUsername string
+
+	// PostOutOfDiffAsComments enables posting out-of-diff findings as individual
+	// issue comments rather than only including them in the summary section.
+	// When enabled, these findings appear in the PR conversation and are visible
+	// to MCP triage tools.
+	PostOutOfDiffAsComments bool
 
 	// SkipVerification disables agent-based verification of findings.
 	// When true, findings from LLM providers are reported directly without verification.
@@ -956,21 +972,22 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 	var githubResult *GitHubPostResult
 	if req.PostToGitHub && o.deps.GitHubPoster != nil {
 		result, err := o.deps.GitHubPoster.PostReview(ctx, GitHubPostRequest{
-			Owner:                 req.GitHubOwner,
-			Repo:                  req.GitHubRepo,
-			PRNumber:              req.PRNumber,
-			CommitSHA:             req.CommitSHA,
-			Review:                mergedReview,
-			Diff:                  diff,
-			ActionOnCritical:      req.ActionOnCritical,
-			ActionOnHigh:          req.ActionOnHigh,
-			ActionOnMedium:        req.ActionOnMedium,
-			ActionOnLow:           req.ActionOnLow,
-			ActionOnClean:         req.ActionOnClean,
-			ActionOnNonBlocking:   req.ActionOnNonBlocking,
-			AlwaysBlockCategories: req.AlwaysBlockCategories,
-			BotUsername:           req.BotUsername,
-			Cost:                  mergedReview.Cost,
+			Owner:                   req.GitHubOwner,
+			Repo:                    req.GitHubRepo,
+			PRNumber:                req.PRNumber,
+			CommitSHA:               req.CommitSHA,
+			Review:                  mergedReview,
+			Diff:                    diff,
+			ActionOnCritical:        req.ActionOnCritical,
+			ActionOnHigh:            req.ActionOnHigh,
+			ActionOnMedium:          req.ActionOnMedium,
+			ActionOnLow:             req.ActionOnLow,
+			ActionOnClean:           req.ActionOnClean,
+			ActionOnNonBlocking:     req.ActionOnNonBlocking,
+			AlwaysBlockCategories:   req.AlwaysBlockCategories,
+			BotUsername:             req.BotUsername,
+			Cost:                    mergedReview.Cost,
+			PostOutOfDiffAsComments: req.PostOutOfDiffAsComments,
 		})
 		if err != nil {
 			// Log warning but don't fail the review
@@ -1426,21 +1443,22 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 	var githubResult *GitHubPostResult
 	if req.PostToGitHub && o.deps.GitHubPoster != nil {
 		result, err := o.deps.GitHubPoster.PostReview(ctx, GitHubPostRequest{
-			Owner:                 req.GitHubOwner,
-			Repo:                  req.GitHubRepo,
-			PRNumber:              req.PRNumber,
-			CommitSHA:             req.CommitSHA,
-			Review:                mergedReview,
-			Diff:                  diff,
-			ActionOnCritical:      req.ActionOnCritical,
-			ActionOnHigh:          req.ActionOnHigh,
-			ActionOnMedium:        req.ActionOnMedium,
-			ActionOnLow:           req.ActionOnLow,
-			ActionOnClean:         req.ActionOnClean,
-			ActionOnNonBlocking:   req.ActionOnNonBlocking,
-			AlwaysBlockCategories: req.AlwaysBlockCategories,
-			BotUsername:           req.BotUsername,
-			Cost:                  mergedReview.Cost,
+			Owner:                   req.GitHubOwner,
+			Repo:                    req.GitHubRepo,
+			PRNumber:                req.PRNumber,
+			CommitSHA:               req.CommitSHA,
+			Review:                  mergedReview,
+			Diff:                    diff,
+			ActionOnCritical:        req.ActionOnCritical,
+			ActionOnHigh:            req.ActionOnHigh,
+			ActionOnMedium:          req.ActionOnMedium,
+			ActionOnLow:             req.ActionOnLow,
+			ActionOnClean:           req.ActionOnClean,
+			ActionOnNonBlocking:     req.ActionOnNonBlocking,
+			AlwaysBlockCategories:   req.AlwaysBlockCategories,
+			BotUsername:             req.BotUsername,
+			Cost:                    mergedReview.Cost,
+			PostOutOfDiffAsComments: req.PostOutOfDiffAsComments,
 		})
 		if err != nil {
 			if o.deps.Logger != nil {

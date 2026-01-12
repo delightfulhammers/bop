@@ -46,14 +46,15 @@ type PRRequest struct {
 	PostToGitHub bool // Enable posting review to GitHub PR
 
 	// Review action configuration (only used if PostToGitHub is true)
-	ActionOnCritical      string
-	ActionOnHigh          string
-	ActionOnMedium        string
-	ActionOnLow           string
-	ActionOnClean         string
-	ActionOnNonBlocking   string
-	AlwaysBlockCategories []string
-	BotUsername           string
+	ActionOnCritical        string
+	ActionOnHigh            string
+	ActionOnMedium          string
+	ActionOnLow             string
+	ActionOnClean           string
+	ActionOnNonBlocking     string
+	AlwaysBlockCategories   []string
+	BotUsername             string
+	PostOutOfDiffAsComments bool
 
 	// Verification settings
 	SkipVerification   bool
@@ -154,32 +155,33 @@ func (o *Orchestrator) prToBranchRequest(req PRRequest, metadata *domain.PRMetad
 	}
 
 	return BranchRequest{
-		BaseRef:               metadata.BaseRef,
-		TargetRef:             metadata.HeadRef,
-		OutputDir:             req.OutputDir,
-		Repository:            repository,
-		IncludeUncommitted:    false, // Remote PRs don't have uncommitted changes
-		CustomInstructions:    req.CustomInstructions,
-		ContextFiles:          req.ContextFiles,
-		NoArchitecture:        true, // We already gathered context remotely
-		NoAutoContext:         true, // We already gathered context remotely
-		Interactive:           false,
-		PostToGitHub:          req.PostToGitHub,
-		GitHubOwner:           req.Owner,
-		GitHubRepo:            req.Repo,
-		PRNumber:              req.PRNumber,
-		CommitSHA:             metadata.HeadSHA,
-		ActionOnCritical:      req.ActionOnCritical,
-		ActionOnHigh:          req.ActionOnHigh,
-		ActionOnMedium:        req.ActionOnMedium,
-		ActionOnLow:           req.ActionOnLow,
-		ActionOnClean:         req.ActionOnClean,
-		ActionOnNonBlocking:   req.ActionOnNonBlocking,
-		AlwaysBlockCategories: req.AlwaysBlockCategories,
-		BotUsername:           req.BotUsername,
-		SkipVerification:      req.SkipVerification,
-		VerificationConfig:    req.VerificationConfig,
-		Reviewers:             req.Reviewers,
+		BaseRef:                 metadata.BaseRef,
+		TargetRef:               metadata.HeadRef,
+		OutputDir:               req.OutputDir,
+		Repository:              repository,
+		IncludeUncommitted:      false, // Remote PRs don't have uncommitted changes
+		CustomInstructions:      req.CustomInstructions,
+		ContextFiles:            req.ContextFiles,
+		NoArchitecture:          true, // We already gathered context remotely
+		NoAutoContext:           true, // We already gathered context remotely
+		Interactive:             false,
+		PostToGitHub:            req.PostToGitHub,
+		GitHubOwner:             req.Owner,
+		GitHubRepo:              req.Repo,
+		PRNumber:                req.PRNumber,
+		CommitSHA:               metadata.HeadSHA,
+		ActionOnCritical:        req.ActionOnCritical,
+		ActionOnHigh:            req.ActionOnHigh,
+		ActionOnMedium:          req.ActionOnMedium,
+		ActionOnLow:             req.ActionOnLow,
+		ActionOnClean:           req.ActionOnClean,
+		ActionOnNonBlocking:     req.ActionOnNonBlocking,
+		AlwaysBlockCategories:   req.AlwaysBlockCategories,
+		BotUsername:             req.BotUsername,
+		PostOutOfDiffAsComments: req.PostOutOfDiffAsComments,
+		SkipVerification:        req.SkipVerification,
+		VerificationConfig:      req.VerificationConfig,
+		Reviewers:               req.Reviewers,
 	}
 }
 
