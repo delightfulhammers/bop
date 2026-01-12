@@ -465,12 +465,13 @@ func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolReques
 
 	// Build post request
 	postReq := review.GitHubPostRequest{
-		Owner:     input.Owner,
-		Repo:      input.Repo,
-		PRNumber:  input.PRNumber,
-		CommitSHA: metadata.HeadSHA,
-		Review:    domainReview,
-		Diff:      diff,
+		Owner:                   input.Owner,
+		Repo:                    input.Repo,
+		PRNumber:                input.PRNumber,
+		CommitSHA:               metadata.HeadSHA,
+		Review:                  domainReview,
+		Diff:                    diff,
+		PostOutOfDiffAsComments: true, // Always post out-of-diff findings as issue comments for MCP visibility
 	}
 
 	// Map review action to GitHub format

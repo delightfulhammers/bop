@@ -231,6 +231,10 @@ func run() error {
 			posterOpts = append(posterOpts, usecasegithub.WithSemanticComparer(semanticComparer, semanticConfig))
 		}
 
+		// Enable posting out-of-diff findings as issue comments (Issue #259)
+		// This makes them visible to MCP triage tools
+		posterOpts = append(posterOpts, usecasegithub.WithIssueCommentClient(githubClient))
+
 		reviewPoster := usecasegithub.NewReviewPoster(githubClient, posterOpts...)
 		githubPoster = &githubPosterAdapter{poster: reviewPoster}
 
@@ -742,16 +746,17 @@ func (a *githubPosterAdapter) PostReview(ctx context.Context, req review.GitHubP
 	// Build the post request with review action configuration
 	// Pass Diff to enable post-deduplication summary generation
 	postReq := usecasegithub.PostReviewRequest{
-		Owner:         req.Owner,
-		Repo:          req.Repo,
-		PullNumber:    req.PRNumber,
-		CommitSHA:     req.CommitSHA,
-		Review:        req.Review, // Use original review; poster will build summary from Diff
-		Findings:      positionedFindings,
-		Diff:          &req.Diff, // Pass diff for post-dedup summary generation
-		ReviewActions: reviewActions,
-		BotUsername:   req.BotUsername,
-		Cost:          req.Cost,
+		Owner:                   req.Owner,
+		Repo:                    req.Repo,
+		PullNumber:              req.PRNumber,
+		CommitSHA:               req.CommitSHA,
+		Review:                  req.Review, // Use original review; poster will build summary from Diff
+		Findings:                positionedFindings,
+		Diff:                    &req.Diff, // Pass diff for post-dedup summary generation
+		ReviewActions:           reviewActions,
+		BotUsername:             req.BotUsername,
+		Cost:                    req.Cost,
+		PostOutOfDiffAsComments: req.PostOutOfDiffAsComments,
 	}
 
 	// Post the review
@@ -770,6 +775,8 @@ func (a *githubPosterAdapter) PostReview(ctx context.Context, req review.GitHubP
 		CurrentCost:               result.CurrentCost,
 		PriorCost:                 result.PriorCost,
 		CumulativeCost:            result.CumulativeCost,
+		OutOfDiffPosted:           result.OutOfDiffPosted,
+		OutOfDiffSkipped:          result.OutOfDiffSkipped,
 	}, nil
 }
 

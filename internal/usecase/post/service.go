@@ -112,7 +112,8 @@ func (s *Service) PostFindings(ctx context.Context, req Request) (*Result, error
 		Review: domain.Review{
 			Findings: req.Findings,
 		},
-		Diff: diff,
+		Diff:                    diff,
+		PostOutOfDiffAsComments: true, // Post out-of-diff findings as issue comments for MCP visibility
 	}
 
 	// Apply review action override if specified
