@@ -305,8 +305,12 @@ func (e *reviewAlreadyExistsError) Error() string {
 // Returns the review and true if found, nil and false otherwise.
 // This is used for idempotent retry detection - if a review with our nonce exists,
 // we know a previous attempt succeeded despite returning an error.
+//
+// Performance: Only fetches the first page (100 reviews) since idempotent retry
+// detection is looking for a review created seconds ago, not historical reviews.
 func (c *Client) findReviewByNonce(ctx context.Context, owner, repo string, pullNumber int, nonce string) (*CreateReviewResponse, bool) {
-	reviews, err := c.ListReviews(ctx, owner, repo, pullNumber)
+	// Only fetch the first page - the review we're looking for was just created
+	reviews, err := c.listReviewsFirstPage(ctx, owner, repo, pullNumber)
 	if err != nil {
 		// If we can't list reviews, proceed with retry (fail open)
 		return nil, false
@@ -329,6 +333,30 @@ func (c *Client) findReviewByNonce(ctx context.Context, owner, repo string, pull
 	}
 
 	return nil, false
+}
+
+// listReviewsFirstPage fetches only the first page of reviews (up to 100).
+// This is more efficient than ListReviews for idempotent retry detection
+// where we're looking for a very recently created review.
+func (c *Client) listReviewsFirstPage(ctx context.Context, owner, repo string, pullNumber int) ([]ReviewSummary, error) {
+	// Validate path segments to prevent injection attacks
+	if err := validatePathSegment(owner, "owner"); err != nil {
+		return nil, err
+	}
+	if err := validatePathSegment(repo, "repo"); err != nil {
+		return nil, err
+	}
+
+	// Fetch only the first page with max per_page
+	pageURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews?per_page=100",
+		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), pullNumber)
+
+	reviews, _, err := c.fetchReviewsPage(ctx, pageURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return reviews, nil
 }
 
 // ListReviews fetches all reviews for a pull request.
