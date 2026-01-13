@@ -3,7 +3,10 @@ package github
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +26,14 @@ const (
 	defaultMaxRetries     = 3
 	defaultInitialBackoff = 2 * time.Second
 	maxPaginationPages    = 100 // Prevent infinite pagination loops
+
+	// noncePrefix is the HTML comment prefix used for idempotent retry detection.
+	// Format: <!-- bop-rid:HEXSTRING -->
+	// This is invisible to users but allows us to detect if a review was already
+	// created when retrying after a transient error (e.g., HTTP 500).
+	noncePrefix = "<!-- bop-rid:"
+	nonceSuffix = " -->"
+	nonceLength = 16 // 16 bytes = 32 hex chars, sufficient uniqueness
 )
 
 // validRepoPrefixes defines the allowed path prefixes for pagination URLs.
@@ -46,6 +57,44 @@ func validatePathSegment(value, name string) error {
 		return fmt.Errorf("invalid %s: must not be empty", name)
 	}
 	return nil
+}
+
+// generateNonce creates a cryptographically random nonce for idempotent retry detection.
+// The nonce is used to uniquely identify a review creation attempt so we can detect
+// if the review was already created when retrying after a transient error.
+func generateNonce() (string, error) {
+	b := make([]byte, nonceLength)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate nonce: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// embedNonce prepends an invisible HTML comment containing the nonce to the review body.
+// The format is: <!-- bop-rid:HEXSTRING --> followed by the original body.
+// This is invisible when rendered but can be detected via API responses.
+func embedNonce(body, nonce string) string {
+	return noncePrefix + nonce + nonceSuffix + "\n" + body
+}
+
+// extractNonce extracts the nonce from a review body, if present.
+// Returns empty string if no nonce is found.
+func extractNonce(body string) string {
+	start := strings.Index(body, noncePrefix)
+	if start == -1 {
+		return ""
+	}
+	start += len(noncePrefix)
+	end := strings.Index(body[start:], nonceSuffix)
+	if end == -1 {
+		return ""
+	}
+	return body[start : start+end]
+}
+
+// containsNonce checks if a review body contains the specified nonce.
+func containsNonce(body, nonce string) bool {
+	return extractNonce(body) == nonce
 }
 
 // Client is an HTTP client for the GitHub Pull Request Reviews API.
@@ -111,6 +160,11 @@ type CreateReviewInput struct {
 // CreateReview posts a pull request review with inline comments.
 // Only findings with a valid DiffPosition (InDiff() == true) are posted as inline comments.
 // Returns an error if the request fails after all retries.
+//
+// This function uses idempotent retry logic: a unique nonce is embedded in the review body
+// as an invisible HTML comment. On transient errors (5xx, timeout), before retrying,
+// we check if a review with the nonce already exists. This prevents duplicate reviews
+// when the server processes the request but fails to return the response.
 func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*CreateReviewResponse, error) {
 	// Validate path segments to prevent injection attacks
 	if err := validatePathSegment(input.Owner, "owner"); err != nil {
@@ -120,13 +174,22 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 		return nil, err
 	}
 
+	// Generate a unique nonce for idempotent retry detection
+	nonce, err := generateNonce()
+	if err != nil {
+		return nil, fmt.Errorf("create review: %w", err)
+	}
+
+	// Embed nonce in the review body (invisible HTML comment)
+	bodyWithNonce := embedNonce(input.Summary, nonce)
+
 	// Build the API request with proper blocking indicators
 	comments := BuildReviewCommentsWithActions(input.Findings, input.ReviewActions)
 
 	reqBody := CreateReviewRequest{
 		CommitID: input.CommitSHA,
 		Event:    input.Event,
-		Body:     input.Summary,
+		Body:     bodyWithNonce,
 		Comments: comments,
 	}
 
@@ -140,9 +203,24 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 	apiURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews",
 		c.baseURL, url.PathEscape(input.Owner), url.PathEscape(input.Repo), input.PullNumber)
 
-	// Execute with retry
+	// Execute with idempotent retry
 	var resp *http.Response
+	var attempt int
 	err = llmhttp.RetryWithBackoff(ctx, func(ctx context.Context) error {
+		attempt++
+
+		// On retry (attempt > 1), check if review was already created
+		// This handles the case where the server created the review but returned an error
+		if attempt > 1 {
+			existingReview, found := c.findReviewByNonce(ctx, input.Owner, input.Repo, input.PullNumber, nonce)
+			if found {
+				// Review already exists - construct response from existing review
+				resp = nil // Signal to use existingReview instead
+				return &reviewAlreadyExistsError{review: existingReview}
+			}
+			// Review not found, proceed with retry
+		}
+
 		req, reqErr := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
 		if reqErr != nil {
 			return &llmhttp.Error{
@@ -162,7 +240,7 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 		var callErr error
 		resp, callErr = c.httpClient.Do(req)
 		if callErr != nil {
-			// Could be timeout or network error
+			// Could be timeout or network error - the request may have been processed
 			return &llmhttp.Error{
 				Type:      llmhttp.ErrTypeTimeout,
 				Message:   callErr.Error(),
@@ -191,6 +269,13 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 		return nil
 	}, c.retryConf)
 
+	// Check if we found an existing review during retry
+	var existsErr *reviewAlreadyExistsError
+	if errors.As(err, &existsErr) {
+		// Return the existing review - this is not an error, just idempotent success
+		return existsErr.review, nil
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +288,75 @@ func (c *Client) CreateReview(ctx context.Context, input CreateReviewInput) (*Cr
 	}
 
 	return &reviewResp, nil
+}
+
+// reviewAlreadyExistsError is a sentinel error used to signal that a review
+// was found during idempotent retry. This is not a failure - it means the
+// previous attempt succeeded and we should return that review.
+type reviewAlreadyExistsError struct {
+	review *CreateReviewResponse
+}
+
+func (e *reviewAlreadyExistsError) Error() string {
+	return fmt.Sprintf("review already exists with ID %d", e.review.ID)
+}
+
+// findReviewByNonce searches recent reviews for one containing the specified nonce.
+// Returns the review and true if found, nil and false otherwise.
+// This is used for idempotent retry detection - if a review with our nonce exists,
+// we know a previous attempt succeeded despite returning an error.
+//
+// Performance: Only fetches the first page (100 reviews) since idempotent retry
+// detection is looking for a review created seconds ago, not historical reviews.
+func (c *Client) findReviewByNonce(ctx context.Context, owner, repo string, pullNumber int, nonce string) (*CreateReviewResponse, bool) {
+	// Only fetch the first page - the review we're looking for was just created
+	reviews, err := c.listReviewsFirstPage(ctx, owner, repo, pullNumber)
+	if err != nil {
+		// If we can't list reviews, proceed with retry (fail open)
+		return nil, false
+	}
+
+	// Search from newest to oldest (more likely to find recent review quickly)
+	for i := len(reviews) - 1; i >= 0; i-- {
+		if containsNonce(reviews[i].Body, nonce) {
+			// Found our review! Convert ReviewSummary to CreateReviewResponse
+			return &CreateReviewResponse{
+				ID:          reviews[i].ID,
+				NodeID:      reviews[i].NodeID,
+				User:        reviews[i].User,
+				Body:        reviews[i].Body,
+				State:       reviews[i].State,
+				HTMLURL:     "", // Not available in ReviewSummary, but not critical
+				SubmittedAt: reviews[i].SubmittedAt,
+			}, true
+		}
+	}
+
+	return nil, false
+}
+
+// listReviewsFirstPage fetches only the first page of reviews (up to 100).
+// This is more efficient than ListReviews for idempotent retry detection
+// where we're looking for a very recently created review.
+func (c *Client) listReviewsFirstPage(ctx context.Context, owner, repo string, pullNumber int) ([]ReviewSummary, error) {
+	// Validate path segments to prevent injection attacks
+	if err := validatePathSegment(owner, "owner"); err != nil {
+		return nil, err
+	}
+	if err := validatePathSegment(repo, "repo"); err != nil {
+		return nil, err
+	}
+
+	// Fetch only the first page with max per_page
+	pageURL := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews?per_page=100",
+		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), pullNumber)
+
+	reviews, _, err := c.fetchReviewsPage(ctx, pageURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return reviews, nil
 }
 
 // ListReviews fetches all reviews for a pull request.
