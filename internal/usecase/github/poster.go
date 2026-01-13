@@ -346,7 +346,11 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 	if req.Diff != nil {
 		// Rebuild summary with accurate counts from deduplicated findings
 		programmaticSummary := github.BuildProgrammaticSummary(findings, *req.Diff, req.ReviewActions)
-		appendix := github.BuildSummaryAppendix(findings, *req.Diff)
+		// Exclude out-of-diff findings from summary when they're being posted as individual comments
+		appendixOpts := github.SummaryAppendixOptions{
+			ExcludeOutOfDiff: req.PostOutOfDiffAsComments && p.issueCommentClient != nil,
+		}
+		appendix := github.BuildSummaryAppendix(findings, *req.Diff, appendixOpts)
 		dedupSection := formatDedupSection(dedupStats)
 		statusSection := formatStatusSection(statusCounts)
 		costSection := formatCostSection(costStats)

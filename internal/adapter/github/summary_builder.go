@@ -8,19 +8,33 @@ import (
 	"github.com/delightfulhammers/bop/internal/domain"
 )
 
+// SummaryAppendixOptions configures what sections to include in the appendix.
+type SummaryAppendixOptions struct {
+	// ExcludeOutOfDiff skips the "Findings Outside Diff" section.
+	// Set to true when out-of-diff findings are posted as individual comments.
+	ExcludeOutOfDiff bool
+}
+
 // BuildSummaryAppendix creates structured appendix sections for edge cases.
 // Returns an empty string if there are no edge cases to report.
 // The appendix includes sections for:
-// - Findings outside diff (deleted lines, lines not in hunks)
+// - Findings outside diff (deleted lines, lines not in hunks) - unless excluded via opts
 // - Binary files changed
 // - Renamed files
-func BuildSummaryAppendix(findings []PositionedFinding, d domain.Diff) string {
+func BuildSummaryAppendix(findings []PositionedFinding, d domain.Diff, opts ...SummaryAppendixOptions) string {
+	var options SummaryAppendixOptions
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+
 	var sections []string
 
-	// Section 1: Findings outside diff
-	outOfDiff := FilterOutOfDiff(findings)
-	if len(outOfDiff) > 0 {
-		sections = append(sections, formatOutOfDiffSection(outOfDiff))
+	// Section 1: Findings outside diff (unless excluded)
+	if !options.ExcludeOutOfDiff {
+		outOfDiff := FilterOutOfDiff(findings)
+		if len(outOfDiff) > 0 {
+			sections = append(sections, formatOutOfDiffSection(outOfDiff))
+		}
 	}
 
 	// Section 2: Binary files changed
