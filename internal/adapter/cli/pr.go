@@ -114,12 +114,12 @@ Examples:
 				PostToGitHub:       post,
 
 				// Review action configuration
-				ActionOnCritical:      resolvedActionCritical,
-				ActionOnHigh:          resolvedActionHigh,
-				ActionOnMedium:        resolvedActionMedium,
-				ActionOnLow:           resolvedActionLow,
-				ActionOnClean:         resolvedActionClean,
-				ActionOnNonBlocking:   resolvedActionNonBlocking,
+				ActionOnCritical:        resolvedActionCritical,
+				ActionOnHigh:            resolvedActionHigh,
+				ActionOnMedium:          resolvedActionMedium,
+				ActionOnLow:             resolvedActionLow,
+				ActionOnClean:           resolvedActionClean,
+				ActionOnNonBlocking:     resolvedActionNonBlocking,
 				AlwaysBlockCategories:   resolvedAlwaysBlockCategories,
 				BotUsername:             resolvedBotUsername,
 				PostOutOfDiffAsComments: defaultPostOutOfDiff,

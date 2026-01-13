@@ -78,7 +78,7 @@ type Dependencies struct {
 	DefaultReviewActions DefaultReviewActions
 	DefaultBotUsername   string // Bot username for auto-dismissing stale reviews
 	DefaultVerification  DefaultVerification
-	DefaultPostOutOfDiff bool   // Post out-of-diff findings as issue comments (default: true)
+	DefaultPostOutOfDiff bool // Post out-of-diff findings as issue comments (default: true)
 	Version              string
 }
 
@@ -276,27 +276,27 @@ func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, de
 			resolvedConfLow := resolveInt(cmd, "confidence-low", confidenceLow, defaultVerification.ConfidenceLow)
 
 			_, err = branchReviewer.ReviewBranch(ctx, review.BranchRequest{
-				BaseRef:               baseRef,
-				TargetRef:             targetRef,
-				OutputDir:             outputDir,
-				Repository:            repository,
-				IncludeUncommitted:    includeUncommitted,
-				CustomInstructions:    customInstructions,
-				ContextFiles:          contextFiles,
-				NoArchitecture:        noArchitecture,
-				NoAutoContext:         noAutoContext,
-				Interactive:           interactive,
-				PostToGitHub:          postGitHubReview,
-				GitHubOwner:           githubOwner,
-				GitHubRepo:            githubRepo,
-				PRNumber:              prNumber,
-				CommitSHA:             commitSHA,
-				ActionOnCritical:      resolvedActionCritical,
-				ActionOnHigh:          resolvedActionHigh,
-				ActionOnMedium:        resolvedActionMedium,
-				ActionOnLow:           resolvedActionLow,
-				ActionOnClean:         resolvedActionClean,
-				ActionOnNonBlocking:   resolvedActionNonBlocking,
+				BaseRef:                 baseRef,
+				TargetRef:               targetRef,
+				OutputDir:               outputDir,
+				Repository:              repository,
+				IncludeUncommitted:      includeUncommitted,
+				CustomInstructions:      customInstructions,
+				ContextFiles:            contextFiles,
+				NoArchitecture:          noArchitecture,
+				NoAutoContext:           noAutoContext,
+				Interactive:             interactive,
+				PostToGitHub:            postGitHubReview,
+				GitHubOwner:             githubOwner,
+				GitHubRepo:              githubRepo,
+				PRNumber:                prNumber,
+				CommitSHA:               commitSHA,
+				ActionOnCritical:        resolvedActionCritical,
+				ActionOnHigh:            resolvedActionHigh,
+				ActionOnMedium:          resolvedActionMedium,
+				ActionOnLow:             resolvedActionLow,
+				ActionOnClean:           resolvedActionClean,
+				ActionOnNonBlocking:     resolvedActionNonBlocking,
 				AlwaysBlockCategories:   resolvedAlwaysBlockCategories,
 				BotUsername:             resolvedBotUsername,
 				PostOutOfDiffAsComments: defaultPostOutOfDiff,
