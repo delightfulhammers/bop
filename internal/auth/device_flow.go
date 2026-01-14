@@ -198,6 +198,14 @@ func RunDeviceFlow(ctx context.Context, client *Client, callbacks DeviceFlowCall
 
 // StoreDeviceFlowResult saves the device flow result to the token store.
 func StoreDeviceFlowResult(store *TokenStore, result *DeviceFlowResult) error {
+	// Validate token data from device flow
+	if result.AccessToken == "" || result.RefreshToken == "" {
+		return fmt.Errorf("incomplete auth response: missing access_token or refresh_token")
+	}
+	if result.ExpiresAt.IsZero() {
+		return fmt.Errorf("incomplete auth response: missing or invalid expires_at")
+	}
+
 	// Validate user data from auth service
 	if result.User == nil {
 		return fmt.Errorf("incomplete auth response: missing user data")
