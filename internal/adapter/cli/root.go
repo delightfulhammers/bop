@@ -68,9 +68,9 @@ type DefaultVerification struct {
 // Dependencies captures the collaborators for the CLI.
 type Dependencies struct {
 	BranchReviewer       BranchReviewer
-	PRReviewer           PRReviewer     // Optional: only required for cr review pr
-	FindingsPoster       FindingsPoster // Optional: only required for cr post
-	SessionManager       SessionManager // Optional: only required for cr sessions
+	PRReviewer           PRReviewer       // Optional: only required for cr review pr
+	FindingsPoster       FindingsPoster   // Optional: only required for cr post
+	SessionManager       SessionManager   // Optional: only required for cr sessions
 	AuthDeps             AuthDependencies // Optional: only required for bop auth commands
 	Args                 Arguments
 	DefaultOutput        string

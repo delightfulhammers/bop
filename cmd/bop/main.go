@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/delightfulhammers/bop/internal/adapter/cli"
-	"github.com/delightfulhammers/bop/internal/auth"
 	dedupadapter "github.com/delightfulhammers/bop/internal/adapter/dedup"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	githubadapter "github.com/delightfulhammers/bop/internal/adapter/github"
@@ -33,6 +32,7 @@ import (
 	"github.com/delightfulhammers/bop/internal/adapter/store/sqlite"
 	themeadapter "github.com/delightfulhammers/bop/internal/adapter/theme"
 	verifyadapter "github.com/delightfulhammers/bop/internal/adapter/verify"
+	"github.com/delightfulhammers/bop/internal/auth"
 	"github.com/delightfulhammers/bop/internal/config"
 	"github.com/delightfulhammers/bop/internal/determinism"
 	"github.com/delightfulhammers/bop/internal/domain"

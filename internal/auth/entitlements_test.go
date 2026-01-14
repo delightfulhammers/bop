@@ -6,34 +6,34 @@ import (
 
 func TestEntitlementChecker_HasEntitlement(t *testing.T) {
 	tests := []struct {
-		name         string
-		auth         *StoredAuth
-		entitlement  string
-		expected     bool
+		name        string
+		auth        *StoredAuth
+		entitlement string
+		expected    bool
 	}{
 		{
-			name:         "nil auth has no entitlements",
-			auth:         nil,
-			entitlement:  EntitlementCodeReview,
-			expected:     false,
+			name:        "nil auth has no entitlements",
+			auth:        nil,
+			entitlement: EntitlementCodeReview,
+			expected:    false,
 		},
 		{
-			name:         "empty entitlements grants all (graceful fallback)",
-			auth:         &StoredAuth{Entitlements: []string{}},
-			entitlement:  EntitlementCodeReview,
-			expected:     true,
+			name:        "empty entitlements grants all (graceful fallback)",
+			auth:        &StoredAuth{Entitlements: []string{}},
+			entitlement: EntitlementCodeReview,
+			expected:    true,
 		},
 		{
-			name:         "has specific entitlement",
-			auth:         &StoredAuth{Entitlements: []string{EntitlementCodeReview, EntitlementPrivateRepos}},
-			entitlement:  EntitlementCodeReview,
-			expected:     true,
+			name:        "has specific entitlement",
+			auth:        &StoredAuth{Entitlements: []string{EntitlementCodeReview, EntitlementPrivateRepos}},
+			entitlement: EntitlementCodeReview,
+			expected:    true,
 		},
 		{
-			name:         "missing specific entitlement",
-			auth:         &StoredAuth{Entitlements: []string{EntitlementCodeReview}},
-			entitlement:  EntitlementPrivateRepos,
-			expected:     false,
+			name:        "missing specific entitlement",
+			auth:        &StoredAuth{Entitlements: []string{EntitlementCodeReview}},
+			entitlement: EntitlementPrivateRepos,
+			expected:    false,
 		},
 	}
 

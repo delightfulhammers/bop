@@ -102,12 +102,12 @@ func TestStoredAuth_NeedsRefresh(t *testing.T) {
 
 func TestDeviceFlowError_ErrorTypes(t *testing.T) {
 	tests := []struct {
-		name                 string
-		error                string
-		isAuthPending        bool
-		isSlowDown           bool
-		isExpired            bool
-		isAccessDenied       bool
+		name           string
+		error          string
+		isAuthPending  bool
+		isSlowDown     bool
+		isExpired      bool
+		isAccessDenied bool
 	}{
 		{
 			name:          "authorization_pending",
