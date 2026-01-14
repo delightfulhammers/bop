@@ -24,6 +24,10 @@ type Config struct {
 	ThemeExtraction ThemeExtractionConfig     `yaml:"themeExtraction"`
 	SizeGuards      SizeGuardsConfig          `yaml:"sizeGuards"`
 
+	// Week 14: Platform Authentication
+	// Auth configures authentication with the Delightful Hammers platform.
+	Auth AuthConfig `yaml:"auth"`
+
 	// Phase 3.2: Reviewer Personas
 	// Reviewers configures the reviewer personas for code review.
 	// Each reviewer represents a specialized perspective (e.g., security expert, maintainability focused).
@@ -226,6 +230,36 @@ type StoreConfig struct {
 	Path    string `yaml:"path"`
 }
 
+// AuthConfig configures platform authentication.
+// When mode is "platform", bop authenticates via the Delightful Hammers platform.
+// When mode is "legacy" (default), bop uses environment variables directly.
+type AuthConfig struct {
+	// Mode determines the authentication mode.
+	// Valid values: "platform" (use platform auth), "legacy" (use env vars directly).
+	// Default: "legacy" for backward compatibility.
+	Mode string `yaml:"mode"`
+
+	// ServiceURL is the platform auth-service URL.
+	// Example: "https://auth.delightfulhammers.com"
+	// Required when mode is "platform".
+	ServiceURL string `yaml:"serviceUrl"`
+
+	// ProductID identifies this product to the platform.
+	// Default: "bop"
+	ProductID string `yaml:"productId"`
+}
+
+// IsPlatformMode returns true if platform authentication is enabled.
+func (c AuthConfig) IsPlatformMode() bool {
+	return strings.EqualFold(c.Mode, "platform")
+}
+
+// IsLegacyMode returns true if legacy (env var) authentication is used.
+// This is the default when mode is empty or explicitly "legacy".
+func (c AuthConfig) IsLegacyMode() bool {
+	return c.Mode == "" || strings.EqualFold(c.Mode, "legacy")
+}
+
 // ObservabilityConfig configures logging, metrics, and cost tracking.
 type ObservabilityConfig struct {
 	Logging LoggingConfig `yaml:"logging"`
@@ -410,6 +444,7 @@ func merge(base, overlay Config) Config {
 	result.Merge = chooseMerge(base.Merge, overlay.Merge)
 	result.Planning = choosePlanning(base.Planning, overlay.Planning)
 	result.Store = chooseStore(base.Store, overlay.Store)
+	result.Auth = chooseAuth(base.Auth, overlay.Auth)
 	result.Observability = chooseObservability(base.Observability, overlay.Observability)
 	result.Review = chooseReview(base.Review, overlay.Review)
 	result.Verification = chooseVerification(base.Verification, overlay.Verification)
@@ -525,6 +560,27 @@ func chooseStore(base, overlay StoreConfig) StoreConfig {
 		return overlay
 	}
 	return base
+}
+
+func chooseAuth(base, overlay AuthConfig) AuthConfig {
+	result := base
+
+	// Mode: overlay wins if non-empty
+	if overlay.Mode != "" {
+		result.Mode = overlay.Mode
+	}
+
+	// ServiceURL: overlay wins if non-empty
+	if overlay.ServiceURL != "" {
+		result.ServiceURL = overlay.ServiceURL
+	}
+
+	// ProductID: overlay wins if non-empty
+	if overlay.ProductID != "" {
+		result.ProductID = overlay.ProductID
+	}
+
+	return result
 }
 
 func chooseObservability(base, overlay ObservabilityConfig) ObservabilityConfig {

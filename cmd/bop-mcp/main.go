@@ -12,6 +12,7 @@ import (
 	"github.com/delightfulhammers/bop/internal/adapter/github"
 	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
 	mcpadapter "github.com/delightfulhammers/bop/internal/adapter/mcp"
+	"github.com/delightfulhammers/bop/internal/auth"
 	"github.com/delightfulhammers/bop/internal/config"
 	"github.com/delightfulhammers/bop/internal/determinism"
 	"github.com/delightfulhammers/bop/internal/usecase/merge"
@@ -100,6 +101,32 @@ func run() error {
 		cfg = config.Config{}
 	}
 
+	// Initialize platform auth if configured (Week 14)
+	var authClient *auth.Client
+	var tokenStore *auth.TokenStore
+	platformMode := cfg.Auth.IsPlatformMode()
+
+	if platformMode {
+		if cfg.Auth.ServiceURL == "" {
+			log.Printf("warning: platform auth mode enabled but auth.serviceUrl not configured")
+		} else {
+			productID := cfg.Auth.ProductID
+			if productID == "" {
+				productID = "bop"
+			}
+			authClient = auth.NewClient(auth.ClientConfig{
+				BaseURL:   cfg.Auth.ServiceURL,
+				ProductID: productID,
+			})
+		}
+
+		var err error
+		tokenStore, err = auth.NewTokenStore()
+		if err != nil {
+			log.Printf("warning: failed to initialize token store: %v", err)
+		}
+	}
+
 	// Create provider factory - builds direct providers from environment variables
 	// and supports sampling fallback for zero-config usage.
 	providerFactory := provider.NewFactory(provider.FactoryOptions{
@@ -147,6 +174,10 @@ func run() error {
 		ReviewerRegistry:     reviewerRegistry,
 		PersonaPromptBuilder: personaPromptBuilder,
 		SeedGenerator:        determinism.GenerateSeed,
+		// Week 14: Platform authentication
+		AuthClient:   authClient,
+		TokenStore:   tokenStore,
+		PlatformMode: platformMode,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).

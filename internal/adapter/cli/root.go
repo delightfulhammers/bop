@@ -71,6 +71,7 @@ type Dependencies struct {
 	PRReviewer           PRReviewer     // Optional: only required for cr review pr
 	FindingsPoster       FindingsPoster // Optional: only required for cr post
 	SessionManager       SessionManager // Optional: only required for cr sessions
+	AuthDeps             AuthDependencies // Optional: only required for bop auth commands
 	Args                 Arguments
 	DefaultOutput        string
 	DefaultRepo          string
@@ -122,6 +123,10 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	}
 	if deps.SessionManager != nil {
 		root.AddCommand(SessionsCommand(deps.SessionManager))
+	}
+	// Add auth commands if auth is configured (platform mode)
+	if deps.AuthDeps.TokenStore != nil {
+		root.AddCommand(NewAuthCommand(deps.AuthDeps))
 	}
 
 	var showVersion bool

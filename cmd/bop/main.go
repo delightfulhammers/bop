@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/delightfulhammers/bop/internal/adapter/cli"
+	"github.com/delightfulhammers/bop/internal/auth"
 	dedupadapter "github.com/delightfulhammers/bop/internal/adapter/dedup"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	githubadapter "github.com/delightfulhammers/bop/internal/adapter/github"
@@ -303,11 +304,15 @@ func run() error {
 		findingsPoster = post.NewService(remoteGitHubClient, githubPoster)
 	}
 
+	// Initialize auth components for platform authentication (Week 14)
+	authDeps := buildAuthDependencies(cfg.Auth)
+
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
 		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
 		FindingsPoster:      findingsPoster,
 		SessionManager:      sessionManager,
+		AuthDeps:            authDeps, // Week 14: Platform authentication
 		DefaultOutput:       cfg.Output.Directory,
 		DefaultRepo:         repoName,
 		DefaultInstructions: cfg.Review.Instructions,
@@ -415,6 +420,44 @@ type observabilityComponents struct {
 	logger  llmhttp.Logger
 	metrics llmhttp.Metrics
 	pricing llmhttp.Pricing
+}
+
+// buildAuthDependencies creates auth components based on configuration.
+// Returns empty AuthDependencies if auth mode is "legacy" or configuration is incomplete.
+// This enables graceful degradation: auth commands won't be available in legacy mode.
+func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
+	// Skip auth setup in legacy mode (default, backward compatible)
+	if cfg.IsLegacyMode() {
+		return cli.AuthDependencies{}
+	}
+
+	// Platform mode requires service URL
+	if cfg.ServiceURL == "" {
+		log.Println("[WARN] Platform auth mode enabled but auth.serviceUrl not configured - auth commands unavailable")
+		return cli.AuthDependencies{}
+	}
+
+	// Create token store (always needed for auth commands)
+	tokenStore, err := auth.NewTokenStore()
+	if err != nil {
+		log.Printf("[WARN] Failed to initialize token store: %v - auth commands unavailable", err)
+		return cli.AuthDependencies{}
+	}
+
+	// Create auth client for platform authentication
+	productID := cfg.ProductID
+	if productID == "" {
+		productID = "bop"
+	}
+	authClient := auth.NewClient(auth.ClientConfig{
+		BaseURL:   cfg.ServiceURL,
+		ProductID: productID,
+	})
+
+	return cli.AuthDependencies{
+		Client:     authClient,
+		TokenStore: tokenStore,
+	}
 }
 
 // buildObservability creates observability components based on configuration
