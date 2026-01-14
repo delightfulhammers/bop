@@ -187,8 +187,11 @@ func (c *Client) GetPRComment(ctx context.Context, owner, repo string, prNumber 
 // GetPRCommentByFingerprint retrieves a comment by its CR_FP fingerprint.
 // Returns ErrCommentNotFound if no matching comment exists.
 //
+// This searches both review comments (in-diff findings) and issue comments
+// (out-of-diff findings) to find the matching fingerprint.
+//
 // Performance note: Since GitHub doesn't index comments by our fingerprints,
-// this fetches all PR comments with fingerprints and searches client-side.
+// this fetches all findings with fingerprints and searches client-side.
 // This is O(n) where n is the number of comments with fingerprints.
 func (c *Client) GetPRCommentByFingerprint(ctx context.Context, owner, repo string, prNumber int, fingerprint string) (*domain.PRFinding, error) {
 	// Normalize fingerprint (remove prefix if present)
@@ -197,8 +200,8 @@ func (c *Client) GetPRCommentByFingerprint(ctx context.Context, owner, repo stri
 		return nil, fmt.Errorf("empty fingerprint")
 	}
 
-	// Fetch all comments with fingerprints
-	findings, err := c.ListPRComments(ctx, owner, repo, prNumber, true)
+	// Fetch all findings with fingerprints (both review comments and issue comments)
+	findings, err := c.ListAllFindings(ctx, owner, repo, prNumber, true)
 	if err != nil {
 		return nil, err
 	}
