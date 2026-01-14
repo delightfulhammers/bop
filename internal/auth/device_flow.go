@@ -39,7 +39,8 @@ func validateVerificationURI(uri string) error {
 	}
 
 	// Validate host (exact match, no subdomains)
-	if parsed.Host != "github.com" {
+	// Use Hostname() to strip port if present (e.g., "github.com:443" -> "github.com")
+	if parsed.Hostname() != "github.com" {
 		return fmt.Errorf("%w: untrusted host: %s", ErrInvalidVerificationURI, uri)
 	}
 

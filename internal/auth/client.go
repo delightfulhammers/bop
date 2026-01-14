@@ -87,6 +87,11 @@ func parseAndValidateBaseURL(rawURL string) (*url.URL, error) {
 		return nil, fmt.Errorf("missing host in URL: %s", rawURL)
 	}
 
+	// Reject URLs with userinfo (user:pass@host) to prevent credential confusion attacks
+	if parsed.User != nil {
+		return nil, fmt.Errorf("URL must not contain userinfo (credentials): %s", rawURL)
+	}
+
 	// Normalize: strip trailing slash from path
 	parsed.Path = strings.TrimSuffix(parsed.Path, "/")
 
