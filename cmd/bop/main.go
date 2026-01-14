@@ -358,11 +358,11 @@ func repositoryName(repoDir string) string {
 }
 
 func defaultConfigPaths() []string {
-	paths := []string{"."}
-	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".config", "bop"))
-	}
-	return paths
+	// The config loader now handles standard paths internally:
+	// 1. ~/.config/bop/ (user config, base)
+	// 2. Current directory (project config, overlay)
+	// This function is for custom override paths only.
+	return nil
 }
 
 // parseLogLevelFlag scans os.Args for --log-level flag before Cobra processes commands.

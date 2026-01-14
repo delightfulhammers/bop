@@ -18,38 +18,45 @@ type LoaderOptions struct {
 }
 
 // Load returns the merged configuration from files and environment variables.
+// Config files are loaded in order: user config (~/.config/bop/) first as base,
+// then project config (current directory) overlays it. Environment variables
+// override both.
 func Load(opts LoaderOptions) (Config, error) {
-	v := viper.New()
-
 	name := opts.FileName
 	if name == "" {
 		name = "bop"
-	}
-
-	configFile := locateConfigFile(name, opts.ConfigPaths)
-	if configFile != "" {
-		v.SetConfigFile(configFile)
-	} else {
-		v.SetConfigName(name)
 	}
 
 	prefix := opts.EnvPrefix
 	if prefix == "" {
 		prefix = "BOP"
 	}
+
+	// Create master viper instance with defaults and env var handling
+	v := viper.New()
 	v.SetEnvPrefix(prefix)
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 	v.AllowEmptyEnv(true)
-
 	setDefaults(v)
 
-	if configFile != "" {
-		if err := v.ReadInConfig(); err != nil {
+	// Find all config files in priority order (base → overlay)
+	configFiles := locateConfigFiles(name, opts.ConfigPaths)
+
+	// Read and merge each config file (later files override earlier)
+	for _, configFile := range configFiles {
+		fileViper := viper.New()
+		fileViper.SetConfigFile(configFile)
+		if err := fileViper.ReadInConfig(); err != nil {
 			return Config{}, fmt.Errorf("read config %s: %w", configFile, err)
+		}
+		// Merge this file's settings into master viper
+		if err := v.MergeConfigMap(fileViper.AllSettings()); err != nil {
+			return Config{}, fmt.Errorf("merge config %s: %w", configFile, err)
 		}
 	}
 
+	// Unmarshal merged config
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return Config{}, fmt.Errorf("unmarshal config: %w", err)
@@ -237,20 +244,50 @@ func expandEnvStringSlice(slice []string) []string {
 	return result
 }
 
-func locateConfigFile(name string, paths []string) string {
-	searchPaths := append([]string{}, paths...)
+// locateConfigFiles returns all matching config files in load order (base → overlay).
+// User config (~/.config/bop/) is loaded first as base, then paths in order,
+// finally current directory. Later files override earlier ones during merge.
+func locateConfigFiles(name string, paths []string) []string {
+	var files []string
+	seen := make(map[string]bool)
+
+	// Build search paths in priority order (lowest first, loaded first)
+	searchPaths := make([]string, 0, len(paths)+2)
+
+	// 1. User config directory (lowest priority, loaded first as base)
+	if home, err := os.UserHomeDir(); err == nil {
+		searchPaths = append(searchPaths, filepath.Join(home, ".config", "bop"))
+	}
+
+	// 2. Explicit paths from caller
+	searchPaths = append(searchPaths, paths...)
+
+	// 3. Current directory (highest priority, loaded last as overlay)
 	searchPaths = append(searchPaths, ".")
+
 	for _, dir := range searchPaths {
 		if dir == "" {
 			continue
 		}
 		candidate := filepath.Join(dir, name+".yaml")
+
+		// Normalize path to avoid duplicates from "." resolution
+		absCandidate, err := filepath.Abs(candidate)
+		if err != nil {
+			absCandidate = candidate
+		}
+
+		if seen[absCandidate] {
+			continue
+		}
+
 		info, err := os.Stat(candidate)
 		if err == nil && !info.IsDir() {
-			return candidate
+			files = append(files, candidate)
+			seen[absCandidate] = true
 		}
 	}
-	return ""
+	return files
 }
 
 func setDefaults(v *viper.Viper) {
