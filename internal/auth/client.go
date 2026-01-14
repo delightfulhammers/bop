@@ -224,8 +224,10 @@ func (c *Client) RevokeToken(ctx context.Context, tenantID, refreshToken string)
 }
 
 // parseError parses an error response from the auth-service.
+// Limits response body to 4KB to prevent memory exhaustion from large error pages.
 func (c *Client) parseError(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	const maxErrorBodySize = 4 * 1024 // 4KB
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
 	if len(body) > 0 {
 		var errResp struct {
 			Error   string `json:"error"`

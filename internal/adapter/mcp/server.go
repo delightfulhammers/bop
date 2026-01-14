@@ -172,8 +172,13 @@ func (s *Server) loadAuth() {
 
 	stored, err := s.deps.TokenStore.Load()
 	if err != nil {
-		// Not logged in - this is OK, user will get errors if they try
-		// operations that require auth in platform mode
+		if errors.Is(err, auth.ErrNotLoggedIn) {
+			// Not logged in - this is OK, user will get errors if they try
+			// operations that require auth in platform mode
+			return
+		}
+		// Other errors (corruption, parse failure) - warn user
+		log.Printf("[WARN] Failed to load auth file (corrupt?): %v - try 'bop auth logout' to reset", err)
 		return
 	}
 

@@ -108,7 +108,8 @@ func run() error {
 
 	if platformMode {
 		if cfg.Auth.ServiceURL == "" {
-			log.Printf("warning: platform auth mode enabled but auth.serviceUrl not configured")
+			log.Printf("warning: platform auth mode requires auth.serviceUrl - falling back to legacy mode")
+			platformMode = false
 		} else {
 			productID := cfg.Auth.ProductID
 			if productID == "" {
@@ -118,12 +119,13 @@ func run() error {
 				BaseURL:   cfg.Auth.ServiceURL,
 				ProductID: productID,
 			})
-		}
 
-		var err error
-		tokenStore, err = auth.NewTokenStore()
-		if err != nil {
-			log.Printf("warning: failed to initialize token store: %v", err)
+			// Only initialize token store if we're actually in platform mode
+			var err error
+			tokenStore, err = auth.NewTokenStore()
+			if err != nil {
+				log.Printf("warning: failed to initialize token store: %v", err)
+			}
 		}
 	}
 
