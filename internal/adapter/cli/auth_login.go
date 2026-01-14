@@ -80,11 +80,11 @@ func runLogin(cmd *cobra.Command, deps AuthDependencies, force bool) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrDeviceCodeExpired):
-			return fmt.Errorf("authorization timed out - please try again")
+			return fmt.Errorf("authorization timed out - please try again: %w", err)
 		case errors.Is(err, auth.ErrAccessDenied):
-			return fmt.Errorf("authorization was denied")
+			return fmt.Errorf("authorization was denied: %w", err)
 		case errors.Is(err, auth.ErrFlowCanceled):
-			return fmt.Errorf("login canceled")
+			return fmt.Errorf("login canceled: %w", err)
 		default:
 			return fmt.Errorf("authentication failed: %w", err)
 		}

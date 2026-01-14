@@ -48,7 +48,9 @@ func runLogout(cmd *cobra.Command, deps AuthDependencies) error {
 	// Try to revoke the token if we have a client
 	if deps.Client != nil && existing.RefreshToken != "" {
 		// Best effort revocation - don't fail logout if this fails
-		_ = deps.Client.RevokeToken(ctx, existing.TenantID, existing.RefreshToken)
+		if err := deps.Client.RevokeToken(ctx, existing.TenantID, existing.RefreshToken); err != nil {
+			_, _ = fmt.Fprintf(out, "Warning: failed to revoke token with server (token cleared locally but may remain valid until expiry)\n")
+		}
 	}
 
 	// Clear local credentials

@@ -101,10 +101,12 @@ func TestTokenStore_Clear(t *testing.T) {
 
 	store := NewTokenStoreAt(authPath)
 
-	// Save some auth
+	// Save some auth (must include all required fields for validation)
 	auth := &StoredAuth{
-		AccessToken: "test-token",
-		ExpiresAt:   time.Now().Add(1 * time.Hour),
+		AccessToken:  "test-token",
+		RefreshToken: "test-refresh",
+		ExpiresAt:    time.Now().Add(1 * time.Hour),
+		TenantID:     "test-tenant",
 	}
 	if err := store.Save(auth); err != nil {
 		t.Fatalf("Save() error = %v", err)

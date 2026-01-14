@@ -69,6 +69,15 @@ func (t *TokenStore) Load() (*StoredAuth, error) {
 
 // Save writes the authentication state to disk.
 func (t *TokenStore) Save(auth *StoredAuth) error {
+	if auth == nil {
+		return errors.New("auth is nil")
+	}
+
+	// Validate before saving to prevent persisting invalid auth
+	if err := auth.Validate(); err != nil {
+		return fmt.Errorf("invalid auth: %w", err)
+	}
+
 	// Ensure version is set
 	auth.Version = CurrentStorageVersion
 

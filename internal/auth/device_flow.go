@@ -174,7 +174,11 @@ func RunDeviceFlow(ctx context.Context, client *Client, callbacks DeviceFlowCall
 			}
 		}
 
-		// Success! We have tokens
+		// Success! We have tokens - defensive nil check
+		if tokenResp == nil {
+			return nil, fmt.Errorf("poll for token: empty success response from auth service")
+		}
+
 		expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 
 		// Step 3: Fetch user information
@@ -194,6 +198,17 @@ func RunDeviceFlow(ctx context.Context, client *Client, callbacks DeviceFlowCall
 
 // StoreDeviceFlowResult saves the device flow result to the token store.
 func StoreDeviceFlowResult(store *TokenStore, result *DeviceFlowResult) error {
+	// Validate user data from auth service
+	if result.User == nil {
+		return fmt.Errorf("incomplete auth response: missing user data")
+	}
+	if result.User.UserID == "" || result.User.Username == "" {
+		return fmt.Errorf("incomplete auth response: missing user_id or username")
+	}
+	if result.User.TenantID == "" {
+		return fmt.Errorf("incomplete auth response: missing tenant_id")
+	}
+
 	auth := &StoredAuth{
 		Version:      CurrentStorageVersion,
 		AccessToken:  result.AccessToken,

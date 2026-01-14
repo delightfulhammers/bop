@@ -278,6 +278,9 @@ func (c *Client) parseError(resp *http.Response) error {
 	const maxErrorBodySize = 4 * 1024 // 4KB
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
 	if len(body) > 0 {
+		// Check if response was truncated
+		truncated := len(body) == maxErrorBodySize
+
 		var errResp struct {
 			Error   string `json:"error"`
 			Message string `json:"message"`
@@ -290,7 +293,12 @@ func (c *Client) parseError(resp *http.Response) error {
 				return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, errResp.Error)
 			}
 		}
-		return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, string(body))
+
+		bodyStr := string(body)
+		if truncated {
+			bodyStr += "... (truncated)"
+		}
+		return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, bodyStr)
 	}
 	return fmt.Errorf("auth-service error: %s", resp.Status)
 }

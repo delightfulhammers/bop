@@ -195,9 +195,17 @@ func (s *Server) loadAuth() {
 				// Log refresh failure for debugging (without exposing tokens)
 				log.Printf("[WARN] Token refresh failed: %v - auth may expire soon", err)
 			} else if newTokens != nil {
+				// Capture previous state for rollback on save failure
+				prevAccessToken := stored.AccessToken
+				prevRefreshToken := stored.RefreshToken
+				prevExpiresAt := stored.ExpiresAt
+
 				// Update stored auth with new tokens
 				stored.AccessToken = newTokens.AccessToken
-				stored.RefreshToken = newTokens.RefreshToken
+				// Only update refresh token if provided (some OAuth implementations don't rotate)
+				if newTokens.RefreshToken != "" {
+					stored.RefreshToken = newTokens.RefreshToken
+				}
 
 				// Calculate expiry time from ExpiresIn (seconds)
 				// Validate ExpiresIn > 0 to avoid immediately-expired tokens
@@ -209,7 +217,11 @@ func (s *Server) loadAuth() {
 
 				// Save the refreshed tokens
 				if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
-					log.Printf("[WARN] Failed to save refreshed tokens: %v", saveErr)
+					log.Printf("[ERROR] Failed to save refreshed tokens: %v - reverting to previous state", saveErr)
+					// Revert in-memory state to avoid inconsistency with disk
+					stored.AccessToken = prevAccessToken
+					stored.RefreshToken = prevRefreshToken
+					stored.ExpiresAt = prevExpiresAt
 				}
 			}
 		}
