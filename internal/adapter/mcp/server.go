@@ -195,33 +195,32 @@ func (s *Server) loadAuth() {
 				// Log refresh failure for debugging (without exposing tokens)
 				log.Printf("[WARN] Token refresh failed: %v - auth may expire soon", err)
 			} else if newTokens != nil {
-				// Capture previous state for rollback on save failure
-				prevAccessToken := stored.AccessToken
-				prevRefreshToken := stored.RefreshToken
-				prevExpiresAt := stored.ExpiresAt
-
-				// Update stored auth with new tokens
-				stored.AccessToken = newTokens.AccessToken
-				// Only update refresh token if provided (some OAuth implementations don't rotate)
-				if newTokens.RefreshToken != "" {
-					stored.RefreshToken = newTokens.RefreshToken
-				}
-
-				// Calculate expiry time from ExpiresIn (seconds)
-				// Validate ExpiresIn > 0 to avoid immediately-expired tokens
-				if newTokens.ExpiresIn > 0 {
-					stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
+				// Validate ExpiresIn before accepting tokens to avoid zombie tokens
+				// (new access token with old/invalid expiry)
+				if newTokens.ExpiresIn <= 0 {
+					log.Printf("[WARN] Token refresh returned invalid ExpiresIn=%d, treating as refresh failure", newTokens.ExpiresIn)
 				} else {
-					log.Printf("[WARN] Token refresh returned invalid ExpiresIn=%d, keeping existing expiry", newTokens.ExpiresIn)
-				}
+					// Capture previous state for rollback on save failure
+					prevAccessToken := stored.AccessToken
+					prevRefreshToken := stored.RefreshToken
+					prevExpiresAt := stored.ExpiresAt
 
-				// Save the refreshed tokens
-				if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
-					log.Printf("[ERROR] Failed to save refreshed tokens: %v - reverting to previous state", saveErr)
-					// Revert in-memory state to avoid inconsistency with disk
-					stored.AccessToken = prevAccessToken
-					stored.RefreshToken = prevRefreshToken
-					stored.ExpiresAt = prevExpiresAt
+					// Update stored auth with new tokens
+					stored.AccessToken = newTokens.AccessToken
+					// Only update refresh token if provided (some OAuth implementations don't rotate)
+					if newTokens.RefreshToken != "" {
+						stored.RefreshToken = newTokens.RefreshToken
+					}
+					stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
+
+					// Save the refreshed tokens
+					if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
+						log.Printf("[ERROR] Failed to save refreshed tokens: %v - reverting to previous state", saveErr)
+						// Revert in-memory state to avoid inconsistency with disk
+						stored.AccessToken = prevAccessToken
+						stored.RefreshToken = prevRefreshToken
+						stored.ExpiresAt = prevExpiresAt
+					}
 				}
 			}
 		}

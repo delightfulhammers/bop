@@ -75,6 +75,13 @@ func (s *StoredAuth) Validate() error {
 	if s.TenantID == "" {
 		return errors.New("missing tenant_id")
 	}
+	// Validate user identity fields
+	if s.User.ID == "" {
+		return errors.New("missing user.id")
+	}
+	if s.User.GitHubLogin == "" {
+		return errors.New("missing user.github_login")
+	}
 	return nil
 }
 

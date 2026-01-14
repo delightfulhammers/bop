@@ -205,6 +205,9 @@ func StoreDeviceFlowResult(store *TokenStore, result *DeviceFlowResult) error {
 	if result.ExpiresAt.IsZero() {
 		return fmt.Errorf("incomplete auth response: missing or invalid expires_at")
 	}
+	if result.ExpiresAt.Before(time.Now()) {
+		return fmt.Errorf("incomplete auth response: token already expired")
+	}
 
 	// Validate user data from auth service
 	if result.User == nil {

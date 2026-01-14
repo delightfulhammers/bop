@@ -107,6 +107,10 @@ func TestTokenStore_Clear(t *testing.T) {
 		RefreshToken: "test-refresh",
 		ExpiresAt:    time.Now().Add(1 * time.Hour),
 		TenantID:     "test-tenant",
+		User: UserInfo{
+			ID:          "test-user-id",
+			GitHubLogin: "testuser",
+		},
 	}
 	if err := store.Save(auth); err != nil {
 		t.Fatalf("Save() error = %v", err)
