@@ -269,6 +269,38 @@ func (s *Server) TenantID() string {
 	return s.auth.TenantID
 }
 
+// Entitlements returns an EntitlementChecker for the current auth context.
+// Returns a checker with nil auth if not authenticated (all checks will fail gracefully).
+func (s *Server) Entitlements() *auth.EntitlementChecker {
+	return auth.NewEntitlementChecker(s.auth)
+}
+
+// RequireEntitlement checks authentication and a specific entitlement.
+// Returns nil if the entitlement is granted, error otherwise.
+// In legacy mode (non-platform), always returns nil.
+func (s *Server) RequireEntitlement(entitlement string) error {
+	// In legacy mode, skip all auth and entitlement checks
+	if !s.deps.PlatformMode {
+		return nil
+	}
+	if err := s.RequireAuth(); err != nil {
+		return err
+	}
+	if !s.Entitlements().HasEntitlement(entitlement) {
+		return &EntitlementError{Entitlement: entitlement}
+	}
+	return nil
+}
+
+// EntitlementError indicates a missing entitlement.
+type EntitlementError struct {
+	Entitlement string
+}
+
+func (e *EntitlementError) Error() string {
+	return "feature \"" + e.Entitlement + "\" not available on your plan"
+}
+
 // Run starts the MCP server on stdio transport.
 // This blocks until the context is cancelled or an error occurs.
 func (s *Server) Run(ctx context.Context) error {

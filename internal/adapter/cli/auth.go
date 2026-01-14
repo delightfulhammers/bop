@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/spf13/cobra"
 
 	"github.com/delightfulhammers/bop/internal/auth"
@@ -10,6 +13,29 @@ import (
 type AuthDependencies struct {
 	Client     *auth.Client
 	TokenStore *auth.TokenStore
+}
+
+// RequireAuth loads and validates auth from the token store.
+// Returns an EntitlementChecker on success.
+// In legacy mode (TokenStore is nil), returns (nil, nil) - no auth required.
+func (d AuthDependencies) RequireAuth() (*auth.EntitlementChecker, error) {
+	if d.TokenStore == nil {
+		return nil, nil // Legacy mode - no platform auth configured
+	}
+
+	stored, err := d.TokenStore.Load()
+	if err != nil {
+		if errors.Is(err, auth.ErrNotLoggedIn) {
+			return nil, fmt.Errorf("not authenticated - run 'bop auth login' first")
+		}
+		return nil, fmt.Errorf("auth error: %w", err)
+	}
+
+	if stored.IsExpired() {
+		return nil, fmt.Errorf("authentication expired - run 'bop auth login' to re-authenticate")
+	}
+
+	return auth.NewEntitlementChecker(stored), nil
 }
 
 // NewAuthCommand creates the auth command group.

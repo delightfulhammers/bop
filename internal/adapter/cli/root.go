@@ -112,9 +112,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		Use:   "review",
 		Short: "Run a code review",
 	}
-	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
+	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.AuthDeps, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	if deps.PRReviewer != nil {
-		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
+		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.AuthDeps, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())
@@ -156,7 +156,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	return root
 }
 
-func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, defaultInstructions string, defaultActions DefaultReviewActions, defaultBotUsername string, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
+func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, defaultOutput, defaultRepo, defaultInstructions string, defaultActions DefaultReviewActions, defaultBotUsername string, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
 	var baseRef string
 	var targetRef string
 	var outputDir string
@@ -207,6 +207,17 @@ func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, de
 		Short: "Review a branch against a base reference",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Auth check for platform mode
+			if authDeps.TokenStore != nil {
+				checker, err := authDeps.RequireAuth()
+				if err != nil {
+					return err
+				}
+				if checker != nil && !checker.CanReviewCode() {
+					return fmt.Errorf("code review not available on your plan")
+				}
+			}
+
 			if len(args) > 0 {
 				targetRef = args[0]
 			}
