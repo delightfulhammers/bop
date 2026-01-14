@@ -320,7 +320,8 @@ func run() error {
 			OnNonBlocking:         cfg.Review.Actions.OnNonBlocking,
 			AlwaysBlockCategories: cfg.Review.AlwaysBlockCategories,
 		},
-		DefaultBotUsername: cfg.Review.BotUsername,
+		DefaultBotUsername:   cfg.Review.BotUsername,
+		DefaultPostOutOfDiff: cfg.Review.ShouldPostOutOfDiff(),
 		DefaultVerification: cli.DefaultVerification{
 			Enabled:            cfg.Verification.Enabled,
 			Depth:              cfg.Verification.Depth,

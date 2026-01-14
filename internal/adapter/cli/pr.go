@@ -10,7 +10,7 @@ import (
 
 // prCommand creates the 'review pr' subcommand for reviewing GitHub PRs remotely.
 // This allows reviewing any PR without needing a local clone.
-func prCommand(prReviewer PRReviewer, defaultOutput, defaultInstructions string, defaultActions DefaultReviewActions, defaultVerification DefaultVerification) *cobra.Command {
+func prCommand(prReviewer PRReviewer, defaultOutput, defaultInstructions string, defaultActions DefaultReviewActions, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
 	var outputDir string
 	var customInstructions string
 	var noArchitecture bool
@@ -114,14 +114,15 @@ Examples:
 				PostToGitHub:       post,
 
 				// Review action configuration
-				ActionOnCritical:      resolvedActionCritical,
-				ActionOnHigh:          resolvedActionHigh,
-				ActionOnMedium:        resolvedActionMedium,
-				ActionOnLow:           resolvedActionLow,
-				ActionOnClean:         resolvedActionClean,
-				ActionOnNonBlocking:   resolvedActionNonBlocking,
-				AlwaysBlockCategories: resolvedAlwaysBlockCategories,
-				BotUsername:           resolvedBotUsername,
+				ActionOnCritical:        resolvedActionCritical,
+				ActionOnHigh:            resolvedActionHigh,
+				ActionOnMedium:          resolvedActionMedium,
+				ActionOnLow:             resolvedActionLow,
+				ActionOnClean:           resolvedActionClean,
+				ActionOnNonBlocking:     resolvedActionNonBlocking,
+				AlwaysBlockCategories:   resolvedAlwaysBlockCategories,
+				BotUsername:             resolvedBotUsername,
+				PostOutOfDiffAsComments: defaultPostOutOfDiff,
 
 				// Verification settings
 				SkipVerification: !resolvedVerifyEnabled,

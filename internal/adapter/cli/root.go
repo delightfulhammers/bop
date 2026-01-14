@@ -78,6 +78,7 @@ type Dependencies struct {
 	DefaultReviewActions DefaultReviewActions
 	DefaultBotUsername   string // Bot username for auto-dismissing stale reviews
 	DefaultVerification  DefaultVerification
+	DefaultPostOutOfDiff bool // Post out-of-diff findings as issue comments (default: true)
 	Version              string
 }
 
@@ -110,9 +111,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		Use:   "review",
 		Short: "Run a code review",
 	}
-	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification))
+	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	if deps.PRReviewer != nil {
-		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification))
+		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())
@@ -150,7 +151,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	return root
 }
 
-func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, defaultInstructions string, defaultActions DefaultReviewActions, defaultBotUsername string, defaultVerification DefaultVerification) *cobra.Command {
+func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, defaultInstructions string, defaultActions DefaultReviewActions, defaultBotUsername string, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
 	var baseRef string
 	var targetRef string
 	var outputDir string
@@ -275,30 +276,31 @@ func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, de
 			resolvedConfLow := resolveInt(cmd, "confidence-low", confidenceLow, defaultVerification.ConfidenceLow)
 
 			_, err = branchReviewer.ReviewBranch(ctx, review.BranchRequest{
-				BaseRef:               baseRef,
-				TargetRef:             targetRef,
-				OutputDir:             outputDir,
-				Repository:            repository,
-				IncludeUncommitted:    includeUncommitted,
-				CustomInstructions:    customInstructions,
-				ContextFiles:          contextFiles,
-				NoArchitecture:        noArchitecture,
-				NoAutoContext:         noAutoContext,
-				Interactive:           interactive,
-				PostToGitHub:          postGitHubReview,
-				GitHubOwner:           githubOwner,
-				GitHubRepo:            githubRepo,
-				PRNumber:              prNumber,
-				CommitSHA:             commitSHA,
-				ActionOnCritical:      resolvedActionCritical,
-				ActionOnHigh:          resolvedActionHigh,
-				ActionOnMedium:        resolvedActionMedium,
-				ActionOnLow:           resolvedActionLow,
-				ActionOnClean:         resolvedActionClean,
-				ActionOnNonBlocking:   resolvedActionNonBlocking,
-				AlwaysBlockCategories: resolvedAlwaysBlockCategories,
-				BotUsername:           resolvedBotUsername,
-				SkipVerification:      !resolvedVerifyEnabled,
+				BaseRef:                 baseRef,
+				TargetRef:               targetRef,
+				OutputDir:               outputDir,
+				Repository:              repository,
+				IncludeUncommitted:      includeUncommitted,
+				CustomInstructions:      customInstructions,
+				ContextFiles:            contextFiles,
+				NoArchitecture:          noArchitecture,
+				NoAutoContext:           noAutoContext,
+				Interactive:             interactive,
+				PostToGitHub:            postGitHubReview,
+				GitHubOwner:             githubOwner,
+				GitHubRepo:              githubRepo,
+				PRNumber:                prNumber,
+				CommitSHA:               commitSHA,
+				ActionOnCritical:        resolvedActionCritical,
+				ActionOnHigh:            resolvedActionHigh,
+				ActionOnMedium:          resolvedActionMedium,
+				ActionOnLow:             resolvedActionLow,
+				ActionOnClean:           resolvedActionClean,
+				ActionOnNonBlocking:     resolvedActionNonBlocking,
+				AlwaysBlockCategories:   resolvedAlwaysBlockCategories,
+				BotUsername:             resolvedBotUsername,
+				PostOutOfDiffAsComments: defaultPostOutOfDiff,
+				SkipVerification:        !resolvedVerifyEnabled,
 				VerificationConfig: review.VerificationSettings{
 					Depth:              resolvedDepth,
 					CostCeiling:        resolvedCostCeiling,
