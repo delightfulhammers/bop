@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
 // Client is an HTTP client for the platform auth-service.
 type Client struct {
-	baseURL    string
+	baseURL    *url.URL
 	productID  string
 	httpClient *http.Client
 }
@@ -30,19 +32,66 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new auth-service client.
+// Returns nil if the BaseURL is invalid or uses an unsupported scheme.
 func NewClient(cfg ClientConfig) *Client {
+	baseURL, err := parseAndValidateBaseURL(cfg.BaseURL)
+	if err != nil {
+		return nil
+	}
+
 	timeout := cfg.Timeout
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
 
 	return &Client{
-		baseURL:   cfg.BaseURL,
+		baseURL:   baseURL,
 		productID: cfg.ProductID,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
 	}
+}
+
+// parseAndValidateBaseURL parses and normalizes the base URL.
+// Validates scheme is https (or http for local development).
+func parseAndValidateBaseURL(rawURL string) (*url.URL, error) {
+	// Trim whitespace that could cause issues
+	rawURL = strings.TrimSpace(rawURL)
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+
+	// Validate scheme (https required, http allowed for localhost dev)
+	switch parsed.Scheme {
+	case "https":
+		// OK
+	case "http":
+		// Allow http only for localhost/127.0.0.1 (development)
+		host := parsed.Hostname()
+		if host != "localhost" && host != "127.0.0.1" {
+			return nil, fmt.Errorf("http scheme only allowed for localhost, got: %s", host)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported URL scheme: %s (must be https)", parsed.Scheme)
+	}
+
+	// Ensure host is present
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("missing host in URL: %s", rawURL)
+	}
+
+	// Normalize: strip trailing slash from path
+	parsed.Path = strings.TrimSuffix(parsed.Path, "/")
+
+	return parsed, nil
+}
+
+// buildURL constructs a full URL by joining the base URL with a path.
+func (c *Client) buildURL(path string) string {
+	return c.baseURL.JoinPath(path).String()
 }
 
 // InitiateDeviceFlow starts the device authorization flow.
@@ -57,7 +106,7 @@ func (c *Client) InitiateDeviceFlow(ctx context.Context) (*DeviceFlowResponse, e
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/device", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL("/auth/device"), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -94,7 +143,7 @@ func (c *Client) PollDeviceToken(ctx context.Context, deviceCode string) (*Token
 		return nil, nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/device/token", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL("/auth/device/token"), bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, fmt.Errorf("create request: %w", err)
 	}
@@ -141,7 +190,7 @@ func (c *Client) RefreshToken(ctx context.Context, tenantID, refreshToken string
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/refresh", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL("/auth/refresh"), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -167,7 +216,7 @@ func (c *Client) RefreshToken(ctx context.Context, tenantID, refreshToken string
 
 // GetCurrentUser retrieves the current user's information using an access token.
 func (c *Client) GetCurrentUser(ctx context.Context, accessToken string) (*CurrentUserResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/auth/me", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.buildURL("/auth/me"), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -203,7 +252,7 @@ func (c *Client) RevokeToken(ctx context.Context, tenantID, refreshToken string)
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/auth/revoke", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL("/auth/revoke"), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

@@ -194,8 +194,14 @@ func (s *Server) loadAuth() {
 			// Update stored auth with new tokens
 			stored.AccessToken = newTokens.AccessToken
 			stored.RefreshToken = newTokens.RefreshToken
+
 			// Calculate expiry time from ExpiresIn (seconds)
-			stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
+			// Validate ExpiresIn > 0 to avoid immediately-expired tokens
+			if newTokens.ExpiresIn > 0 {
+				stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
+			} else {
+				log.Printf("[WARN] Token refresh returned invalid ExpiresIn=%d, keeping existing expiry", newTokens.ExpiresIn)
+			}
 
 			// Save the refreshed tokens
 			if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
