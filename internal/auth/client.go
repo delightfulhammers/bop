@@ -32,11 +32,11 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new auth-service client.
-// Returns nil if the BaseURL is invalid or uses an unsupported scheme.
-func NewClient(cfg ClientConfig) *Client {
+// Returns an error if the BaseURL is invalid or uses an unsupported scheme.
+func NewClient(cfg ClientConfig) (*Client, error) {
 	baseURL, err := parseAndValidateBaseURL(cfg.BaseURL)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("invalid auth service URL: %w", err)
 	}
 
 	timeout := cfg.Timeout
@@ -50,7 +50,7 @@ func NewClient(cfg ClientConfig) *Client {
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-	}
+	}, nil
 }
 
 // parseAndValidateBaseURL parses and normalizes the base URL.

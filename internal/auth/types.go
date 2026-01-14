@@ -3,6 +3,7 @@
 package auth
 
 import (
+	"errors"
 	"time"
 )
 
@@ -57,6 +58,24 @@ func (s *StoredAuth) NeedsRefresh() bool {
 		return true
 	}
 	return time.Now().Add(5 * time.Minute).After(s.ExpiresAt)
+}
+
+// Validate checks that required fields are present and valid.
+// Returns an error if the auth state is incomplete or corrupt.
+func (s *StoredAuth) Validate() error {
+	if s.AccessToken == "" {
+		return errors.New("missing access_token")
+	}
+	if s.RefreshToken == "" {
+		return errors.New("missing refresh_token")
+	}
+	if s.ExpiresAt.IsZero() {
+		return errors.New("missing expires_at")
+	}
+	if s.TenantID == "" {
+		return errors.New("missing tenant_id")
+	}
+	return nil
 }
 
 // DeviceFlowResponse is returned when initiating device flow.

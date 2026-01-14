@@ -184,28 +184,33 @@ func (s *Server) loadAuth() {
 
 	// Check if token needs refresh
 	if stored.NeedsRefresh() && s.deps.AuthClient != nil {
-		// Try to refresh - best effort, don't fail if it doesn't work
-		ctx := context.Background()
-		newTokens, err := s.deps.AuthClient.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
-		if err != nil {
-			// Log refresh failure for debugging (without exposing tokens)
-			log.Printf("[WARN] Token refresh failed: %v - auth may expire soon", err)
-		} else if newTokens != nil {
-			// Update stored auth with new tokens
-			stored.AccessToken = newTokens.AccessToken
-			stored.RefreshToken = newTokens.RefreshToken
+		// Validate required fields before attempting refresh
+		if stored.RefreshToken == "" || stored.TenantID == "" {
+			log.Printf("[WARN] Cannot refresh token: missing refresh_token or tenant_id - try 'bop auth logout' then 'bop auth login'")
+		} else {
+			// Try to refresh - best effort, don't fail if it doesn't work
+			ctx := context.Background()
+			newTokens, err := s.deps.AuthClient.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
+			if err != nil {
+				// Log refresh failure for debugging (without exposing tokens)
+				log.Printf("[WARN] Token refresh failed: %v - auth may expire soon", err)
+			} else if newTokens != nil {
+				// Update stored auth with new tokens
+				stored.AccessToken = newTokens.AccessToken
+				stored.RefreshToken = newTokens.RefreshToken
 
-			// Calculate expiry time from ExpiresIn (seconds)
-			// Validate ExpiresIn > 0 to avoid immediately-expired tokens
-			if newTokens.ExpiresIn > 0 {
-				stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
-			} else {
-				log.Printf("[WARN] Token refresh returned invalid ExpiresIn=%d, keeping existing expiry", newTokens.ExpiresIn)
-			}
+				// Calculate expiry time from ExpiresIn (seconds)
+				// Validate ExpiresIn > 0 to avoid immediately-expired tokens
+				if newTokens.ExpiresIn > 0 {
+					stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
+				} else {
+					log.Printf("[WARN] Token refresh returned invalid ExpiresIn=%d, keeping existing expiry", newTokens.ExpiresIn)
+				}
 
-			// Save the refreshed tokens
-			if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
-				log.Printf("[WARN] Failed to save refreshed tokens: %v", saveErr)
+				// Save the refreshed tokens
+				if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
+					log.Printf("[WARN] Failed to save refreshed tokens: %v", saveErr)
+				}
 			}
 		}
 	}

@@ -449,10 +449,14 @@ func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
 	if productID == "" {
 		productID = "bop"
 	}
-	authClient := auth.NewClient(auth.ClientConfig{
+	authClient, err := auth.NewClient(auth.ClientConfig{
 		BaseURL:   cfg.ServiceURL,
 		ProductID: productID,
 	})
+	if err != nil {
+		log.Printf("[WARN] %v - auth commands unavailable", err)
+		return cli.AuthDependencies{}
+	}
 
 	return cli.AuthDependencies{
 		Client:     authClient,

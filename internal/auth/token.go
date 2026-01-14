@@ -59,6 +59,11 @@ func (t *TokenStore) Load() (*StoredAuth, error) {
 		return nil, fmt.Errorf("auth file version %d is newer than supported version %d - please upgrade bop", auth.Version, CurrentStorageVersion)
 	}
 
+	// Validate required fields to detect corrupt/incomplete auth files
+	if err := auth.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid auth file: %w - try 'bop auth logout' to reset", err)
+	}
+
 	return &auth, nil
 }
 

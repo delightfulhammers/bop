@@ -115,16 +115,22 @@ func run() error {
 			if productID == "" {
 				productID = "bop"
 			}
-			authClient = auth.NewClient(auth.ClientConfig{
+			var err error
+			authClient, err = auth.NewClient(auth.ClientConfig{
 				BaseURL:   cfg.Auth.ServiceURL,
 				ProductID: productID,
 			})
+			if err != nil {
+				log.Printf("warning: %v - falling back to legacy mode", err)
+				platformMode = false
+			}
 
 			// Only initialize token store if we're actually in platform mode
-			var err error
-			tokenStore, err = auth.NewTokenStore()
-			if err != nil {
-				log.Printf("warning: failed to initialize token store: %v", err)
+			if platformMode {
+				tokenStore, err = auth.NewTokenStore()
+				if err != nil {
+					log.Printf("warning: failed to initialize token store: %v", err)
+				}
 			}
 		}
 	}

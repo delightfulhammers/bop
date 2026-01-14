@@ -84,6 +84,14 @@ func RunDeviceFlow(ctx context.Context, client *Client, callbacks DeviceFlowCall
 		return nil, fmt.Errorf("initiate device flow: %w", err)
 	}
 
+	// Validate device flow response fields
+	if initResp.DeviceCode == "" || initResp.UserCode == "" {
+		return nil, fmt.Errorf("invalid device flow response: missing device_code or user_code")
+	}
+	if initResp.ExpiresIn <= 0 {
+		return nil, fmt.Errorf("invalid device flow response: expires_in must be positive, got %d", initResp.ExpiresIn)
+	}
+
 	// Validate verification URI to prevent phishing attacks
 	if err := validateVerificationURI(initResp.VerificationURI); err != nil {
 		return nil, err
