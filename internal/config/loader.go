@@ -168,6 +168,11 @@ func expandEnvVars(cfg Config) Config {
 	// Expand store config
 	cfg.Store.Path = expandEnvString(cfg.Store.Path)
 
+	// Expand auth config
+	cfg.Auth.Mode = expandEnvString(cfg.Auth.Mode)
+	cfg.Auth.ServiceURL = expandEnvString(cfg.Auth.ServiceURL)
+	cfg.Auth.ProductID = expandEnvString(cfg.Auth.ProductID)
+
 	// Expand observability config
 	cfg.Observability.Logging.Level = expandEnvString(cfg.Observability.Logging.Level)
 	cfg.Observability.Logging.Format = expandEnvString(cfg.Observability.Logging.Format)
@@ -273,6 +278,12 @@ func setDefaults(v *viper.Viper) {
 	// Store defaults (Phase 3)
 	v.SetDefault("store.enabled", true)
 	v.SetDefault("store.path", defaultStorePath())
+
+	// Auth defaults (Week 14: Platform Authentication)
+	// Default to legacy mode for backward compatibility
+	v.SetDefault("auth.mode", "legacy")
+	v.SetDefault("auth.productId", "bop")
+	// Note: auth.serviceUrl has no default - must be set when mode is "platform"
 
 	// Observability defaults (Phase 3)
 	v.SetDefault("observability.logging.enabled", true)
