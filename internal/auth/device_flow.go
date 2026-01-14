@@ -4,15 +4,35 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
 // DeviceFlowErrors for different failure modes.
 var (
-	ErrDeviceCodeExpired = errors.New("device code expired - please try again")
-	ErrAccessDenied      = errors.New("authorization denied by user")
-	ErrFlowCanceled      = errors.New("device flow canceled")
+	ErrDeviceCodeExpired       = errors.New("device code expired - please try again")
+	ErrAccessDenied            = errors.New("authorization denied by user")
+	ErrFlowCanceled            = errors.New("device flow canceled")
+	ErrInvalidVerificationURI  = errors.New("invalid verification URI from auth service")
 )
+
+// allowedVerificationURIPrefixes defines the trusted domains for device flow verification.
+// This prevents phishing attacks where a compromised auth-service could direct users
+// to malicious sites.
+var allowedVerificationURIPrefixes = []string{
+	"https://github.com/login/device",
+	"https://github.com/login/oauth/authorize",
+}
+
+// validateVerificationURI checks that the verification URI is from a trusted domain.
+func validateVerificationURI(uri string) error {
+	for _, prefix := range allowedVerificationURIPrefixes {
+		if strings.HasPrefix(uri, prefix) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s", ErrInvalidVerificationURI, uri)
+}
 
 // DeviceFlowCallbacks receives notifications during the device flow.
 type DeviceFlowCallbacks struct {
@@ -42,6 +62,11 @@ func RunDeviceFlow(ctx context.Context, client *Client, callbacks DeviceFlowCall
 	initResp, err := client.InitiateDeviceFlow(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("initiate device flow: %w", err)
+	}
+
+	// Validate verification URI to prevent phishing attacks
+	if err := validateVerificationURI(initResp.VerificationURI); err != nil {
+		return nil, err
 	}
 
 	// Notify callback of user code
@@ -99,8 +124,12 @@ func RunDeviceFlow(ctx context.Context, client *Client, callbacks DeviceFlowCall
 				continue
 
 			case dfErr.IsSlowDown():
-				// Increase polling interval by 5 seconds
+				// Increase polling interval by 5 seconds, capped at 60 seconds
 				interval += 5 * time.Second
+				const maxInterval = 60 * time.Second
+				if interval > maxInterval {
+					interval = maxInterval
+				}
 				if callbacks.OnSlowDown != nil {
 					callbacks.OnSlowDown(interval)
 				}

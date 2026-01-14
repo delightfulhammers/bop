@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
@@ -181,7 +182,10 @@ func (s *Server) loadAuth() {
 		// Try to refresh - best effort, don't fail if it doesn't work
 		ctx := context.Background()
 		newTokens, err := s.deps.AuthClient.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
-		if err == nil && newTokens != nil {
+		if err != nil {
+			// Log refresh failure for debugging (without exposing tokens)
+			log.Printf("[WARN] Token refresh failed: %v - auth may expire soon", err)
+		} else if newTokens != nil {
 			// Update stored auth with new tokens
 			stored.AccessToken = newTokens.AccessToken
 			stored.RefreshToken = newTokens.RefreshToken
@@ -189,7 +193,9 @@ func (s *Server) loadAuth() {
 			stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
 
 			// Save the refreshed tokens
-			_ = s.deps.TokenStore.Save(stored) // Best effort
+			if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
+				log.Printf("[WARN] Failed to save refreshed tokens: %v", saveErr)
+			}
 		}
 	}
 

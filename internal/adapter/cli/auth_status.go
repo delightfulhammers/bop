@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -95,45 +96,52 @@ func outputStatusText(out interface{ Write([]byte) (int, error) }, stored *auth.
 	return nil
 }
 
+// statusJSON is the JSON output structure for auth status.
+type statusJSON struct {
+	LoggedIn     bool            `json:"logged_in"`
+	User         *statusUserJSON `json:"user,omitempty"`
+	TenantID     string          `json:"tenant_id,omitempty"`
+	Plan         string          `json:"plan,omitempty"`
+	Entitlements []string        `json:"entitlements,omitempty"`
+	Token        *statusTokenJSON `json:"token,omitempty"`
+}
+
+type statusUserJSON struct {
+	ID          string `json:"id"`
+	GitHubLogin string `json:"github_login"`
+	Email       string `json:"email"`
+}
+
+type statusTokenJSON struct {
+	Expired      bool   `json:"expired"`
+	NeedsRefresh bool   `json:"needs_refresh"`
+	ExpiresAt    string `json:"expires_at"`
+}
+
 func outputStatusJSON(out interface{ Write([]byte) (int, error) }, stored *auth.StoredAuth) error {
-	// Simple JSON output without importing encoding/json to avoid complexity
-	// For a full implementation, we'd use json.Marshal
-	expired := stored.IsExpired()
-	needsRefresh := stored.NeedsRefresh()
-
-	entitlements := "[]"
-	if len(stored.Entitlements) > 0 {
-		quoted := make([]string, len(stored.Entitlements))
-		for i, e := range stored.Entitlements {
-			quoted[i] = fmt.Sprintf("%q", e)
-		}
-		entitlements = "[" + strings.Join(quoted, ", ") + "]"
-	}
-
 	plan := stored.Plan
 	if plan == "" {
 		plan = "free"
 	}
 
-	_, _ = fmt.Fprintf(out, `{
-  "logged_in": true,
-  "user": {
-    "id": %q,
-    "github_login": %q,
-    "email": %q
-  },
-  "tenant_id": %q,
-  "plan": %q,
-  "entitlements": %s,
-  "token": {
-    "expired": %t,
-    "needs_refresh": %t,
-    "expires_at": %q
-  }
-}
-`, stored.User.ID, stored.User.GitHubLogin, stored.User.Email,
-		stored.TenantID, plan, entitlements,
-		expired, needsRefresh, stored.ExpiresAt.Format(time.RFC3339))
+	status := statusJSON{
+		LoggedIn: true,
+		User: &statusUserJSON{
+			ID:          stored.User.ID,
+			GitHubLogin: stored.User.GitHubLogin,
+			Email:       stored.User.Email,
+		},
+		TenantID:     stored.TenantID,
+		Plan:         plan,
+		Entitlements: stored.Entitlements,
+		Token: &statusTokenJSON{
+			Expired:      stored.IsExpired(),
+			NeedsRefresh: stored.NeedsRefresh(),
+			ExpiresAt:    stored.ExpiresAt.Format(time.RFC3339),
+		},
+	}
 
-	return nil
+	encoder := json.NewEncoder(out)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(status)
 }

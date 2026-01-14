@@ -36,7 +36,7 @@ func runLogin(cmd *cobra.Command, deps AuthDependencies, force bool) error {
 
 	// Check for nil dependencies
 	if deps.Client == nil {
-		return errors.New("authentication not configured - set auth.service_url in config")
+		return errors.New("authentication not configured - set auth.serviceUrl in config")
 	}
 	if deps.TokenStore == nil {
 		return errors.New("token store not initialized")
