@@ -238,7 +238,8 @@ func TestClient_GetPRComment(t *testing.T) {
 }
 
 func TestClient_GetPRCommentByFingerprint(t *testing.T) {
-	comments := []PullRequestComment{
+	// Review comments (in-diff findings)
+	reviewComments := []PullRequestComment{
 		{
 			ID:          1001,
 			Body:        "CR_FP:abc123\nFirst finding",
@@ -259,29 +260,50 @@ func TestClient_GetPRCommentByFingerprint(t *testing.T) {
 		},
 	}
 
+	// Issue comments (includes out-of-diff findings)
+	issueComments := []IssueComment{
+		{
+			ID:        2001,
+			Body:      "**⚠️ Finding Outside Diff**\n\n📁 `deleted.go` (line 50)\n\n**Severity: high**\n\nOut of diff finding\n\n<!-- CR_FP:aaa789def012 CR_OOD:true CR_FILE:deleted.go CR_LINE:50 -->",
+			User:      User{Login: "github-actions[bot]", Type: "Bot"},
+			CreatedAt: "2024-01-15T12:00:00Z",
+		},
+	}
+
 	tests := []struct {
 		name        string
 		fingerprint string
 		wantID      int64
+		wantOOD     bool // expected IsOutOfDiff value
 		wantErr     bool
 		wantErrType error
 	}{
 		{
-			name:        "finds comment by fingerprint",
+			name:        "finds review comment by fingerprint",
 			fingerprint: "abc123",
 			wantID:      1001,
+			wantOOD:     false,
 			wantErr:     false,
 		},
 		{
-			name:        "finds second comment by fingerprint",
+			name:        "finds second review comment by fingerprint",
 			fingerprint: "def456",
 			wantID:      1002,
+			wantOOD:     false,
 			wantErr:     false,
 		},
 		{
 			name:        "strips CR_FP prefix",
 			fingerprint: "CR_FP:abc123",
 			wantID:      1001,
+			wantOOD:     false,
+			wantErr:     false,
+		},
+		{
+			name:        "finds out-of-diff finding by fingerprint",
+			fingerprint: "aaa789def012",
+			wantID:      2001,
+			wantOOD:     true,
 			wantErr:     false,
 		},
 		{
@@ -297,9 +319,15 @@ func TestClient_GetPRCommentByFingerprint(t *testing.T) {
 		},
 	}
 
+	// Server handles both review comments and issue comments endpoints
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(comments)
+		switch r.URL.Path {
+		case "/repos/owner/repo/pulls/123/comments":
+			_ = json.NewEncoder(w).Encode(reviewComments)
+		case "/repos/owner/repo/issues/123/comments":
+			_ = json.NewEncoder(w).Encode(issueComments)
+		}
 	}))
 	defer server.Close()
 
@@ -322,6 +350,7 @@ func TestClient_GetPRCommentByFingerprint(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, finding)
 			assert.Equal(t, tt.wantID, finding.CommentID)
+			assert.Equal(t, tt.wantOOD, finding.IsOutOfDiff)
 		})
 	}
 }
