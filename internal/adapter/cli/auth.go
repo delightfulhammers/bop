@@ -11,16 +11,21 @@ import (
 
 // AuthDependencies captures the collaborators for auth commands.
 type AuthDependencies struct {
-	Client     *auth.Client
-	TokenStore *auth.TokenStore
+	Client       *auth.Client
+	TokenStore   *auth.TokenStore
+	PlatformMode bool // Explicit flag to enable platform auth enforcement
 }
 
 // RequireAuth loads and validates auth from the token store.
 // Returns an EntitlementChecker on success.
-// In legacy mode (TokenStore is nil), returns (nil, nil) - no auth required.
+// In legacy mode (PlatformMode=false), returns (nil, nil) - no auth required.
 func (d AuthDependencies) RequireAuth() (*auth.EntitlementChecker, error) {
-	if d.TokenStore == nil {
+	if !d.PlatformMode {
 		return nil, nil // Legacy mode - no platform auth configured
+	}
+
+	if d.TokenStore == nil {
+		return nil, fmt.Errorf("platform mode enabled but token store not configured")
 	}
 
 	stored, err := d.TokenStore.Load()

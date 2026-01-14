@@ -190,9 +190,9 @@ func TestEntitlementError(t *testing.T) {
 func validAuth() *auth.StoredAuth {
 	return &auth.StoredAuth{
 		User: auth.UserInfo{
-			ID:       "user-123",
+			ID:          "user-123",
 			GitHubLogin: "testuser",
-			Email:    "test@example.com",
+			Email:       "test@example.com",
 		},
 		TenantID:     "tenant-123",
 		ExpiresAt:    time.Now().Add(1 * time.Hour),
@@ -204,9 +204,9 @@ func validAuth() *auth.StoredAuth {
 func expiredAuth() *auth.StoredAuth {
 	return &auth.StoredAuth{
 		User: auth.UserInfo{
-			ID:       "user-123",
+			ID:          "user-123",
 			GitHubLogin: "testuser",
-			Email:    "test@example.com",
+			Email:       "test@example.com",
 		},
 		TenantID:     "tenant-123",
 		ExpiresAt:    time.Now().Add(-1 * time.Hour), // Expired
@@ -218,9 +218,9 @@ func expiredAuth() *auth.StoredAuth {
 func authWith(entitlements []string) *auth.StoredAuth {
 	return &auth.StoredAuth{
 		User: auth.UserInfo{
-			ID:       "user-123",
+			ID:          "user-123",
 			GitHubLogin: "testuser",
-			Email:    "test@example.com",
+			Email:       "test@example.com",
 		},
 		TenantID:     "tenant-123",
 		ExpiresAt:    time.Now().Add(1 * time.Hour),

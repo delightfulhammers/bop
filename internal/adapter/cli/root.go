@@ -208,14 +208,12 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Auth check for platform mode
-			if authDeps.TokenStore != nil {
-				checker, err := authDeps.RequireAuth()
-				if err != nil {
-					return err
-				}
-				if checker != nil && !checker.CanReviewCode() {
-					return fmt.Errorf("code review not available on your plan")
-				}
+			checker, err := authDeps.RequireAuth()
+			if err != nil {
+				return err
+			}
+			if checker != nil && !checker.CanReviewCode() {
+				return fmt.Errorf("code review not available on your plan")
 			}
 
 			if len(args) > 0 {

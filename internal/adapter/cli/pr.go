@@ -63,14 +63,12 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Auth check for platform mode
-			if authDeps.TokenStore != nil {
-				checker, err := authDeps.RequireAuth()
-				if err != nil {
-					return err
-				}
-				if checker != nil && !checker.CanReviewCode() {
-					return fmt.Errorf("code review not available on your plan")
-				}
+			checker, err := authDeps.RequireAuth()
+			if err != nil {
+				return err
+			}
+			if checker != nil && !checker.CanReviewCode() {
+				return fmt.Errorf("code review not available on your plan")
 			}
 
 			identifier := args[0]

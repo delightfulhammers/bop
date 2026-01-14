@@ -15,12 +15,25 @@ import (
 func TestAuthDependencies_RequireAuth(t *testing.T) {
 	t.Run("legacy mode returns nil checker and nil error", func(t *testing.T) {
 		deps := AuthDependencies{
-			TokenStore: nil, // Legacy mode - no token store
+			PlatformMode: false, // Explicit legacy mode
+			TokenStore:   nil,
 		}
 
 		checker, err := deps.RequireAuth()
 		assert.NoError(t, err)
 		assert.Nil(t, checker)
+	})
+
+	t.Run("platform mode with nil token store returns error", func(t *testing.T) {
+		deps := AuthDependencies{
+			PlatformMode: true,
+			TokenStore:   nil, // Misconfigured - should error
+		}
+
+		checker, err := deps.RequireAuth()
+		require.Error(t, err)
+		assert.Nil(t, checker)
+		assert.Contains(t, err.Error(), "token store not configured")
 	})
 
 	t.Run("not logged in returns error", func(t *testing.T) {
@@ -29,7 +42,8 @@ func TestAuthDependencies_RequireAuth(t *testing.T) {
 		tokenStore := auth.NewTokenStoreAt(filepath.Join(tmpDir, "auth.json"))
 
 		deps := AuthDependencies{
-			TokenStore: tokenStore,
+			PlatformMode: true,
+			TokenStore:   tokenStore,
 		}
 
 		checker, err := deps.RequireAuth()
@@ -61,7 +75,8 @@ func TestAuthDependencies_RequireAuth(t *testing.T) {
 		require.NoError(t, tokenStore.Save(expiredAuth))
 
 		deps := AuthDependencies{
-			TokenStore: tokenStore,
+			PlatformMode: true,
+			TokenStore:   tokenStore,
 		}
 
 		checker, err := deps.RequireAuth()
@@ -94,7 +109,8 @@ func TestAuthDependencies_RequireAuth(t *testing.T) {
 		require.NoError(t, tokenStore.Save(validAuth))
 
 		deps := AuthDependencies{
-			TokenStore: tokenStore,
+			PlatformMode: true,
+			TokenStore:   tokenStore,
 		}
 
 		checker, err := deps.RequireAuth()
@@ -127,7 +143,8 @@ func TestAuthDependencies_RequireAuth(t *testing.T) {
 		require.NoError(t, tokenStore.Save(validAuth))
 
 		deps := AuthDependencies{
-			TokenStore: tokenStore,
+			PlatformMode: true,
+			TokenStore:   tokenStore,
 		}
 
 		checker, err := deps.RequireAuth()
@@ -149,7 +166,8 @@ func TestAuthDependencies_RequireAuth(t *testing.T) {
 		tokenStore := auth.NewTokenStoreAt(authFile)
 
 		deps := AuthDependencies{
-			TokenStore: tokenStore,
+			PlatformMode: true,
+			TokenStore:   tokenStore,
 		}
 
 		checker, err := deps.RequireAuth()
