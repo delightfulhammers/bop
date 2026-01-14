@@ -77,8 +77,9 @@ func run() error {
 		DiffReader:          gitEngine,
 		SuggestionExtractor: suggestionExtractor,
 		// Write operations
-		CommentWriter: githubClient,
-		ReviewManager: reviewManager,
+		CommentWriter:      githubClient,
+		IssueCommentWriter: githubClient, // Required for replying to out-of-diff findings
+		ReviewManager:      reviewManager,
 	})
 
 	// Create legacy session-based service (for M3 write tools, currently unused).
