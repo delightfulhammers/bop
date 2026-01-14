@@ -4,34 +4,54 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 )
 
 // DeviceFlowErrors for different failure modes.
 var (
-	ErrDeviceCodeExpired       = errors.New("device code expired - please try again")
-	ErrAccessDenied            = errors.New("authorization denied by user")
-	ErrFlowCanceled            = errors.New("device flow canceled")
-	ErrInvalidVerificationURI  = errors.New("invalid verification URI from auth service")
+	ErrDeviceCodeExpired      = errors.New("device code expired - please try again")
+	ErrAccessDenied           = errors.New("authorization denied by user")
+	ErrFlowCanceled           = errors.New("device flow canceled")
+	ErrInvalidVerificationURI = errors.New("invalid verification URI from auth service")
 )
 
-// allowedVerificationURIPrefixes defines the trusted domains for device flow verification.
+// allowedVerificationPaths defines the trusted URL paths for device flow verification.
 // This prevents phishing attacks where a compromised auth-service could direct users
 // to malicious sites.
-var allowedVerificationURIPrefixes = []string{
-	"https://github.com/login/device",
-	"https://github.com/login/oauth/authorize",
+var allowedVerificationPaths = []string{
+	"/login/device",
+	"/login/oauth/authorize",
 }
 
 // validateVerificationURI checks that the verification URI is from a trusted domain.
+// Uses url.Parse to prevent path traversal attacks (e.g., /login/device/../../../evil.com).
 func validateVerificationURI(uri string) error {
-	for _, prefix := range allowedVerificationURIPrefixes {
-		if strings.HasPrefix(uri, prefix) {
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("%w: parse error: %s", ErrInvalidVerificationURI, uri)
+	}
+
+	// Validate scheme
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("%w: must use https: %s", ErrInvalidVerificationURI, uri)
+	}
+
+	// Validate host (exact match, no subdomains)
+	if parsed.Host != "github.com" {
+		return fmt.Errorf("%w: untrusted host: %s", ErrInvalidVerificationURI, uri)
+	}
+
+	// Validate path starts with an allowed prefix
+	// path.Clean is already applied by url.Parse, preventing traversal
+	for _, allowedPath := range allowedVerificationPaths {
+		if strings.HasPrefix(parsed.Path, allowedPath) {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: %s", ErrInvalidVerificationURI, uri)
+
+	return fmt.Errorf("%w: untrusted path: %s", ErrInvalidVerificationURI, uri)
 }
 
 // DeviceFlowCallbacks receives notifications during the device flow.

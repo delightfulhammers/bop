@@ -98,11 +98,11 @@ func outputStatusText(out interface{ Write([]byte) (int, error) }, stored *auth.
 
 // statusJSON is the JSON output structure for auth status.
 type statusJSON struct {
-	LoggedIn     bool            `json:"logged_in"`
-	User         *statusUserJSON `json:"user,omitempty"`
-	TenantID     string          `json:"tenant_id,omitempty"`
-	Plan         string          `json:"plan,omitempty"`
-	Entitlements []string        `json:"entitlements,omitempty"`
+	LoggedIn     bool             `json:"logged_in"`
+	User         *statusUserJSON  `json:"user,omitempty"`
+	TenantID     string           `json:"tenant_id,omitempty"`
+	Plan         string           `json:"plan,omitempty"`
+	Entitlements []string         `json:"entitlements,omitempty"`
 	Token        *statusTokenJSON `json:"token,omitempty"`
 }
 
