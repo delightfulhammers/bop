@@ -32,8 +32,12 @@ type ClientConfig struct {
 }
 
 // NewClient creates a new auth-service client.
-// Returns an error if the BaseURL is invalid or uses an unsupported scheme.
+// Returns an error if the BaseURL is invalid, uses an unsupported scheme, or ProductID is empty.
 func NewClient(cfg ClientConfig) (*Client, error) {
+	if cfg.ProductID == "" {
+		return nil, fmt.Errorf("ProductID is required")
+	}
+
 	baseURL, err := parseAndValidateBaseURL(cfg.BaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid auth service URL: %w", err)

@@ -129,7 +129,8 @@ func run() error {
 			if platformMode {
 				tokenStore, err = auth.NewTokenStore()
 				if err != nil {
-					log.Printf("warning: failed to initialize token store: %v", err)
+					log.Printf("warning: failed to initialize token store: %v - falling back to legacy mode", err)
+					platformMode = false
 				}
 			}
 		}
