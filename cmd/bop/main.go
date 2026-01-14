@@ -459,8 +459,9 @@ func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
 	}
 
 	return cli.AuthDependencies{
-		Client:     authClient,
-		TokenStore: tokenStore,
+		Client:       authClient,
+		TokenStore:   tokenStore,
+		PlatformMode: true,
 	}
 }
 
