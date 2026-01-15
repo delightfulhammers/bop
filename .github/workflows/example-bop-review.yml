@@ -1,0 +1,46 @@
+# Example workflow for bop code review using GitHub Actions OIDC
+#
+# This workflow demonstrates how to integrate bop AI code review into your PR workflow
+# using GitHub's OIDC token for secure, keyless authentication.
+#
+# Prerequisites:
+# 1. Enable OIDC in your GitHub Actions settings
+# 2. Configure your tenant's external_provider_login to match your GitHub org
+# 3. Set up the required secrets/variables in your repository
+#
+# To use this workflow in your own repository:
+# 1. Copy this file to .github/workflows/bop-review.yml
+# 2. Update the tenant-id with your tenant's UUID
+# 3. Update platform-url if using a custom platform deployment
+
+name: bop Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Required for OIDC token generation
+permissions:
+  id-token: write    # Required to get the OIDC token
+  contents: read     # Required to checkout code
+  pull-requests: write  # Required to post review comments
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    name: AI Code Review
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for diff comparison
+
+      - name: Run bop Review
+        uses: delightfulhammers/bop/.github/actions/bop-review@main
+        with:
+          platform-url: ${{ vars.BOP_PLATFORM_URL || 'https://api.delightfulhammers.com' }}
+          tenant-id: ${{ vars.BOP_TENANT_ID }}
+          base-ref: ${{ github.base_ref }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          post-findings: 'true'

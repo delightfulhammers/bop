@@ -1,0 +1,129 @@
+name: 'bop Code Review'
+description: 'AI-powered code review for pull requests using GitHub Actions OIDC authentication'
+
+inputs:
+  platform-url:
+    description: 'Platform auth service URL (e.g., https://api.delightfulhammers.com)'
+    required: true
+  tenant-id:
+    description: 'Tenant ID for authentication'
+    required: true
+  base-ref:
+    description: 'Base ref for diff comparison'
+    required: false
+    default: 'main'
+  github-token:
+    description: 'GitHub token for posting review comments'
+    required: false
+    default: ${{ github.token }}
+  post-findings:
+    description: 'Whether to post findings as PR comments (true/false)'
+    required: false
+    default: 'true'
+  bop-version:
+    description: 'bop version to install (e.g., v0.1.0, latest)'
+    required: false
+    default: 'latest'
+
+outputs:
+  findings-count:
+    description: 'Number of findings from the review'
+    value: ${{ steps.review.outputs.findings_count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get OIDC Token
+      id: get-oidc-token
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Request OIDC token with platform audience
+          const audience = 'api.delightfulhammers.com';
+          const token = await core.getIDToken(audience);
+          core.setSecret(token);
+          core.setOutput('token', token);
+
+    - name: Exchange for Platform Token
+      id: exchange-token
+      shell: bash
+      env:
+        PLATFORM_URL: ${{ inputs.platform-url }}
+        TENANT_ID: ${{ inputs.tenant-id }}
+        OIDC_TOKEN: ${{ steps.get-oidc-token.outputs.token }}
+      run: |
+        # Exchange GitHub OIDC token for platform access token
+        RESPONSE=$(curl -sf -X POST "${PLATFORM_URL}/auth/actions-oidc" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"product_id\": \"bop\",
+            \"tenant_id\": \"${TENANT_ID}\",
+            \"provider_type\": \"github\",
+            \"id_token\": \"${OIDC_TOKEN}\"
+          }")
+
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to exchange OIDC token for platform credentials"
+          exit 1
+        fi
+
+        ACCESS_TOKEN=$(echo "${RESPONSE}" | jq -r '.access_token')
+        if [ -z "${ACCESS_TOKEN}" ] || [ "${ACCESS_TOKEN}" = "null" ]; then
+          echo "::error::Invalid response from platform - no access token"
+          exit 1
+        fi
+
+        # Mask the token in logs
+        echo "::add-mask::${ACCESS_TOKEN}"
+        echo "access_token=${ACCESS_TOKEN}" >> "${GITHUB_OUTPUT}"
+
+    - name: Install bop
+      shell: bash
+      env:
+        BOP_VERSION: ${{ inputs.bop-version }}
+      run: |
+        # Install bop CLI
+        if [ "${BOP_VERSION}" = "latest" ]; then
+          echo "Installing latest bop..."
+          curl -sSfL https://raw.githubusercontent.com/delightfulhammers/bop/main/install.sh | sh
+        else
+          echo "Installing bop ${BOP_VERSION}..."
+          curl -sSfL https://raw.githubusercontent.com/delightfulhammers/bop/main/install.sh | sh -s -- -v "${BOP_VERSION}"
+        fi
+
+        # Add to PATH
+        echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+    - name: Run bop Review
+      id: review
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        BOP_ACCESS_TOKEN: ${{ steps.exchange-token.outputs.access_token }}
+        BASE_REF: ${{ inputs.base-ref }}
+        POST_FINDINGS: ${{ inputs.post-findings }}
+      run: |
+        # Determine review command flags
+        FLAGS="--base ${BASE_REF}"
+        if [ "${POST_FINDINGS}" = "true" ]; then
+          FLAGS="${FLAGS} --post"
+        fi
+
+        echo "Running: bop review branch ${FLAGS}"
+
+        # Run the review and capture output
+        OUTPUT=$(bop review branch ${FLAGS} 2>&1) || {
+          echo "::error::bop review failed"
+          echo "${OUTPUT}"
+          exit 1
+        }
+
+        echo "${OUTPUT}"
+
+        # Extract findings count from output (if available)
+        FINDINGS_COUNT=$(echo "${OUTPUT}" | grep -oP 'Found \K\d+(?= findings?)' || echo "0")
+        echo "findings_count=${FINDINGS_COUNT}" >> "${GITHUB_OUTPUT}"
+
+branding:
+  icon: 'code'
+  color: 'purple'
