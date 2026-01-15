@@ -117,6 +117,42 @@ type TriageContextFetcher interface {
 	FetchTriagedFindings(ctx context.Context, owner, repo string, prNumber int) *domain.TriagedFindingContext
 }
 
+// AnalyticsEmitter defines the outbound port for emitting analytics events.
+// Used to track product usage telemetry for reviews.
+type AnalyticsEmitter interface {
+	// EmitReviewStarted records the start of a code review.
+	EmitReviewStarted(ctx context.Context, data AnalyticsEventData)
+
+	// EmitReviewCompleted records successful completion of a code review.
+	EmitReviewCompleted(ctx context.Context, data AnalyticsEventData, result AnalyticsResult)
+
+	// EmitReviewFailed records a failed code review.
+	EmitReviewFailed(ctx context.Context, data AnalyticsEventData, errCode string)
+
+	// EmitFindingsPosted records posting findings to GitHub.
+	EmitFindingsPosted(ctx context.Context, data AnalyticsEventData, findingsCount int)
+}
+
+// AnalyticsEventData contains common fields for analytics events.
+type AnalyticsEventData struct {
+	TenantID   string // Platform tenant ID (required for analytics)
+	UserID     string // Platform user ID (optional)
+	SessionID  string
+	ClientType string // "cli", "mcp", "action"
+	Reviewers  []string
+	Provider   string
+	Repository string
+}
+
+// AnalyticsResult contains metrics from a completed review.
+type AnalyticsResult struct {
+	DiffLines     int
+	FilesReviewed int
+	FindingsCount int
+	DurationMs    int
+	PostedToGH    bool
+}
+
 // GitHubPostRequest contains all data needed to post a review to GitHub.
 type GitHubPostRequest struct {
 	Owner     string
@@ -265,6 +301,11 @@ type OrchestratorDeps struct {
 	// RemoteGitHubClient enables reviewing PRs without a local clone.
 	// Optional: only required for cr review pr command.
 	RemoteGitHubClient RemoteGitHubClient
+
+	// Week 15: Analytics emission
+	// Analytics emits usage telemetry events for product analytics.
+	// Optional: when nil, no analytics are emitted.
+	Analytics AnalyticsEmitter
 }
 
 // ProviderRequest describes the payload the LLM provider expects.
@@ -339,6 +380,19 @@ type BranchRequest struct {
 	// If empty, uses default reviewers from config.
 	// Can be set via --reviewers CLI flag.
 	Reviewers []string
+
+	// Week 15: Analytics context
+	// AnalyticsContext holds optional analytics data for telemetry emission.
+	// When nil or TenantID is empty, analytics are skipped.
+	AnalyticsContext *AnalyticsContext
+}
+
+// AnalyticsContext holds data needed for analytics emission.
+// This is populated from platform auth when available.
+type AnalyticsContext struct {
+	TenantID   string // Platform tenant ID (required for analytics)
+	UserID     string // Platform user ID (optional)
+	ClientType string // "cli", "mcp", "action"
 }
 
 // VerificationSettings holds configuration for the verification stage.
@@ -416,6 +470,120 @@ func (o *Orchestrator) validateDependencies() error {
 	return nil
 }
 
+// emitReviewStarted emits an analytics event for review start.
+// Safe to call when Analytics is nil or AnalyticsContext is missing.
+func (o *Orchestrator) emitReviewStarted(ctx context.Context, req BranchRequest) {
+	if o.deps.Analytics == nil || req.AnalyticsContext == nil || req.AnalyticsContext.TenantID == "" {
+		return
+	}
+	o.deps.Analytics.EmitReviewStarted(ctx, AnalyticsEventData{
+		TenantID:   req.AnalyticsContext.TenantID,
+		UserID:     req.AnalyticsContext.UserID,
+		ClientType: req.AnalyticsContext.ClientType,
+		Reviewers:  req.Reviewers,
+		Repository: req.Repository,
+	})
+}
+
+// emitReviewCompleted emits an analytics event for successful review completion.
+func (o *Orchestrator) emitReviewCompleted(
+	ctx context.Context,
+	req BranchRequest,
+	result Result,
+	diffLines int,
+	filesReviewed int,
+	durationMs int,
+) {
+	if o.deps.Analytics == nil || req.AnalyticsContext == nil || req.AnalyticsContext.TenantID == "" {
+		return
+	}
+
+	findingsCount := 0
+	if len(result.Reviews) > 0 {
+		findingsCount = len(result.Reviews[len(result.Reviews)-1].Findings) // Merged review is last
+	}
+
+	o.deps.Analytics.EmitReviewCompleted(ctx, AnalyticsEventData{
+		TenantID:   req.AnalyticsContext.TenantID,
+		UserID:     req.AnalyticsContext.UserID,
+		ClientType: req.AnalyticsContext.ClientType,
+		Reviewers:  req.Reviewers,
+		Repository: req.Repository,
+	}, AnalyticsResult{
+		DiffLines:     diffLines,
+		FilesReviewed: filesReviewed,
+		FindingsCount: findingsCount,
+		DurationMs:    durationMs,
+		PostedToGH:    result.GitHubResult != nil,
+	})
+}
+
+// emitReviewFailed emits an analytics event for review failure.
+func (o *Orchestrator) emitReviewFailed(ctx context.Context, req BranchRequest, err error) {
+	if o.deps.Analytics == nil || req.AnalyticsContext == nil || req.AnalyticsContext.TenantID == "" {
+		return
+	}
+
+	// Extract error code from error type
+	errCode := "unknown_error"
+	if errors.Is(err, context.Canceled) {
+		errCode = "cancelled"
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		errCode = "timeout"
+	} else if strings.Contains(err.Error(), "provider") {
+		errCode = "provider_error"
+	} else if strings.Contains(err.Error(), "validation") {
+		errCode = "validation_error"
+	}
+
+	o.deps.Analytics.EmitReviewFailed(ctx, AnalyticsEventData{
+		TenantID:   req.AnalyticsContext.TenantID,
+		UserID:     req.AnalyticsContext.UserID,
+		ClientType: req.AnalyticsContext.ClientType,
+		Reviewers:  req.Reviewers,
+		Repository: req.Repository,
+	}, errCode)
+}
+
+// emitFindingsPosted emits an analytics event for posting findings to GitHub.
+func (o *Orchestrator) emitFindingsPosted(ctx context.Context, req BranchRequest, findingsCount int) {
+	if o.deps.Analytics == nil || req.AnalyticsContext == nil || req.AnalyticsContext.TenantID == "" {
+		return
+	}
+	o.deps.Analytics.EmitFindingsPosted(ctx, AnalyticsEventData{
+		TenantID:   req.AnalyticsContext.TenantID,
+		UserID:     req.AnalyticsContext.UserID,
+		ClientType: req.AnalyticsContext.ClientType,
+		Reviewers:  req.Reviewers,
+		Repository: req.Repository,
+	}, findingsCount)
+}
+
+// countDiffLines calculates the total number of added and deleted lines from file patches.
+// This is used for analytics metrics.
+func countDiffLines(files []domain.FileDiff) int {
+	total := 0
+	for _, f := range files {
+		for _, line := range strings.Split(f.Patch, "\n") {
+			if len(line) == 0 {
+				continue
+			}
+			// Count lines starting with + or - (excluding header lines +++ and ---)
+			switch line[0] {
+			case '+':
+				if !strings.HasPrefix(line, "+++") {
+					total++
+				}
+			case '-':
+				if !strings.HasPrefix(line, "---") {
+					total++
+				}
+			}
+		}
+	}
+	return total
+}
+
 // writeOutputArtifacts writes markdown, JSON, and SARIF output files if writers are configured.
 // Returns the paths (empty strings if writer is nil or OutputDir is empty).
 func (o *Orchestrator) writeOutputArtifacts(
@@ -485,7 +653,20 @@ type outputRequest struct {
 }
 
 // ReviewBranch executes a multi-provider review for a Git branch diff.
-func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Result, error) {
+func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (result Result, retErr error) {
+	// Start timing for analytics
+	startTime := time.Now()
+
+	// Emit review started (safe to call with nil analytics or missing context)
+	o.emitReviewStarted(ctx, req)
+
+	// Defer analytics emit on return - emits completed on success, failed on error
+	defer func() {
+		if retErr != nil {
+			o.emitReviewFailed(ctx, req, retErr)
+		}
+	}()
+
 	if err := o.validateDependencies(); err != nil {
 		return Result{}, err
 	}
@@ -1040,13 +1221,26 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (Res
 			len(reviews), findingsCount, totalCost)
 	}
 
-	return Result{
+	// Emit analytics for successful completion
+	result = Result{
 		MarkdownPaths: markdownPaths,
 		JSONPaths:     jsonPaths,
 		SARIFPaths:    sarifPaths,
 		Reviews:       append(reviews, mergedReview),
 		GitHubResult:  githubResult,
-	}, nil
+	}
+
+	// Calculate diff stats for analytics
+	diffLines := countDiffLines(diff.Files)
+
+	o.emitReviewCompleted(ctx, req, result, diffLines, len(diff.Files), int(time.Since(startTime).Milliseconds()))
+
+	// Emit findings posted event if we posted to GitHub
+	if githubResult != nil && githubResult.CommentsPosted > 0 {
+		o.emitFindingsPosted(ctx, req, githubResult.CommentsPosted)
+	}
+
+	return result, nil
 }
 
 // CurrentBranch returns the checked-out branch name.
@@ -1060,7 +1254,20 @@ func (o *Orchestrator) CurrentBranch(ctx context.Context) (string, error) {
 // ReviewBranchWithDiff executes a multi-provider review with a pre-computed diff and context.
 // This is the core review logic shared between ReviewBranch (local) and ReviewPR (remote).
 // The diff and projectContext must be pre-computed by the caller.
-func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchRequest, diff domain.Diff, projectContext ProjectContext) (Result, error) {
+func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchRequest, diff domain.Diff, projectContext ProjectContext) (result Result, retErr error) {
+	// Start timing for analytics
+	startTime := time.Now()
+
+	// Emit review started (safe to call with nil analytics or missing context)
+	o.emitReviewStarted(ctx, req)
+
+	// Defer analytics emit on return - emits failed on error
+	defer func() {
+		if retErr != nil {
+			o.emitReviewFailed(ctx, req, retErr)
+		}
+	}()
+
 	// Validate core dependencies (subset of validateDependencies - we don't require Git or DiffComputer)
 	if len(o.deps.Providers) == 0 {
 		return Result{}, errors.New("at least one provider is required")
@@ -1509,13 +1716,26 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 			len(reviews), findingsCount, totalCost)
 	}
 
-	return Result{
+	// Emit analytics for successful completion
+	result = Result{
 		MarkdownPaths: markdownPaths,
 		JSONPaths:     jsonPaths,
 		SARIFPaths:    sarifPaths,
 		Reviews:       append(reviews, mergedReview),
 		GitHubResult:  githubResult,
-	}, nil
+	}
+
+	// Calculate diff stats for analytics
+	diffLines := countDiffLines(diff.Files)
+
+	o.emitReviewCompleted(ctx, req, result, diffLines, len(diff.Files), int(time.Since(startTime).Milliseconds()))
+
+	// Emit findings posted event if we posted to GitHub
+	if githubResult != nil && githubResult.CommentsPosted > 0 {
+		o.emitFindingsPosted(ctx, req, githubResult.CommentsPosted)
+	}
+
+	return result, nil
 }
 
 func validateRequest(req BranchRequest) error {

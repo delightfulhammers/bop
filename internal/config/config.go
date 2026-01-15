@@ -28,6 +28,10 @@ type Config struct {
 	// Auth configures authentication with the Delightful Hammers platform.
 	Auth AuthConfig `yaml:"auth"`
 
+	// Week 15: Platform Analytics
+	// Analytics configures usage telemetry emission to the platform analytics service.
+	Analytics AnalyticsConfig `yaml:"analytics"`
+
 	// Phase 3.2: Reviewer Personas
 	// Reviewers configures the reviewer personas for code review.
 	// Each reviewer represents a specialized perspective (e.g., security expert, maintainability focused).
@@ -260,6 +264,24 @@ func (c AuthConfig) IsLegacyMode() bool {
 	return c.Mode == "" || strings.EqualFold(c.Mode, "legacy")
 }
 
+// AnalyticsConfig configures usage telemetry emission to the platform analytics service.
+// When enabled, bop emits usage events (review started, completed, failed) to track
+// product usage and help improve the service.
+type AnalyticsConfig struct {
+	// Enabled toggles analytics emission.
+	// Default: false (opt-in). Use pointer to distinguish unset from explicit false.
+	Enabled *bool `yaml:"enabled,omitempty"`
+
+	// ServiceURL is the analytics service endpoint.
+	// Example: "https://analytics.delightfulhammers.com"
+	// Required when enabled is true.
+	ServiceURL string `yaml:"serviceUrl"`
+
+	// ServiceKey is an optional service-level API key for analytics.
+	// If not set, auth tokens from platform auth are used.
+	ServiceKey string `yaml:"serviceKey"`
+}
+
 // ObservabilityConfig configures logging, metrics, and cost tracking.
 type ObservabilityConfig struct {
 	Logging LoggingConfig `yaml:"logging"`
@@ -445,6 +467,7 @@ func merge(base, overlay Config) Config {
 	result.Planning = choosePlanning(base.Planning, overlay.Planning)
 	result.Store = chooseStore(base.Store, overlay.Store)
 	result.Auth = chooseAuth(base.Auth, overlay.Auth)
+	result.Analytics = chooseAnalytics(base.Analytics, overlay.Analytics)
 	result.Observability = chooseObservability(base.Observability, overlay.Observability)
 	result.Review = chooseReview(base.Review, overlay.Review)
 	result.Verification = chooseVerification(base.Verification, overlay.Verification)
@@ -578,6 +601,27 @@ func chooseAuth(base, overlay AuthConfig) AuthConfig {
 	// ProductID: overlay wins if non-empty
 	if overlay.ProductID != "" {
 		result.ProductID = overlay.ProductID
+	}
+
+	return result
+}
+
+func chooseAnalytics(base, overlay AnalyticsConfig) AnalyticsConfig {
+	result := base
+
+	// Enabled: overlay wins if explicitly set (pointer non-nil)
+	if overlay.Enabled != nil {
+		result.Enabled = overlay.Enabled
+	}
+
+	// ServiceURL: overlay wins if non-empty
+	if overlay.ServiceURL != "" {
+		result.ServiceURL = overlay.ServiceURL
+	}
+
+	// ServiceKey: overlay wins if non-empty
+	if overlay.ServiceKey != "" {
+		result.ServiceKey = overlay.ServiceKey
 	}
 
 	return result

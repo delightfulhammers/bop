@@ -2,6 +2,7 @@
 /reviews
 /bop
 /bop-mcp
+/bin/
 /out/**
 /~
 /review-output
@@ -11,3 +12,7 @@
 *.sqlite
 *.sqlite3
 **/.env
+
+# Go workspace (local development only)
+go.work
+go.work.sum

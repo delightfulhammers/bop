@@ -128,6 +128,12 @@ type ServerDeps struct {
 	// PlatformMode indicates if platform authentication is enabled.
 	// When true and auth is invalid, tools may return auth errors.
 	PlatformMode bool
+
+	// === Analytics (Week 15) ===
+
+	// Analytics emits usage telemetry for product analytics.
+	// Optional: when nil, no analytics are emitted.
+	Analytics review.AnalyticsEmitter
 }
 
 // Server wraps the MCP server and provides triage tools.
