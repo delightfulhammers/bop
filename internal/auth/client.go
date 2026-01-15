@@ -296,6 +296,14 @@ type OIDCExchangeRequest struct {
 // ExchangeOIDCToken exchanges a GitHub Actions OIDC token for platform credentials.
 // This is used for machine-to-machine authentication from CI/CD pipelines.
 func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest) (*TokenResponse, error) {
+	// Validate required inputs
+	if req.TenantID == "" {
+		return nil, fmt.Errorf("tenant_id is required")
+	}
+	if req.IDToken == "" {
+		return nil, fmt.Errorf("id_token is required")
+	}
+
 	providerType := req.ProviderType
 	if providerType == "" {
 		providerType = "github"

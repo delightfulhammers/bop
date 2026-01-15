@@ -1,17 +1,24 @@
-# Example workflow for bop code review using GitHub Actions OIDC
+# =============================================================================
+# EXAMPLE WORKFLOW - Copy to your repository's .github/workflows/ directory
+# =============================================================================
 #
-# This workflow demonstrates how to integrate bop AI code review into your PR workflow
-# using GitHub's OIDC token for secure, keyless authentication.
+# This is a reference example showing how to integrate bop AI code review
+# into your PR workflow using GitHub's OIDC token for secure, keyless auth.
+#
+# This file is located in docs/examples/ and will NOT run automatically.
+# You must copy it to your repository to use it.
 #
 # Prerequisites:
 # 1. Enable OIDC in your GitHub Actions settings
 # 2. Configure your tenant's external_provider_login to match your GitHub org
-# 3. Set up the required secrets/variables in your repository
+# 3. Set up the required repository variables:
+#    - BOP_TENANT_ID: Your tenant's UUID
+#    - BOP_PLATFORM_URL: (optional) Custom platform URL
 #
-# To use this workflow in your own repository:
-# 1. Copy this file to .github/workflows/bop-review.yml
-# 2. Update the tenant-id with your tenant's UUID
-# 3. Update platform-url if using a custom platform deployment
+# To use this workflow:
+# 1. Copy this file to .github/workflows/bop-review.yml in your repository
+# 2. Set BOP_TENANT_ID in your repository variables
+# 3. Commit and push - reviews will run on new PRs
 
 name: bop Code Review
 

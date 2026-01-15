@@ -8,6 +8,10 @@ inputs:
   tenant-id:
     description: 'Tenant ID for authentication'
     required: true
+  oidc-audience:
+    description: 'OIDC token audience (defaults to hostname from platform-url)'
+    required: false
+    default: ''
   base-ref:
     description: 'Base ref for diff comparison'
     required: false
@@ -36,10 +40,18 @@ runs:
     - name: Get OIDC Token
       id: get-oidc-token
       uses: actions/github-script@v7
+      env:
+        PLATFORM_URL: ${{ inputs.platform-url }}
+        OIDC_AUDIENCE: ${{ inputs.oidc-audience }}
       with:
         script: |
-          // Request OIDC token with platform audience
-          const audience = 'api.delightfulhammers.com';
+          // Derive audience from platform-url if not explicitly set
+          let audience = process.env.OIDC_AUDIENCE;
+          if (!audience) {
+            const url = new URL(process.env.PLATFORM_URL);
+            audience = url.hostname;
+          }
+          core.info(`Requesting OIDC token with audience: ${audience}`);
           const token = await core.getIDToken(audience);
           core.setSecret(token);
           core.setOutput('token', token);
@@ -52,18 +64,36 @@ runs:
         TENANT_ID: ${{ inputs.tenant-id }}
         OIDC_TOKEN: ${{ steps.get-oidc-token.outputs.token }}
       run: |
-        # Exchange GitHub OIDC token for platform access token
-        RESPONSE=$(curl -sf -X POST "${PLATFORM_URL}/auth/actions-oidc" \
-          -H "Content-Type: application/json" \
-          -d "{
-            \"product_id\": \"bop\",
-            \"tenant_id\": \"${TENANT_ID}\",
-            \"provider_type\": \"github\",
-            \"id_token\": \"${OIDC_TOKEN}\"
-          }")
+        # Prevent command echoing to avoid leaking secrets
+        set +x
 
-        if [ $? -ne 0 ]; then
-          echo "::error::Failed to exchange OIDC token for platform credentials"
+        # Build JSON payload safely using jq
+        JSON_PAYLOAD=$(jq -n \
+          --arg tenant_id "${TENANT_ID}" \
+          --arg id_token "${OIDC_TOKEN}" \
+          '{
+            product_id: "bop",
+            tenant_id: $tenant_id,
+            provider_type: "github",
+            id_token: $id_token
+          }')
+
+        # Exchange GitHub OIDC token for platform access token
+        # Use -s (silent) to prevent request details in error output
+        # Use --max-time to prevent hanging on unresponsive server
+        HTTP_CODE=$(curl -s -o response.json -w "%{http_code}" \
+          --max-time 30 \
+          -X POST "${PLATFORM_URL}/auth/actions-oidc" \
+          -H "Content-Type: application/json" \
+          -d "${JSON_PAYLOAD}")
+
+        # Mask response immediately to prevent token leakage
+        RESPONSE=$(cat response.json)
+        echo "::add-mask::${RESPONSE}"
+        rm -f response.json
+
+        if [ "${HTTP_CODE}" != "200" ]; then
+          echo "::error::Failed to exchange OIDC token (HTTP ${HTTP_CODE})"
           exit 1
         fi
 
