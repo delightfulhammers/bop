@@ -269,8 +269,8 @@ func (c AuthConfig) IsLegacyMode() bool {
 // product usage and help improve the service.
 type AnalyticsConfig struct {
 	// Enabled toggles analytics emission.
-	// Default: false (opt-in)
-	Enabled bool `yaml:"enabled"`
+	// Default: false (opt-in). Use pointer to distinguish unset from explicit false.
+	Enabled *bool `yaml:"enabled,omitempty"`
 
 	// ServiceURL is the analytics service endpoint.
 	// Example: "https://analytics.delightfulhammers.com"
@@ -609,8 +609,8 @@ func chooseAuth(base, overlay AuthConfig) AuthConfig {
 func chooseAnalytics(base, overlay AnalyticsConfig) AnalyticsConfig {
 	result := base
 
-	// Enabled: overlay wins if set to true (explicit opt-in)
-	if overlay.Enabled {
+	// Enabled: overlay wins if explicitly set (pointer non-nil)
+	if overlay.Enabled != nil {
 		result.Enabled = overlay.Enabled
 	}
 

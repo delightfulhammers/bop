@@ -215,8 +215,8 @@ func defaultConfigPaths() []string {
 // Returns a NopEmitter if analytics is disabled or configuration is incomplete.
 // This enables graceful degradation: analytics won't be emitted if not configured.
 func buildAnalyticsEmitter(cfg config.AnalyticsConfig) review.AnalyticsEmitter {
-	// Skip analytics setup if disabled
-	if !cfg.Enabled {
+	// Skip analytics setup if disabled (nil or explicit false)
+	if cfg.Enabled == nil || !*cfg.Enabled {
 		return analyticsAdapter{emitter: analytics.NopEmitter{}}
 	}
 
@@ -266,7 +266,9 @@ func toAnalyticsEventData(data review.AnalyticsEventData) (analytics.ReviewEvent
 	var userID *uuid.UUID
 	if data.UserID != "" {
 		parsed, err := uuid.Parse(data.UserID)
-		if err == nil && parsed != uuid.Nil {
+		if err != nil {
+			log.Printf("[WARN] Invalid UserID format for analytics: %s", data.UserID)
+		} else if parsed != uuid.Nil {
 			userID = &parsed
 		}
 	}

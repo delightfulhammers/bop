@@ -5,6 +5,7 @@ package analytics
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -196,14 +197,7 @@ func (e *BopEmitter) buildEvent(data ReviewEventData, featureName string) *analy
 
 // joinReviewers concatenates reviewer names for the properties map.
 func joinReviewers(reviewers []string) string {
-	if len(reviewers) == 0 {
-		return ""
-	}
-	result := reviewers[0]
-	for i := 1; i < len(reviewers); i++ {
-		result += "," + reviewers[i]
-	}
-	return result
+	return strings.Join(reviewers, ",")
 }
 
 // NopEmitter is an Emitter that does nothing.
