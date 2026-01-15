@@ -5,7 +5,7 @@ go 1.25.1
 replace github.com/delightfulhammers/platform => ../platform
 
 require (
-	github.com/delightfulhammers/platform v0.0.0
+	github.com/delightfulhammers/platform v0.0.0-00010101000000-000000000000
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/google/uuid v1.6.0
 	github.com/magefile/mage v1.15.0

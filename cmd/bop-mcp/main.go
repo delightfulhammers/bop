@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/delightfulhammers/bop/internal/adapter/analytics"
+	"github.com/delightfulhammers/bop/internal/adapter/feedback"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	"github.com/delightfulhammers/bop/internal/adapter/github"
 	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
@@ -142,6 +143,16 @@ func run() error {
 		}
 	}
 
+	// Create feedback client if platform mode is enabled (Week 15)
+	var feedbackClient *feedback.Client
+	if platformMode && tokenStore != nil && cfg.Auth.ServiceURL != "" {
+		feedbackClient = feedback.NewClient(
+			cfg.Auth.ServiceURL,
+			tokenStore,
+			feedback.WithVersion(version.Value()),
+		)
+	}
+
 	// Create provider factory - builds direct providers from environment variables
 	// and supports sampling fallback for zero-config usage.
 	providerFactory := provider.NewFactory(provider.FactoryOptions{
@@ -197,8 +208,9 @@ func run() error {
 		AuthClient:   authClient,
 		TokenStore:   tokenStore,
 		PlatformMode: platformMode,
-		// Week 15: Analytics
-		Analytics: analyticsEmitter,
+		// Week 15: Analytics and Feedback
+		Analytics:      analyticsEmitter,
+		FeedbackClient: feedbackClient,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).
