@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/delightfulhammers/bop/internal/adapter/analytics"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	"github.com/delightfulhammers/bop/internal/adapter/github"
 	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
@@ -18,6 +19,11 @@ import (
 	"github.com/delightfulhammers/bop/internal/usecase/merge"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/delightfulhammers/bop/internal/usecase/triage"
+	"github.com/delightfulhammers/bop/internal/version"
+	platformcontracts "github.com/delightfulhammers/platform/contracts/analytics"
+	platformanalytics "github.com/delightfulhammers/platform/pkg/analytics"
+
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -153,6 +159,9 @@ func run() error {
 	basePromptBuilder := review.NewEnhancedPromptBuilder()
 	personaPromptBuilder := review.NewPersonaPromptBuilder(basePromptBuilder)
 
+	// Build analytics emitter for usage telemetry (Week 15)
+	analyticsEmitter := buildAnalyticsEmitter(cfg.Analytics)
+
 	// Create branch/PR reviewer if direct providers are available.
 	// If not available, the server will fall back to per-request creation using
 	// the factory (which may use sampling if the client supports it).
@@ -166,6 +175,7 @@ func run() error {
 			ReviewerRegistry:     reviewerRegistry,
 			PersonaPromptBuilder: personaPromptBuilder,
 			SeedGenerator:        determinism.GenerateSeed,
+			Analytics:            analyticsEmitter,
 		})
 		branchReviewer = orchestrator
 		prReviewer = orchestrator
@@ -187,6 +197,8 @@ func run() error {
 		AuthClient:   authClient,
 		TokenStore:   tokenStore,
 		PlatformMode: platformMode,
+		// Week 15: Analytics
+		Analytics: analyticsEmitter,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).
@@ -198,3 +210,128 @@ func defaultConfigPaths() []string {
 	home, _ := os.UserHomeDir()
 	return []string{".", home + "/.config/bop"}
 }
+
+// buildAnalyticsEmitter creates an analytics emitter based on configuration.
+// Returns a NopEmitter if analytics is disabled or configuration is incomplete.
+// This enables graceful degradation: analytics won't be emitted if not configured.
+func buildAnalyticsEmitter(cfg config.AnalyticsConfig) review.AnalyticsEmitter {
+	// Skip analytics setup if disabled
+	if !cfg.Enabled {
+		return analyticsAdapter{emitter: analytics.NopEmitter{}}
+	}
+
+	// Analytics requires a service URL
+	if cfg.ServiceURL == "" {
+		log.Println("[WARN] Analytics enabled but analytics.serviceUrl not configured - analytics disabled")
+		return analyticsAdapter{emitter: analytics.NopEmitter{}}
+	}
+
+	// Create platform HTTP emitter
+	var opts []platformanalytics.EmitterOption
+
+	// Use service key if configured for service-to-service auth
+	if cfg.ServiceKey != "" {
+		opts = append(opts, platformanalytics.WithServiceAuth("bop", cfg.ServiceKey))
+	}
+
+	platformEmitter := platformanalytics.NewHTTPEmitter(cfg.ServiceURL, opts...)
+
+	// Wrap in bop-specific emitter with version info
+	emitter := analytics.NewEmitter(platformEmitter,
+		analytics.WithClientVersion(version.Value()),
+	)
+
+	return analyticsAdapter{emitter: emitter}
+}
+
+// analyticsAdapter bridges analytics.Emitter to review.AnalyticsEmitter.
+// This adapts the adapter package interface to the usecase interface,
+// handling string-to-UUID conversion for TenantID and UserID.
+type analyticsAdapter struct {
+	emitter analytics.Emitter
+}
+
+// toAnalyticsEventData converts review.AnalyticsEventData to analytics.ReviewEventData.
+// Returns the converted data and whether the conversion was successful.
+// If TenantID is invalid, returns empty data (analytics will be skipped).
+func toAnalyticsEventData(data review.AnalyticsEventData) (analytics.ReviewEventData, bool) {
+	// Parse TenantID (required)
+	tenantID, err := uuid.Parse(data.TenantID)
+	if err != nil || tenantID == uuid.Nil {
+		// Invalid or missing TenantID - skip analytics
+		return analytics.ReviewEventData{}, false
+	}
+
+	// Parse UserID (optional)
+	var userID *uuid.UUID
+	if data.UserID != "" {
+		parsed, err := uuid.Parse(data.UserID)
+		if err == nil && parsed != uuid.Nil {
+			userID = &parsed
+		}
+	}
+
+	// Map client type string to platform enum
+	var clientType platformcontracts.ClientType
+	switch data.ClientType {
+	case "cli":
+		clientType = platformcontracts.ClientTypeCLI
+	case "mcp":
+		clientType = platformcontracts.ClientTypeMCP
+	case "action":
+		clientType = platformcontracts.ClientTypeAction
+	default:
+		clientType = platformcontracts.ClientTypeMCP // Default to MCP for this entrypoint
+	}
+
+	return analytics.ReviewEventData{
+		TenantID:   tenantID,
+		UserID:     userID,
+		SessionID:  data.SessionID,
+		ClientType: clientType,
+		Reviewers:  data.Reviewers,
+		Provider:   data.Provider,
+		Repository: data.Repository,
+	}, true
+}
+
+func (a analyticsAdapter) EmitReviewStarted(ctx context.Context, data review.AnalyticsEventData) {
+	converted, ok := toAnalyticsEventData(data)
+	if !ok {
+		return // Skip analytics if TenantID is invalid
+	}
+	a.emitter.EmitReviewStarted(ctx, converted)
+}
+
+func (a analyticsAdapter) EmitReviewCompleted(ctx context.Context, data review.AnalyticsEventData, result review.AnalyticsResult) {
+	converted, ok := toAnalyticsEventData(data)
+	if !ok {
+		return
+	}
+	a.emitter.EmitReviewCompleted(ctx, converted, analytics.ReviewResult{
+		DiffLines:     result.DiffLines,
+		FilesReviewed: result.FilesReviewed,
+		FindingsCount: result.FindingsCount,
+		DurationMs:    result.DurationMs,
+		PostedToGH:    result.PostedToGH,
+	})
+}
+
+func (a analyticsAdapter) EmitReviewFailed(ctx context.Context, data review.AnalyticsEventData, errCode string) {
+	converted, ok := toAnalyticsEventData(data)
+	if !ok {
+		return
+	}
+	a.emitter.EmitReviewFailed(ctx, converted, errCode)
+}
+
+func (a analyticsAdapter) EmitFindingsPosted(ctx context.Context, data review.AnalyticsEventData, findingsCount int) {
+	converted, ok := toAnalyticsEventData(data)
+	if !ok {
+		return
+	}
+	a.emitter.EmitFindingsPosted(ctx, converted, findingsCount)
+}
+
+// Compile-time interface check for analytics adapter
+var _ review.AnalyticsEmitter = analyticsAdapter{}
