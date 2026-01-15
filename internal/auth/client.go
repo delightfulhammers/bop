@@ -281,6 +281,70 @@ func (c *Client) RevokeToken(ctx context.Context, tenantID, refreshToken string)
 	return nil
 }
 
+// OIDCExchangeRequest contains parameters for exchanging an OIDC token.
+type OIDCExchangeRequest struct {
+	// TenantID is the tenant to authenticate to (required).
+	TenantID string
+
+	// IDToken is the OIDC token from GitHub Actions (required).
+	IDToken string
+
+	// ProviderType identifies the OIDC provider (optional, defaults to "github").
+	ProviderType string
+}
+
+// ExchangeOIDCToken exchanges a GitHub Actions OIDC token for platform credentials.
+// This is used for machine-to-machine authentication from CI/CD pipelines.
+func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest) (*TokenResponse, error) {
+	// Validate required inputs
+	if req.TenantID == "" {
+		return nil, fmt.Errorf("tenant_id is required")
+	}
+	if req.IDToken == "" {
+		return nil, fmt.Errorf("id_token is required")
+	}
+
+	providerType := req.ProviderType
+	if providerType == "" {
+		providerType = "github"
+	}
+
+	reqBody := map[string]interface{}{
+		"product_id":    c.productID,
+		"tenant_id":     req.TenantID,
+		"provider_type": providerType,
+		"id_token":      req.IDToken,
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL("/auth/actions-oidc"), bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC exchange request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
+	}
+
+	var result TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // parseError parses an error response from the auth-service.
 // Limits response body to 4KB to prevent memory exhaustion from large error pages.
 func (c *Client) parseError(resp *http.Response) error {
