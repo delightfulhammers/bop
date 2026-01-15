@@ -72,6 +72,7 @@ type Dependencies struct {
 	FindingsPoster       FindingsPoster   // Optional: only required for cr post
 	SessionManager       SessionManager   // Optional: only required for cr sessions
 	AuthDeps             AuthDependencies // Optional: only required for bop auth commands
+	FeedbackClient       FeedbackClient   // Optional: only required for bop feedback commands
 	Args                 Arguments
 	DefaultOutput        string
 	DefaultRepo          string
@@ -127,6 +128,10 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	// Add auth commands if auth is configured (platform mode)
 	if deps.AuthDeps.TokenStore != nil {
 		root.AddCommand(NewAuthCommand(deps.AuthDeps))
+	}
+	// Add feedback commands if feedback client is configured
+	if deps.FeedbackClient != nil {
+		root.AddCommand(NewFeedbackCommand(deps.FeedbackClient, deps.AuthDeps))
 	}
 
 	var showVersion bool

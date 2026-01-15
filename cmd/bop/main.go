@@ -15,6 +15,7 @@ import (
 	"github.com/delightfulhammers/bop/internal/adapter/analytics"
 	"github.com/delightfulhammers/bop/internal/adapter/cli"
 	dedupadapter "github.com/delightfulhammers/bop/internal/adapter/dedup"
+	"github.com/delightfulhammers/bop/internal/adapter/feedback"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	githubadapter "github.com/delightfulhammers/bop/internal/adapter/github"
 	"github.com/delightfulhammers/bop/internal/adapter/llm/anthropic"
@@ -316,12 +317,16 @@ func run() error {
 	// Initialize auth components for platform authentication (Week 14)
 	authDeps := buildAuthDependencies(cfg.Auth)
 
+	// Initialize feedback client for platform feedback (Week 15)
+	feedbackClient := buildFeedbackClient(cfg.Auth, authDeps, version.Value())
+
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
 		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
 		FindingsPoster:      findingsPoster,
 		SessionManager:      sessionManager,
-		AuthDeps:            authDeps, // Week 14: Platform authentication
+		AuthDeps:            authDeps,       // Week 14: Platform authentication
+		FeedbackClient:      feedbackClient, // Week 15: Feedback
 		DefaultOutput:       cfg.Output.Directory,
 		DefaultRepo:         repoName,
 		DefaultInstructions: cfg.Review.Instructions,
@@ -503,6 +508,29 @@ func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
 		TokenStore:   tokenStore,
 		PlatformMode: true,
 	}
+}
+
+// buildFeedbackClient creates a feedback client based on auth configuration.
+// Returns nil if auth mode is "legacy" or auth dependencies are not fully configured.
+// This requires platform auth to be enabled since feedback requires authentication.
+func buildFeedbackClient(cfg config.AuthConfig, authDeps cli.AuthDependencies, version string) cli.FeedbackClient {
+	// Feedback requires platform auth mode
+	if !authDeps.PlatformMode || authDeps.TokenStore == nil {
+		return nil
+	}
+
+	// Feedback service URL defaults to auth service URL (same platform)
+	serviceURL := cfg.ServiceURL
+	if serviceURL == "" {
+		return nil
+	}
+
+	// Create the feedback client
+	return feedback.NewClient(
+		serviceURL,
+		authDeps.TokenStore,
+		feedback.WithVersion(version),
+	)
 }
 
 // buildObservability creates observability components based on configuration

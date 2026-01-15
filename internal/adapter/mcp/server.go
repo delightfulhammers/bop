@@ -134,6 +134,12 @@ type ServerDeps struct {
 	// Analytics emits usage telemetry for product analytics.
 	// Optional: when nil, no analytics are emitted.
 	Analytics review.AnalyticsEmitter
+
+	// === Feedback (Week 15) ===
+
+	// FeedbackClient submits user feedback to the platform.
+	// Optional: when nil, submit_feedback tool is not available.
+	FeedbackClient FeedbackClient
 }
 
 // Server wraps the MCP server and provides triage tools.
@@ -337,6 +343,11 @@ func (s *Server) registerTools() {
 	s.registerPostFindingsTool()
 	s.registerReviewBranchTool()
 	s.registerReviewFilesTool()
+
+	// Week 15: Feedback tool
+	if s.deps.FeedbackClient != nil {
+		s.registerSubmitFeedbackTool()
+	}
 }
 
 // Tool input/output types for M2 PR-based tools.
