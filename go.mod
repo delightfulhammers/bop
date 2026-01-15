@@ -2,7 +2,6 @@ module github.com/delightfulhammers/bop
 
 go 1.25.1
 
-// TODO: Remove this replace directive once platform is published to GitHub
 replace github.com/delightfulhammers/platform => ../platform
 
 require (

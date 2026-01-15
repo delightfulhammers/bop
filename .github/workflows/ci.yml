@@ -10,13 +10,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout bop
+        uses: actions/checkout@v4
+        with:
+          path: bop
+
+      - name: Checkout platform
+        uses: actions/checkout@v4
+        with:
+          repository: delightfulhammers/platform
+          path: platform
+          token: ${{ secrets.PLATFORM_ACCESS_TOKEN }}
+
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: bop/go.mod
+
       - name: Install dependencies
+        working-directory: bop
         run: go mod download
+
       - name: Format
+        working-directory: bop
         run: |
           fmt_output=$(gofmt -l .)
           if [ -n "$fmt_output" ]; then
@@ -24,7 +39,11 @@ jobs:
             echo "$fmt_output"
             exit 1
           fi
+
       - name: Vet
+        working-directory: bop
         run: go vet ./...
+
       - name: Test
+        working-directory: bop
         run: go test ./...
