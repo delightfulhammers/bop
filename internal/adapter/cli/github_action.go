@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +17,18 @@ import (
 	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
+
+// knownSeverities defines the valid severity levels for validation.
+var knownSeverities = map[string]int{
+	"critical": 4,
+	"high":     3,
+	"medium":   2,
+	"low":      1,
+	"none":     0,
+}
+
+// maxSummarySize is the maximum size for GITHUB_STEP_SUMMARY (GitHub limit is 1MB).
+const maxSummarySize = 900 * 1024 // 900KB to leave buffer
 
 // GitHubActionDeps holds dependencies for the github-action command.
 type GitHubActionDeps struct {
@@ -94,7 +108,15 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 	}
 
 	// Parse bop configuration from environment
-	cfg := parseActionConfig()
+	cfg, err := parseActionConfig()
+	if err != nil {
+		return fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Validate GITHUB_TOKEN is present when posting findings
+	if cfg.PostFindings && os.Getenv("GITHUB_TOKEN") == "" {
+		return errors.New("GITHUB_TOKEN is required when post-findings is enabled")
+	}
 
 	// Auth check for platform mode (if configured)
 	checker, err := deps.AuthDeps.RequireAuth()
@@ -107,25 +129,25 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 
 	// Build review request
 	req := review.BranchRequest{
-		BaseRef:              cfg.BaseRef,
-		TargetRef:            ghCtx.HeadRef,
-		OutputDir:            filepath.Join(os.TempDir(), "bop-review"),
-		Repository:           ghCtx.Repository,
-		IncludeUncommitted:   false,
-		PostToGitHub:         cfg.PostFindings,
-		GitHubOwner:          ghCtx.Owner,
-		GitHubRepo:           ghCtx.Repo,
-		PRNumber:             ghCtx.PRNumber,
-		CommitSHA:            ghCtx.PRSHA,
-		BotUsername:          "github-actions[bot]",
-		ActionOnCritical:     resolveBlockAction("critical", cfg.BlockThreshold),
-		ActionOnHigh:         resolveBlockAction("high", cfg.BlockThreshold),
-		ActionOnMedium:       resolveBlockAction("medium", cfg.BlockThreshold),
-		ActionOnLow:          resolveBlockAction("low", cfg.BlockThreshold),
-		ActionOnClean:        "approve",
-		ActionOnNonBlocking:  "comment",
+		BaseRef:               cfg.BaseRef,
+		TargetRef:             ghCtx.HeadRef,
+		OutputDir:             filepath.Join(os.TempDir(), "bop-review"),
+		Repository:            ghCtx.Repository,
+		IncludeUncommitted:    false,
+		PostToGitHub:          cfg.PostFindings,
+		GitHubOwner:           ghCtx.Owner,
+		GitHubRepo:            ghCtx.Repo,
+		PRNumber:              ghCtx.PRNumber,
+		CommitSHA:             ghCtx.PRSHA,
+		BotUsername:           "github-actions[bot]",
+		ActionOnCritical:      resolveBlockAction("critical", cfg.BlockThreshold),
+		ActionOnHigh:          resolveBlockAction("high", cfg.BlockThreshold),
+		ActionOnMedium:        resolveBlockAction("medium", cfg.BlockThreshold),
+		ActionOnLow:           resolveBlockAction("low", cfg.BlockThreshold),
+		ActionOnClean:         "approve",
+		ActionOnNonBlocking:   "comment",
 		AlwaysBlockCategories: cfg.AlwaysBlockCategories,
-		Reviewers:            cfg.Reviewers,
+		Reviewers:             cfg.Reviewers,
 	}
 
 	// Run the review
@@ -216,11 +238,17 @@ type actionConfig struct {
 }
 
 // parseActionConfig extracts bop configuration from BOP_* environment variables.
-func parseActionConfig() actionConfig {
+// Returns an error if required configuration values are invalid.
+func parseActionConfig() (actionConfig, error) {
+	threshold := strings.ToLower(getEnvOrDefault("BOP_BLOCK_THRESHOLD", "none"))
+	if _, ok := knownSeverities[threshold]; !ok {
+		return actionConfig{}, fmt.Errorf("invalid BOP_BLOCK_THRESHOLD %q; must be one of: critical, high, medium, low, none", threshold)
+	}
+
 	cfg := actionConfig{
 		BaseRef:        getEnvOrDefault("BOP_BASE_REF", "main"),
 		PostFindings:   getEnvBool("BOP_POST_FINDINGS", true),
-		BlockThreshold: getEnvOrDefault("BOP_BLOCK_THRESHOLD", "none"),
+		BlockThreshold: threshold,
 		FailOnFindings: getEnvBool("BOP_FAIL_ON_FINDINGS", false),
 	}
 
@@ -238,21 +266,17 @@ func parseActionConfig() actionConfig {
 		}
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 // resolveBlockAction determines the review action based on severity and threshold.
+// Unknown severities are treated as "low" level.
 func resolveBlockAction(severity, threshold string) string {
-	levels := map[string]int{
-		"critical": 4,
-		"high":     3,
-		"medium":   2,
-		"low":      1,
-		"none":     0,
+	sevLevel, ok := knownSeverities[strings.ToLower(severity)]
+	if !ok {
+		sevLevel = knownSeverities["low"] // Treat unknown as low
 	}
-
-	sevLevel := levels[strings.ToLower(severity)]
-	threshLevel := levels[strings.ToLower(threshold)]
+	threshLevel := knownSeverities[strings.ToLower(threshold)]
 
 	if sevLevel >= threshLevel && threshLevel > 0 {
 		return "request_changes"
@@ -261,15 +285,9 @@ func resolveBlockAction(severity, threshold string) string {
 }
 
 // shouldFailOnFindings determines if the action should fail based on findings.
+// Unknown severities are treated as "low" level.
 func shouldFailOnFindings(result review.Result, threshold string) bool {
-	levels := map[string]int{
-		"critical": 4,
-		"high":     3,
-		"medium":   2,
-		"low":      1,
-		"none":     0,
-	}
-	threshLevel := levels[strings.ToLower(threshold)]
+	threshLevel := knownSeverities[strings.ToLower(threshold)]
 	if threshLevel == 0 {
 		return false // "none" means never fail
 	}
@@ -277,7 +295,10 @@ func shouldFailOnFindings(result review.Result, threshold string) bool {
 	// Check if any finding exceeds threshold (across all reviews)
 	for _, r := range result.Reviews {
 		for _, finding := range r.Findings {
-			findingLevel := levels[strings.ToLower(finding.Severity)]
+			findingLevel, ok := knownSeverities[strings.ToLower(finding.Severity)]
+			if !ok {
+				findingLevel = knownSeverities["low"] // Treat unknown as low
+			}
 			if findingLevel >= threshLevel {
 				return true
 			}
@@ -294,7 +315,7 @@ func writeGitHubOutputs(result review.Result, reviewErr error) error {
 		allFindings = append(allFindings, r.Findings...)
 	}
 
-	// Count findings by severity
+	// Count findings by severity, normalizing unknown to "low"
 	counts := map[string]int{
 		"critical": 0,
 		"high":     0,
@@ -302,7 +323,13 @@ func writeGitHubOutputs(result review.Result, reviewErr error) error {
 		"low":      0,
 	}
 	for _, f := range allFindings {
-		counts[strings.ToLower(f.Severity)]++
+		sev := strings.ToLower(f.Severity)
+		if _, ok := knownSeverities[sev]; !ok || sev == "none" {
+			// Unknown severity - warn and count as low
+			fmt.Fprintf(os.Stderr, "::warning::Unknown severity %q in finding, counting as low\n", f.Severity)
+			sev = "low"
+		}
+		counts[sev]++
 	}
 	total := len(allFindings)
 
@@ -369,13 +396,21 @@ func writeOutputFile(path string, findings []domain.Finding, counts map[string]i
 	}
 
 	if reviewErr != nil {
-		lines = append(lines, fmt.Sprintf("error=%s", reviewErr.Error()))
+		// Sanitize error message: replace newlines with spaces to prevent output injection
+		sanitized := strings.ReplaceAll(reviewErr.Error(), "\n", " ")
+		sanitized = strings.ReplaceAll(sanitized, "\r", " ")
+		lines = append(lines, fmt.Sprintf("error=%s", sanitized))
 	}
 
-	// Write findings as JSON for downstream processing
+	// Write findings as JSON for downstream processing using heredoc with unique delimiter
 	if total > 0 {
-		findingsJSON, _ := json.Marshal(findings)
-		lines = append(lines, fmt.Sprintf("findings<<EOF\n%s\nEOF", string(findingsJSON)))
+		findingsJSON, marshalErr := json.Marshal(findings)
+		if marshalErr != nil {
+			fmt.Fprintf(os.Stderr, "::warning::Failed to marshal findings to JSON: %v\n", marshalErr)
+		} else {
+			delimiter := generateDelimiter()
+			lines = append(lines, fmt.Sprintf("findings<<%s\n%s\n%s", delimiter, string(findingsJSON), delimiter))
+		}
 	}
 
 	for _, line := range lines {
@@ -387,8 +422,60 @@ func writeOutputFile(path string, findings []domain.Finding, counts map[string]i
 	return writeErr
 }
 
+// generateDelimiter creates a unique delimiter for heredoc output to prevent injection.
+func generateDelimiter() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to a fixed delimiter if crypto/rand fails (shouldn't happen)
+		return "BOP_EOF_FALLBACK"
+	}
+	return "BOP_EOF_" + hex.EncodeToString(b)
+}
+
 // writeSummaryFile writes a markdown summary to the GITHUB_STEP_SUMMARY file.
+// Respects GitHub's size limit by truncating if necessary.
 func writeSummaryFile(path string, counts map[string]int, total int, reviewErr error) error {
+	// Build summary in memory first to check size
+	var sb strings.Builder
+
+	sb.WriteString("## bop Code Review\n\n")
+
+	if reviewErr != nil {
+		// Sanitize error for markdown (escape special chars, limit length)
+		errMsg := reviewErr.Error()
+		if len(errMsg) > 500 {
+			errMsg = errMsg[:500] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("> [!WARNING]\n> Review completed with errors: %s\n\n", errMsg))
+	}
+
+	if total == 0 {
+		sb.WriteString("No findings.\n")
+	} else {
+		sb.WriteString("| Severity | Count |\n")
+		sb.WriteString("|----------|-------|\n")
+		if counts["critical"] > 0 {
+			sb.WriteString(fmt.Sprintf("| Critical | %d |\n", counts["critical"]))
+		}
+		if counts["high"] > 0 {
+			sb.WriteString(fmt.Sprintf("| High | %d |\n", counts["high"]))
+		}
+		if counts["medium"] > 0 {
+			sb.WriteString(fmt.Sprintf("| Medium | %d |\n", counts["medium"]))
+		}
+		if counts["low"] > 0 {
+			sb.WriteString(fmt.Sprintf("| Low | %d |\n", counts["low"]))
+		}
+		sb.WriteString(fmt.Sprintf("| **Total** | **%d** |\n", total))
+	}
+
+	content := sb.String()
+
+	// Check size limit (GitHub has 1MB limit, we use 900KB for safety)
+	if len(content) > maxSummarySize {
+		content = content[:maxSummarySize-50] + "\n\n*Summary truncated due to size limits.*\n"
+	}
+
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("open GITHUB_STEP_SUMMARY: %w", err)
@@ -401,41 +488,9 @@ func writeSummaryFile(path string, counts map[string]int, total int, reviewErr e
 		}
 	}()
 
-	write := func(format string, args ...any) {
-		if writeErr != nil {
-			return
-		}
-		_, writeErr = fmt.Fprintf(f, format, args...)
-	}
-
-	write("## bop Code Review\n\n")
-
-	if reviewErr != nil {
-		write("> [!WARNING]\n> Review completed with errors: %s\n\n", reviewErr.Error())
-	}
-
-	if total == 0 {
-		write("No findings.\n")
-	} else {
-		write("| Severity | Count |\n")
-		write("|----------|-------|\n")
-		if counts["critical"] > 0 {
-			write("| Critical | %d |\n", counts["critical"])
-		}
-		if counts["high"] > 0 {
-			write("| High | %d |\n", counts["high"])
-		}
-		if counts["medium"] > 0 {
-			write("| Medium | %d |\n", counts["medium"])
-		}
-		if counts["low"] > 0 {
-			write("| Low | %d |\n", counts["low"])
-		}
-		write("| **Total** | **%d** |\n", total)
-	}
-
-	if writeErr != nil {
+	if _, writeErr = f.WriteString(content); writeErr != nil {
 		return fmt.Errorf("write to GITHUB_STEP_SUMMARY: %w", writeErr)
 	}
-	return nil
+
+	return writeErr
 }

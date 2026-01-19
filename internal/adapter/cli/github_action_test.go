@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -77,7 +78,7 @@ func TestParseActionConfig(t *testing.T) {
 		{
 			name: "block threshold high",
 			env: map[string]string{
-				"BOP_BLOCK_THRESHOLD": "high",
+				"BOP_BLOCK_THRESHOLD":  "high",
 				"BOP_FAIL_ON_FINDINGS": "true",
 			},
 			expected: actionConfig{
@@ -108,7 +109,10 @@ func TestParseActionConfig(t *testing.T) {
 			clearEnv(envVars)
 			setEnv(tt.env)
 
-			got := parseActionConfig()
+			got, err := parseActionConfig()
+			if err != nil {
+				t.Fatalf("parseActionConfig() error = %v", err)
+			}
 
 			if got.BaseRef != tt.expected.BaseRef {
 				t.Errorf("BaseRef = %q, want %q", got.BaseRef, tt.expected.BaseRef)
@@ -132,6 +136,24 @@ func TestParseActionConfig(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseActionConfig_InvalidThreshold(t *testing.T) {
+	envVars := []string{"BOP_BLOCK_THRESHOLD"}
+	restore := saveAndClearEnv(t, envVars)
+	defer restore()
+
+	setEnv(map[string]string{
+		"BOP_BLOCK_THRESHOLD": "hgh", // typo
+	})
+
+	_, err := parseActionConfig()
+	if err == nil {
+		t.Error("expected error for invalid threshold, got nil")
+	}
+	if !contains(err.Error(), "invalid BOP_BLOCK_THRESHOLD") {
+		t.Errorf("error should mention invalid threshold, got: %v", err)
 	}
 }
 
@@ -306,6 +328,97 @@ func TestWriteGitHubOutputs(t *testing.T) {
 	}
 	if !contains(summaryStr, "| **Total** | **5** |") {
 		t.Error("summary missing total")
+	}
+}
+
+func TestWriteGitHubOutputs_ErrorWithNewlines(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "output")
+
+	envVars := []string{"GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"}
+	restore := saveAndClearEnv(t, envVars)
+	defer restore()
+	setEnv(map[string]string{
+		"GITHUB_OUTPUT": outputFile,
+	})
+
+	result := review.Result{}
+	testErr := errors.New("error with\nnewline and\rcarriage return")
+
+	err := writeGitHubOutputs(result, testErr)
+	if err != nil {
+		t.Fatalf("writeGitHubOutputs() error = %v", err)
+	}
+
+	output, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	outputStr := string(output)
+
+	// Error should be sanitized - no newlines in the error= line
+	if contains(outputStr, "error=error with\n") {
+		t.Error("error output should not contain raw newlines")
+	}
+	if !contains(outputStr, "error=error with newline and carriage return") {
+		t.Error("error should be sanitized with spaces replacing newlines")
+	}
+}
+
+func TestWriteGitHubOutputs_UniqueDelimiter(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "output")
+
+	envVars := []string{"GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"}
+	restore := saveAndClearEnv(t, envVars)
+	defer restore()
+	setEnv(map[string]string{
+		"GITHUB_OUTPUT": outputFile,
+	})
+
+	result := review.Result{
+		Reviews: []domain.Review{
+			{
+				Findings: []domain.Finding{
+					{Severity: "high", Description: "Test finding with EOF in text"},
+				},
+			},
+		},
+	}
+
+	err := writeGitHubOutputs(result, nil)
+	if err != nil {
+		t.Fatalf("writeGitHubOutputs() error = %v", err)
+	}
+
+	output, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	outputStr := string(output)
+
+	// Should use a unique delimiter, not hardcoded "EOF"
+	if contains(outputStr, "findings<<EOF\n") {
+		t.Error("should use unique delimiter, not hardcoded EOF")
+	}
+	if !contains(outputStr, "findings<<BOP_EOF_") {
+		t.Error("should use BOP_EOF_ prefix for delimiter")
+	}
+}
+
+func TestGenerateDelimiter(t *testing.T) {
+	// Generate multiple delimiters and ensure they're unique
+	seen := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		d := generateDelimiter()
+		if seen[d] {
+			t.Errorf("generated duplicate delimiter: %s", d)
+		}
+		seen[d] = true
+
+		if !contains(d, "BOP_EOF_") {
+			t.Errorf("delimiter should start with BOP_EOF_, got: %s", d)
+		}
 	}
 }
 
