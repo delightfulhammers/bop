@@ -125,6 +125,13 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	if deps.SessionManager != nil {
 		root.AddCommand(SessionsCommand(deps.SessionManager))
 	}
+	// Add github-action command for GitHub Actions integration
+	if deps.BranchReviewer != nil {
+		root.AddCommand(NewGitHubActionCommand(GitHubActionDeps{
+			BranchReviewer: deps.BranchReviewer,
+			AuthDeps:       deps.AuthDeps,
+		}))
+	}
 	// Add auth commands if auth is configured (platform mode)
 	if deps.AuthDeps.TokenStore != nil {
 		root.AddCommand(NewAuthCommand(deps.AuthDeps))

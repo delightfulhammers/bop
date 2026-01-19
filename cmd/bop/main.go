@@ -82,9 +82,13 @@ func run() error {
 		return fmt.Errorf("config load failed: %w", err)
 	}
 
-	// Apply CLI log level override if provided
+	// Apply log level overrides: CLI flag takes precedence, then BOP_LOG_LEVEL env var
 	if cliLogLevel != "" {
 		cfg.Observability.Logging.Level = cliLogLevel
+	} else if envLogLevel := os.Getenv("BOP_LOG_LEVEL"); envLogLevel != "" {
+		if validated := validateLogLevel(envLogLevel); validated != "" {
+			cfg.Observability.Logging.Level = validated
+		}
 	}
 
 	repoDir := cfg.Git.RepositoryDir
