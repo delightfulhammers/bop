@@ -264,17 +264,11 @@ func parseActionConfig() (actionConfig, error) {
 	}
 
 	if reviewers := os.Getenv("BOP_REVIEWERS"); reviewers != "" {
-		cfg.Reviewers = strings.Split(reviewers, ",")
-		for i := range cfg.Reviewers {
-			cfg.Reviewers[i] = strings.TrimSpace(cfg.Reviewers[i])
-		}
+		cfg.Reviewers = splitAndFilter(reviewers)
 	}
 
 	if categories := os.Getenv("BOP_ALWAYS_BLOCK_CATEGORIES"); categories != "" {
-		cfg.AlwaysBlockCategories = strings.Split(categories, ",")
-		for i := range cfg.AlwaysBlockCategories {
-			cfg.AlwaysBlockCategories[i] = strings.TrimSpace(cfg.AlwaysBlockCategories[i])
-		}
+		cfg.AlwaysBlockCategories = splitAndFilter(categories)
 	}
 
 	return cfg, nil
@@ -382,6 +376,17 @@ func getEnvBool(key string, defaultValue bool) bool {
 		return defaultValue
 	}
 	return strings.EqualFold(v, "true") || v == "1"
+}
+
+// splitAndFilter splits a comma-separated string and filters out empty values.
+func splitAndFilter(s string) []string {
+	var result []string
+	for _, part := range strings.Split(s, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // writeOutputFile writes findings data to the GITHUB_OUTPUT file.

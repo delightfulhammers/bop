@@ -101,6 +101,32 @@ func TestParseActionConfig(t *testing.T) {
 				AlwaysBlockCategories: []string{"security", "bug"},
 			},
 		},
+		{
+			name: "reviewers with empty segments",
+			env: map[string]string{
+				"BOP_REVIEWERS": "security,,architecture, ,code-reviewer,",
+			},
+			expected: actionConfig{
+				BaseRef:        "main",
+				PostFindings:   true,
+				BlockThreshold: "none",
+				FailOnFindings: false,
+				Reviewers:      []string{"security", "architecture", "code-reviewer"},
+			},
+		},
+		{
+			name: "categories with empty segments",
+			env: map[string]string{
+				"BOP_ALWAYS_BLOCK_CATEGORIES": ",security, , bug,,",
+			},
+			expected: actionConfig{
+				BaseRef:               "main",
+				PostFindings:          true,
+				BlockThreshold:        "none",
+				FailOnFindings:        false,
+				AlwaysBlockCategories: []string{"security", "bug"},
+			},
+		},
 	}
 
 	for _, tt := range tests {
