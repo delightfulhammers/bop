@@ -331,6 +331,42 @@ func TestWriteGitHubOutputs(t *testing.T) {
 	}
 }
 
+func TestWriteGitHubOutputs_EmptyFindings(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "output")
+
+	envVars := []string{"GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"}
+	restore := saveAndClearEnv(t, envVars)
+	defer restore()
+	setEnv(map[string]string{
+		"GITHUB_OUTPUT": outputFile,
+	})
+
+	result := review.Result{} // No findings
+
+	err := writeGitHubOutputs(result, nil)
+	if err != nil {
+		t.Fatalf("writeGitHubOutputs() error = %v", err)
+	}
+
+	output, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	outputStr := string(output)
+
+	// Should still have findings output with empty array
+	if !contains(outputStr, "findings<<BOP_EOF_") {
+		t.Error("should output findings even when empty")
+	}
+	if !contains(outputStr, "[]") {
+		t.Error("empty findings should be []")
+	}
+	if !contains(outputStr, "findings-count=0") {
+		t.Error("findings-count should be 0")
+	}
+}
+
 func TestWriteGitHubOutputs_ErrorWithNewlines(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputFile := filepath.Join(tmpDir, "output")
@@ -410,7 +446,10 @@ func TestGenerateDelimiter(t *testing.T) {
 	// Generate multiple delimiters and ensure they're unique
 	seen := make(map[string]bool)
 	for i := 0; i < 100; i++ {
-		d := generateDelimiter()
+		d, err := generateDelimiter()
+		if err != nil {
+			t.Fatalf("generateDelimiter() error = %v", err)
+		}
 		if seen[d] {
 			t.Errorf("generated duplicate delimiter: %s", d)
 		}
@@ -419,6 +458,55 @@ func TestGenerateDelimiter(t *testing.T) {
 		if !contains(d, "BOP_EOF_") {
 			t.Errorf("delimiter should start with BOP_EOF_, got: %s", d)
 		}
+	}
+}
+
+func TestTruncateUTF8Safe(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		maxBytes int
+		expected string
+	}{
+		{
+			name:     "no truncation needed",
+			input:    "hello",
+			maxBytes: 10,
+			expected: "hello",
+		},
+		{
+			name:     "exact fit",
+			input:    "hello",
+			maxBytes: 5,
+			expected: "hello",
+		},
+		{
+			name:     "simple ASCII truncation",
+			input:    "hello world",
+			maxBytes: 5,
+			expected: "hello",
+		},
+		{
+			name:     "multi-byte char not split",
+			input:    "hello 世界", // 世 is 3 bytes, 界 is 3 bytes
+			maxBytes: 8,          // "hello " (6) + partial 世 would be invalid
+			expected: "hello ",   // Should stop before 世
+		},
+		{
+			name:     "emoji not split",
+			input:    "hi 👋 there",
+			maxBytes: 5, // "hi " (3) + partial emoji would be invalid
+			expected: "hi ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateUTF8Safe(tt.input, tt.maxBytes)
+			if got != tt.expected {
+				t.Errorf("truncateUTF8Safe(%q, %d) = %q, want %q", tt.input, tt.maxBytes, got, tt.expected)
+			}
+		})
 	}
 }
 

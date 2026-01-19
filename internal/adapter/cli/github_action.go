@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -127,11 +127,17 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 		return errors.New("code review not available on your plan")
 	}
 
+	// Create unique output directory to avoid collisions with concurrent jobs
+	outputDir, err := os.MkdirTemp("", "bop-review-*")
+	if err != nil {
+		return fmt.Errorf("create output directory: %w", err)
+	}
+
 	// Build review request
 	req := review.BranchRequest{
 		BaseRef:               cfg.BaseRef,
 		TargetRef:             ghCtx.HeadRef,
-		OutputDir:             filepath.Join(os.TempDir(), "bop-review"),
+		OutputDir:             outputDir,
 		Repository:            ghCtx.Repository,
 		IncludeUncommitted:    false,
 		PostToGitHub:          cfg.PostFindings,
@@ -403,15 +409,24 @@ func writeOutputFile(path string, findings []domain.Finding, counts map[string]i
 	}
 
 	// Write findings as JSON for downstream processing using heredoc with unique delimiter
-	if total > 0 {
-		findingsJSON, marshalErr := json.Marshal(findings)
+	// Always output findings (empty array when none) so downstream workflows can parse it
+	var findingsJSON []byte
+	if len(findings) == 0 {
+		findingsJSON = []byte("[]")
+	} else {
+		var marshalErr error
+		findingsJSON, marshalErr = json.Marshal(findings)
 		if marshalErr != nil {
 			fmt.Fprintf(os.Stderr, "::warning::Failed to marshal findings to JSON: %v\n", marshalErr)
-		} else {
-			delimiter := generateDelimiter()
-			lines = append(lines, fmt.Sprintf("findings<<%s\n%s\n%s", delimiter, string(findingsJSON), delimiter))
+			// Write empty array as fallback
+			findingsJSON = []byte("[]")
 		}
 	}
+	delimiter, delimErr := generateDelimiter()
+	if delimErr != nil {
+		return fmt.Errorf("generate output delimiter: %w", delimErr)
+	}
+	lines = append(lines, fmt.Sprintf("findings<<%s\n%s\n%s", delimiter, string(findingsJSON), delimiter))
 
 	for _, line := range lines {
 		if _, err := fmt.Fprintln(f, line); err != nil {
@@ -423,13 +438,26 @@ func writeOutputFile(path string, findings []domain.Finding, counts map[string]i
 }
 
 // generateDelimiter creates a unique delimiter for heredoc output to prevent injection.
-func generateDelimiter() string {
+// Returns an error if entropy source fails (fail-closed for security).
+func generateDelimiter() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to a fixed delimiter if crypto/rand fails (shouldn't happen)
-		return "BOP_EOF_FALLBACK"
+		return "", fmt.Errorf("failed to generate random delimiter: %w", err)
 	}
-	return "BOP_EOF_" + hex.EncodeToString(b)
+	return "BOP_EOF_" + hex.EncodeToString(b), nil
+}
+
+// truncateUTF8Safe truncates a string to at most maxBytes while preserving UTF-8 validity.
+// It ensures truncation happens at a character boundary, not in the middle of a multi-byte sequence.
+func truncateUTF8Safe(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	// Find the last valid rune boundary at or before maxBytes
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
 }
 
 // writeSummaryFile writes a markdown summary to the GITHUB_STEP_SUMMARY file.
@@ -473,7 +501,7 @@ func writeSummaryFile(path string, counts map[string]int, total int, reviewErr e
 
 	// Check size limit (GitHub has 1MB limit, we use 900KB for safety)
 	if len(content) > maxSummarySize {
-		content = content[:maxSummarySize-50] + "\n\n*Summary truncated due to size limits.*\n"
+		content = truncateUTF8Safe(content, maxSummarySize-50) + "\n\n*Summary truncated due to size limits.*\n"
 	}
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
