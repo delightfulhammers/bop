@@ -62,7 +62,7 @@ Environment variables:
   BOP_POST_FINDINGS    Whether to post findings to PR (default: true)
   BOP_REVIEWERS        Comma-separated list of reviewers
   BOP_BLOCK_THRESHOLD  Severity threshold for blocking (critical, high, medium, low, none)
-  BOP_LOG_LEVEL        Log level (trace, debug, info, error)
+  BOP_LOG_LEVEL        Log level (trace, debug, info, warn, error)
 
   GITHUB_TOKEN         GitHub token for API access
   GITHUB_HEAD_REF      PR head branch
@@ -132,6 +132,11 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 	if err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
+	defer func() {
+		if removeErr := os.RemoveAll(outputDir); removeErr != nil {
+			fmt.Fprintf(os.Stderr, "::warning::Failed to cleanup output directory: %v\n", removeErr)
+		}
+	}()
 
 	// Build review request
 	req := review.BranchRequest{
@@ -450,6 +455,9 @@ func generateDelimiter() (string, error) {
 // truncateUTF8Safe truncates a string to at most maxBytes while preserving UTF-8 validity.
 // It ensures truncation happens at a character boundary, not in the middle of a multi-byte sequence.
 func truncateUTF8Safe(s string, maxBytes int) string {
+	if maxBytes <= 0 {
+		return ""
+	}
 	if len(s) <= maxBytes {
 		return s
 	}

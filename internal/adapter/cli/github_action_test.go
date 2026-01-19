@@ -498,6 +498,18 @@ func TestTruncateUTF8Safe(t *testing.T) {
 			maxBytes: 5, // "hi " (3) + partial emoji would be invalid
 			expected: "hi ",
 		},
+		{
+			name:     "zero maxBytes",
+			input:    "hello",
+			maxBytes: 0,
+			expected: "",
+		},
+		{
+			name:     "negative maxBytes",
+			input:    "hello",
+			maxBytes: -5,
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
