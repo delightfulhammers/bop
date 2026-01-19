@@ -329,7 +329,11 @@ func writeGitHubOutputs(result review.Result, reviewErr error) error {
 	}
 	for _, f := range allFindings {
 		sev := strings.ToLower(f.Severity)
-		if _, ok := knownSeverities[sev]; !ok || sev == "none" {
+		if sev == "none" {
+			// 'none' is a valid severity but shouldn't be counted in buckets
+			continue
+		}
+		if _, ok := knownSeverities[sev]; !ok {
 			// Unknown severity - warn and count as low
 			fmt.Fprintf(os.Stderr, "::warning::Unknown severity %q in finding, counting as low\n", f.Severity)
 			sev = "low"

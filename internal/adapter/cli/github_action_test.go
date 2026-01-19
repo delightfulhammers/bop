@@ -357,6 +357,52 @@ func TestWriteGitHubOutputs(t *testing.T) {
 	}
 }
 
+func TestWriteGitHubOutputs_NoneSeveritySkipped(t *testing.T) {
+	tmpDir := t.TempDir()
+	outputFile := filepath.Join(tmpDir, "output")
+
+	envVars := []string{"GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY"}
+	restore := saveAndClearEnv(t, envVars)
+	defer restore()
+	setEnv(map[string]string{
+		"GITHUB_OUTPUT": outputFile,
+	})
+
+	result := review.Result{
+		Reviews: []domain.Review{
+			{
+				Findings: []domain.Finding{
+					{Severity: "high", Description: "High issue"},
+					{Severity: "none", Description: "None severity - should be skipped"},
+					{Severity: "low", Description: "Low issue"},
+				},
+			},
+		},
+	}
+
+	err := writeGitHubOutputs(result, nil)
+	if err != nil {
+		t.Fatalf("writeGitHubOutputs() error = %v", err)
+	}
+
+	output, err := os.ReadFile(outputFile)
+	if err != nil {
+		t.Fatalf("failed to read output file: %v", err)
+	}
+	outputStr := string(output)
+
+	// 'none' severity should not be counted
+	if !contains(outputStr, "findings-count=3") {
+		t.Error("findings-count should be 3 (total findings)")
+	}
+	if !contains(outputStr, "high-count=1") {
+		t.Error("high-count should be 1")
+	}
+	if !contains(outputStr, "low-count=1") {
+		t.Error("low-count should be 1 (none is not counted)")
+	}
+}
+
 func TestWriteGitHubOutputs_EmptyFindings(t *testing.T) {
 	tmpDir := t.TempDir()
 	outputFile := filepath.Join(tmpDir, "output")
