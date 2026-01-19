@@ -3,22 +3,14 @@
 # =============================================================================
 #
 # This is a reference example showing how to integrate bop AI code review
-# into your PR workflow using GitHub's OIDC token for secure, keyless auth.
+# into your PR workflow.
 #
 # This file is located in docs/examples/ and will NOT run automatically.
 # You must copy it to your repository to use it.
 #
-# Prerequisites:
-# 1. Enable OIDC in your GitHub Actions settings
-# 2. Configure your tenant's external_provider_login to match your GitHub org
-# 3. Set up the required repository variables:
-#    - BOP_TENANT_ID: Your tenant's UUID
-#    - BOP_PLATFORM_URL: (optional) Custom platform URL
-#
 # To use this workflow:
 # 1. Copy this file to .github/workflows/bop-review.yml in your repository
-# 2. Set BOP_TENANT_ID in your repository variables
-# 3. Commit and push - reviews will run on new PRs
+# 2. Commit and push - reviews will run on new PRs
 
 name: bop Code Review
 
@@ -26,11 +18,9 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# Required for OIDC token generation
 permissions:
-  id-token: write    # Required to get the OIDC token
-  contents: read     # Required to checkout code
-  pull-requests: write  # Required to post review comments
+  contents: read          # Required to checkout code
+  pull-requests: write    # Required to post review comments
 
 jobs:
   review:
@@ -44,10 +34,11 @@ jobs:
           fetch-depth: 0  # Full history needed for diff comparison
 
       - name: Run bop Review
-        uses: delightfulhammers/bop/.github/actions/bop-review@main
+        uses: delightfulhammers/bop-github-action@main
         with:
-          platform-url: ${{ vars.BOP_PLATFORM_URL || 'https://api.delightfulhammers.com' }}
-          tenant-id: ${{ vars.BOP_TENANT_ID }}
           base-ref: ${{ github.base_ref }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          post-findings: 'true'
+          # Optional: configure reviewers and blocking behavior
+          # reviewers: 'security,code-reviewer'
+          # block-threshold: 'high'
+          # fail-on-findings: 'true'
