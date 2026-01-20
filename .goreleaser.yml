@@ -2,10 +2,6 @@ version: 2
 
 project_name: bop
 
-git:
-  # Allow dirty state because we modify go.mod to remove replace directive
-  allow_dirty: true
-
 before:
   hooks:
     # Remove replace directive for release build (platform is private)
