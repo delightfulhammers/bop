@@ -2,9 +2,14 @@ version: 2
 
 project_name: bop
 
+git:
+  # Allow dirty state because we modify go.mod to remove replace directive
+  allow_dirty: true
+
 before:
   hooks:
-    # Note: go mod tidy removed to avoid dirty git state during release
+    # Remove replace directive for release build (platform is private)
+    - sed -i '/^replace github.com\/delightfulhammers\/platform/d' go.mod
     - go test ./...
 
 builds:
