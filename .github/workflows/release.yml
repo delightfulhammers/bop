@@ -23,6 +23,15 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Configure private module access
+        run: |
+          # Remove replace directive for release build
+          sed -i '/^replace github.com\/delightfulhammers\/platform/d' go.mod
+          # Configure git to use token for private repos
+          git config --global url."https://${{ secrets.PLATFORM_ACCESS_TOKEN }}@github.com/".insteadOf "https://github.com/"
+        env:
+          GOPRIVATE: github.com/delightfulhammers/*
+
       - name: Run GoReleaser
         # v6.2.1
         uses: goreleaser/goreleaser-action@90a3faa9d0182683851fbfa97ca1a2cb983bfca3
@@ -33,3 +42,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_GITHUB_TOKEN: ${{ secrets.HOMEBREW_GITHUB_TOKEN }}
+          GOPRIVATE: github.com/delightfulhammers/*

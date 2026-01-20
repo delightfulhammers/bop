@@ -2,6 +2,8 @@ module github.com/delightfulhammers/bop
 
 go 1.25.1
 
+replace github.com/delightfulhammers/platform => ../platform
+
 require (
 	github.com/delightfulhammers/platform v0.0.0-20260120000946-00cd9d0fa60b
 	github.com/go-git/go-git/v5 v5.16.3
