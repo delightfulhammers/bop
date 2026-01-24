@@ -57,8 +57,8 @@ func (e *EntitlementError) Error() string {
 // Implements the bop entitlement spec with support for hard-block and graceful-fallback enforcement.
 type BopEntitlements struct {
 	auth             *StoredAuth
-	output           io.Writer // For user-visible fallback messages (nil = no output)
-	fallbacksApplied []string
+	output           io.Writer           // For user-visible fallback messages (nil = no output)
+	fallbacksApplied map[string]struct{} // Deduplicated set of fallbacks
 }
 
 // NewBopEntitlements creates an entitlement checker from stored auth.
@@ -68,19 +68,28 @@ func NewBopEntitlements(auth *StoredAuth, output io.Writer) *BopEntitlements {
 	return &BopEntitlements{
 		auth:             auth,
 		output:           output,
-		fallbacksApplied: make([]string, 0),
+		fallbacksApplied: make(map[string]struct{}),
 	}
 }
 
 // FallbacksApplied returns the list of entitlements that triggered graceful fallbacks.
-// Use this for usage event reporting.
+// Use this for usage event reporting. Returns a copy to prevent mutation.
 func (e *BopEntitlements) FallbacksApplied() []string {
-	return e.fallbacksApplied
+	result := make([]string, 0, len(e.fallbacksApplied))
+	for k := range e.fallbacksApplied {
+		result = append(result, k)
+	}
+	return result
 }
 
 // notifyFallback records a fallback and optionally outputs a user-visible message.
+// Only outputs the message once per entitlement (deduplicated).
 func (e *BopEntitlements) notifyFallback(entitlement, message string) {
-	e.fallbacksApplied = append(e.fallbacksApplied, entitlement)
+	// Only notify once per entitlement
+	if _, exists := e.fallbacksApplied[entitlement]; exists {
+		return
+	}
+	e.fallbacksApplied[entitlement] = struct{}{}
 	if e.output != nil {
 		_, _ = fmt.Fprintf(e.output, "ℹ️  %s\n", message)
 	}
@@ -141,8 +150,8 @@ func (e *BopEntitlements) CanAccessRepo(isPrivate bool, ownerType string) error 
 		}
 	}
 
-	// Check org scope: if user has personal-org-only, they can't access org repos
-	if ownerType == "Organization" && e.HasEntitlement(EntitlementPersonalOrgOnly) && !e.HasEntitlement(EntitlementAnyOrg) {
+	// Check org scope: require any-org entitlement for organization repositories
+	if ownerType == "Organization" && !e.HasEntitlement(EntitlementAnyOrg) {
 		return &EntitlementError{
 			Entitlement: EntitlementAnyOrg,
 			Message:     "Using bop in organization repositories requires Pro plan",
@@ -285,12 +294,6 @@ func (e *BopEntitlements) CanReviewCode() bool {
 // CanReviewPrivateRepos checks if the user can review private repositories.
 func (e *BopEntitlements) CanReviewPrivateRepos() bool {
 	return e.HasEntitlement(EntitlementPrivateRepos)
-}
-
-// CanUseConfigAPI checks if the user can use remote config sync.
-// Renamed from config-api to local-bop-config in new spec.
-func (e *BopEntitlements) CanUseConfigAPI() bool {
-	return e.HasEntitlement(EntitlementLocalBopConfig)
 }
 
 // HasUnlimitedReviews returns true (usage tracking replaces this in new spec).

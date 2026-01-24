@@ -97,6 +97,14 @@ func TestBopEntitlements_CanAccessRepo(t *testing.T) {
 			errMsg:    "organization repositories requires Pro plan",
 		},
 		{
+			name:      "org repo without any-org (neither personal-org-only nor any-org)",
+			auth:      &StoredAuth{Entitlements: []string{EntitlementPrivateRepos}},
+			isPrivate: true,
+			ownerType: "Organization",
+			wantErr:   true,
+			errMsg:    "organization repositories requires Pro plan",
+		},
+		{
 			name:      "graceful fallback with empty entitlements",
 			auth:      &StoredAuth{Entitlements: []string{}},
 			isPrivate: true,
@@ -535,8 +543,54 @@ func TestBopEntitlements_FallbacksApplied(t *testing.T) {
 	if len(fallbacks) != 1 {
 		t.Errorf("expected 1 fallback, got %d", len(fallbacks))
 	}
-	if len(fallbacks) > 0 && fallbacks[0] != EntitlementModelSelection {
-		t.Errorf("expected fallback for %s, got %s", EntitlementModelSelection, fallbacks[0])
+
+	// Check that model-selection is in the fallbacks (order not guaranteed with map)
+	found := false
+	for _, f := range fallbacks {
+		if f == EntitlementModelSelection {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected fallback for %s, got %v", EntitlementModelSelection, fallbacks)
+	}
+}
+
+func TestBopEntitlements_FallbacksApplied_Deduplication(t *testing.T) {
+	var buf bytes.Buffer
+	checker := NewBopEntitlements(&StoredAuth{
+		Entitlements: []string{EntitlementPublicRepos}, // Has public-repos only
+	}, &buf)
+
+	// Trigger the same fallback multiple times
+	_ = checker.ResolveModel("gpt-4")
+	_ = checker.ResolveModel("claude-3")
+	_ = checker.ResolveModel("gemini-pro")
+
+	fallbacks := checker.FallbacksApplied()
+	if len(fallbacks) != 1 {
+		t.Errorf("expected 1 fallback (deduplicated), got %d: %v", len(fallbacks), fallbacks)
+	}
+}
+
+func TestBopEntitlements_FallbacksApplied_ReturnsCopy(t *testing.T) {
+	checker := NewBopEntitlements(&StoredAuth{
+		Entitlements: []string{EntitlementPublicRepos},
+	}, nil)
+
+	// Trigger a fallback
+	_ = checker.ResolveModel("gpt-4")
+
+	// Get fallbacks and try to mutate
+	fallbacks := checker.FallbacksApplied()
+	originalLen := len(fallbacks)
+	_ = append(fallbacks, "mutated") // Try to mutate (result intentionally ignored)
+
+	// Get fallbacks again - should be unchanged
+	fallbacks2 := checker.FallbacksApplied()
+	if len(fallbacks2) != originalLen {
+		t.Errorf("mutation affected internal state: got %d, want %d", len(fallbacks2), originalLen)
 	}
 }
 
