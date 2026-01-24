@@ -25,6 +25,16 @@ type RemoteGitHubClient interface {
 	GetFileContent(ctx context.Context, owner, repo, path, ref string) (string, error)
 }
 
+// RepoAccessChecker validates user access to a repository based on entitlements.
+// This interface enables entitlement checking without coupling the use case layer
+// to specific auth implementations.
+type RepoAccessChecker interface {
+	// CanAccessRepo checks if the user can access a repository given its visibility
+	// and owner type. Returns nil if access is allowed, or an error describing
+	// the restriction (e.g., "Private repository access requires Solo plan or higher").
+	CanAccessRepo(isPrivate bool, ownerType string) error
+}
+
 // PRRequest represents an inbound request to review a GitHub PR.
 type PRRequest struct {
 	// Required: identifies the PR
@@ -62,6 +72,10 @@ type PRRequest struct {
 
 	// Reviewers to use (empty = use defaults from config)
 	Reviewers []string
+
+	// RepoAccessChecker validates user access based on entitlements.
+	// If nil, no access check is performed (legacy/unauthenticated mode).
+	RepoAccessChecker RepoAccessChecker
 }
 
 // ReviewPR reviews a GitHub pull request by fetching its diff remotely.
@@ -87,6 +101,13 @@ func (o *Orchestrator) ReviewPR(ctx context.Context, req PRRequest) (Result, err
 	metadata, err := o.deps.RemoteGitHubClient.GetPRMetadata(ctx, req.Owner, req.Repo, req.PRNumber)
 	if err != nil {
 		return Result{}, fmt.Errorf("fetch PR metadata: %w", err)
+	}
+
+	// Check repository access entitlements (if checker provided)
+	if req.RepoAccessChecker != nil {
+		if err := req.RepoAccessChecker.CanAccessRepo(metadata.IsPrivate, metadata.OwnerType); err != nil {
+			return Result{}, err
+		}
 	}
 
 	// Fetch PR diff

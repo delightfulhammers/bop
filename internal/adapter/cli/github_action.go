@@ -127,6 +127,12 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 		return errors.New("code review not available on your plan")
 	}
 
+	// Build RepoAccessChecker from entitlements (nil in legacy mode)
+	var repoAccessChecker review.RepoAccessChecker
+	if checker != nil {
+		repoAccessChecker = checker
+	}
+
 	// Create unique output directory to avoid collisions with concurrent jobs
 	outputDir, err := os.MkdirTemp("", "bop-review-*")
 	if err != nil {
@@ -159,6 +165,7 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 		ActionOnNonBlocking:   "comment",
 		AlwaysBlockCategories: cfg.AlwaysBlockCategories,
 		Reviewers:             cfg.Reviewers,
+		RepoAccessChecker:     repoAccessChecker,
 	}
 
 	// Run the review

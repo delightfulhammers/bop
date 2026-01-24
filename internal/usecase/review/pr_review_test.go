@@ -113,6 +113,95 @@ func TestOrchestrator_ReviewPR(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "diff fetch failed")
 	})
+
+	t.Run("returns error when RepoAccessChecker denies access", func(t *testing.T) {
+		mockClient := &mockRemoteGitHubClient{
+			metadata: &domain.PRMetadata{
+				HeadSHA:   "abc123",
+				BaseSHA:   "def456",
+				IsPrivate: true,
+				OwnerType: "Organization",
+			},
+		}
+		mockChecker := &mockRepoAccessChecker{
+			err: errors.New("Private repository access requires Solo plan or higher"),
+		}
+		orch := &Orchestrator{deps: OrchestratorDeps{
+			RemoteGitHubClient: mockClient,
+		}}
+
+		_, err := orch.ReviewPR(context.Background(), PRRequest{
+			Owner:             "owner",
+			Repo:              "repo",
+			PRNumber:          123,
+			RepoAccessChecker: mockChecker,
+		})
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "Private repository access requires Solo plan")
+		// Verify the checker was called with correct metadata
+		assert.True(t, mockChecker.isPrivate)
+		assert.Equal(t, "Organization", mockChecker.ownerType)
+	})
+
+	t.Run("proceeds when RepoAccessChecker allows access", func(t *testing.T) {
+		mockClient := &mockRemoteGitHubClient{
+			metadata: &domain.PRMetadata{
+				HeadSHA:   "abc123",
+				BaseSHA:   "def456",
+				IsPrivate: true,
+				OwnerType: "User",
+			},
+			// Diff fetch will fail, but that's after entitlement check succeeds
+			diffErr: errors.New("diff fetch failed"),
+		}
+		mockChecker := &mockRepoAccessChecker{
+			err: nil, // Access allowed
+		}
+		orch := &Orchestrator{deps: OrchestratorDeps{
+			RemoteGitHubClient: mockClient,
+		}}
+
+		_, err := orch.ReviewPR(context.Background(), PRRequest{
+			Owner:             "owner",
+			Repo:              "repo",
+			PRNumber:          123,
+			RepoAccessChecker: mockChecker,
+		})
+
+		// Should fail on diff fetch (after entitlement check passed)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "diff fetch failed")
+		// Verify the checker was called
+		assert.True(t, mockChecker.called)
+	})
+
+	t.Run("proceeds when RepoAccessChecker is nil (legacy mode)", func(t *testing.T) {
+		mockClient := &mockRemoteGitHubClient{
+			metadata: &domain.PRMetadata{
+				HeadSHA:   "abc123",
+				BaseSHA:   "def456",
+				IsPrivate: true,
+				OwnerType: "Organization",
+			},
+			// Diff fetch will fail, but that's after the nil check passes
+			diffErr: errors.New("diff fetch failed"),
+		}
+		orch := &Orchestrator{deps: OrchestratorDeps{
+			RemoteGitHubClient: mockClient,
+		}}
+
+		_, err := orch.ReviewPR(context.Background(), PRRequest{
+			Owner:             "owner",
+			Repo:              "repo",
+			PRNumber:          123,
+			RepoAccessChecker: nil, // Legacy mode - no checker
+		})
+
+		// Should fail on diff fetch (entitlement check skipped)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "diff fetch failed")
+	})
 }
 
 func TestParsePRIdentifier(t *testing.T) {
@@ -231,4 +320,19 @@ func (m *mockRemoteGitHubClient) GetPRDiff(ctx context.Context, owner, repo stri
 
 func (m *mockRemoteGitHubClient) GetFileContent(ctx context.Context, owner, repo, path, ref string) (string, error) {
 	return m.content, m.contentErr
+}
+
+// mockRepoAccessChecker implements RepoAccessChecker for testing
+type mockRepoAccessChecker struct {
+	err       error  // Error to return from CanAccessRepo
+	called    bool   // Whether CanAccessRepo was called
+	isPrivate bool   // Captured isPrivate argument
+	ownerType string // Captured ownerType argument
+}
+
+func (m *mockRepoAccessChecker) CanAccessRepo(isPrivate bool, ownerType string) error {
+	m.called = true
+	m.isPrivate = isPrivate
+	m.ownerType = ownerType
+	return m.err
 }

@@ -385,6 +385,12 @@ type BranchRequest struct {
 	// AnalyticsContext holds optional analytics data for telemetry emission.
 	// When nil or TenantID is empty, analytics are skipped.
 	AnalyticsContext *AnalyticsContext
+
+	// RepoAccessChecker validates user access based on entitlements.
+	// If nil, no access check is performed (legacy/unauthenticated mode).
+	// When PostToGitHub is true and this checker is set, repo metadata
+	// is fetched and access is validated before running the review.
+	RepoAccessChecker RepoAccessChecker
 }
 
 // AnalyticsContext holds data needed for analytics emission.
@@ -673,6 +679,17 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 
 	if err := validateRequest(req); err != nil {
 		return Result{}, err
+	}
+
+	// Check repository access entitlements when posting to GitHub
+	if req.RepoAccessChecker != nil && req.PostToGitHub && o.deps.RemoteGitHubClient != nil {
+		metadata, err := o.deps.RemoteGitHubClient.GetPRMetadata(ctx, req.GitHubOwner, req.GitHubRepo, req.PRNumber)
+		if err != nil {
+			return Result{}, fmt.Errorf("fetch PR metadata for entitlement check: %w", err)
+		}
+		if err := req.RepoAccessChecker.CanAccessRepo(metadata.IsPrivate, metadata.OwnerType); err != nil {
+			return Result{}, err
+		}
 	}
 
 	// Compute full diff (DiffComputer is auto-wired in NewOrchestrator when Git is provided)

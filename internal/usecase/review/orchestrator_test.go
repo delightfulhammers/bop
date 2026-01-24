@@ -1541,3 +1541,255 @@ func (m *concurrencyTrackingMockProvider) Review(ctx context.Context, req review
 func (m *concurrencyTrackingMockProvider) EstimateTokens(text string) int {
 	return len(text) / 4 // Simple estimate for testing
 }
+
+// mockRepoAccessChecker implements review.RepoAccessChecker for testing
+type mockRepoAccessChecker struct {
+	err       error
+	called    bool
+	isPrivate bool
+	ownerType string
+}
+
+func (m *mockRepoAccessChecker) CanAccessRepo(isPrivate bool, ownerType string) error {
+	m.called = true
+	m.isPrivate = isPrivate
+	m.ownerType = ownerType
+	return m.err
+}
+
+// mockRemoteGitHubClientForEntitlements implements review.RemoteGitHubClient for entitlement tests
+type mockRemoteGitHubClientForEntitlements struct {
+	metadata    *domain.PRMetadata
+	metadataErr error
+}
+
+func (m *mockRemoteGitHubClientForEntitlements) GetPRMetadata(ctx context.Context, owner, repo string, prNumber int) (*domain.PRMetadata, error) {
+	return m.metadata, m.metadataErr
+}
+
+func (m *mockRemoteGitHubClientForEntitlements) GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error) {
+	return domain.Diff{}, nil
+}
+
+func (m *mockRemoteGitHubClientForEntitlements) GetFileContent(ctx context.Context, owner, repo, path, ref string) (string, error) {
+	return "", nil
+}
+
+func TestReviewBranchEntitlementCheck(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	diff := domain.Diff{
+		FromCommitHash: "abc",
+		ToCommitHash:   "def",
+		Files:          []domain.FileDiff{{Path: "main.go", Status: "modified", Patch: "@@ -0,0 +1,2 @@\n+package main\n+func main() {}"}},
+	}
+
+	t.Run("blocks access when RepoAccessChecker denies", func(t *testing.T) {
+		gitMock := &mockGitEngine{diff: diff}
+		writerMock := &mockMarkdownWriter{}
+		mergerMock := &mockMerger{}
+		jsonWriterMock := &mockJSONWriter{}
+		sarifWriterMock := &mockSARIFWriter{}
+		baseBuilder := review.NewEnhancedPromptBuilder()
+		personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+		mockGitHubClient := &mockRemoteGitHubClientForEntitlements{
+			metadata: &domain.PRMetadata{
+				HeadSHA:   "abc123",
+				BaseSHA:   "def456",
+				IsPrivate: true,
+				OwnerType: "Organization",
+			},
+		}
+
+		mockChecker := &mockRepoAccessChecker{
+			err: fmt.Errorf("Private repository access requires Solo plan or higher"),
+		}
+
+		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+			Git:                  gitMock,
+			Providers:            map[string]review.Provider{"test": &mockProvider{response: domain.Review{}}},
+			Merger:               mergerMock,
+			Markdown:             writerMock,
+			JSON:                 jsonWriterMock,
+			SARIF:                sarifWriterMock,
+			SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+			PersonaPromptBuilder: personaBuilder,
+			RemoteGitHubClient:   mockGitHubClient,
+		})
+
+		_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+			BaseRef:           "main",
+			TargetRef:         "feature",
+			OutputDir:         t.TempDir(),
+			PostToGitHub:      true,
+			GitHubOwner:       "owner",
+			GitHubRepo:        "repo",
+			PRNumber:          123,
+			CommitSHA:         "abc123",
+			RepoAccessChecker: mockChecker,
+		})
+
+		if err == nil {
+			t.Fatal("expected error when RepoAccessChecker denies access")
+		}
+		if !strings.Contains(err.Error(), "Private repository access") {
+			t.Errorf("expected entitlement error, got: %v", err)
+		}
+		if !mockChecker.called {
+			t.Error("expected RepoAccessChecker to be called")
+		}
+		if !mockChecker.isPrivate {
+			t.Error("expected isPrivate to be true")
+		}
+		if mockChecker.ownerType != "Organization" {
+			t.Errorf("expected ownerType 'Organization', got %q", mockChecker.ownerType)
+		}
+	})
+
+	t.Run("skips check when RepoAccessChecker is nil (legacy mode)", func(t *testing.T) {
+		gitMock := &mockGitEngine{diff: diff}
+		writerMock := &mockMarkdownWriter{}
+		mergerMock := &mockMerger{}
+		jsonWriterMock := &mockJSONWriter{}
+		sarifWriterMock := &mockSARIFWriter{}
+		baseBuilder := review.NewEnhancedPromptBuilder()
+		personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+		mockGitHubClient := &mockRemoteGitHubClientForEntitlements{
+			metadata: &domain.PRMetadata{
+				HeadSHA:   "abc123",
+				BaseSHA:   "def456",
+				IsPrivate: true,
+				OwnerType: "Organization",
+			},
+		}
+
+		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+			Git:                  gitMock,
+			Providers:            map[string]review.Provider{"test": &mockProvider{response: domain.Review{}}},
+			Merger:               mergerMock,
+			Markdown:             writerMock,
+			JSON:                 jsonWriterMock,
+			SARIF:                sarifWriterMock,
+			SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+			PersonaPromptBuilder: personaBuilder,
+			RemoteGitHubClient:   mockGitHubClient,
+		})
+
+		// Should succeed even with private org repo when no checker is set
+		_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+			BaseRef:           "main",
+			TargetRef:         "feature",
+			OutputDir:         t.TempDir(),
+			PostToGitHub:      true,
+			GitHubOwner:       "owner",
+			GitHubRepo:        "repo",
+			PRNumber:          123,
+			CommitSHA:         "abc123",
+			RepoAccessChecker: nil, // Legacy mode - no checker
+		})
+
+		// Should succeed (entitlement check skipped)
+		if err != nil {
+			t.Fatalf("expected no error in legacy mode, got: %v", err)
+		}
+	})
+
+	t.Run("skips check when PostToGitHub is false", func(t *testing.T) {
+		gitMock := &mockGitEngine{diff: diff}
+		writerMock := &mockMarkdownWriter{}
+		mergerMock := &mockMerger{}
+		jsonWriterMock := &mockJSONWriter{}
+		sarifWriterMock := &mockSARIFWriter{}
+		baseBuilder := review.NewEnhancedPromptBuilder()
+		personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+		// Checker that would deny if called
+		mockChecker := &mockRepoAccessChecker{
+			err: fmt.Errorf("should not be called"),
+		}
+
+		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+			Git:                  gitMock,
+			Providers:            map[string]review.Provider{"test": &mockProvider{response: domain.Review{}}},
+			Merger:               mergerMock,
+			Markdown:             writerMock,
+			JSON:                 jsonWriterMock,
+			SARIF:                sarifWriterMock,
+			SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+			PersonaPromptBuilder: personaBuilder,
+			// No RemoteGitHubClient needed when not posting
+		})
+
+		_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+			BaseRef:           "main",
+			TargetRef:         "feature",
+			OutputDir:         t.TempDir(),
+			PostToGitHub:      false, // Not posting to GitHub
+			RepoAccessChecker: mockChecker,
+		})
+
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if mockChecker.called {
+			t.Error("RepoAccessChecker should not be called when PostToGitHub is false")
+		}
+	})
+
+	t.Run("allows access when RepoAccessChecker permits", func(t *testing.T) {
+		gitMock := &mockGitEngine{diff: diff}
+		writerMock := &mockMarkdownWriter{}
+		mergerMock := &mockMerger{}
+		jsonWriterMock := &mockJSONWriter{}
+		sarifWriterMock := &mockSARIFWriter{}
+		baseBuilder := review.NewEnhancedPromptBuilder()
+		personaBuilder := review.NewPersonaPromptBuilder(baseBuilder)
+
+		mockGitHubClient := &mockRemoteGitHubClientForEntitlements{
+			metadata: &domain.PRMetadata{
+				HeadSHA:   "abc123",
+				BaseSHA:   "def456",
+				IsPrivate: true,
+				OwnerType: "User",
+			},
+		}
+
+		mockChecker := &mockRepoAccessChecker{
+			err: nil, // Access allowed
+		}
+
+		orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
+			Git:                  gitMock,
+			Providers:            map[string]review.Provider{"test": &mockProvider{response: domain.Review{}}},
+			Merger:               mergerMock,
+			Markdown:             writerMock,
+			JSON:                 jsonWriterMock,
+			SARIF:                sarifWriterMock,
+			SeedGenerator:        func(baseRef, targetRef string) uint64 { return 42 },
+			PersonaPromptBuilder: personaBuilder,
+			RemoteGitHubClient:   mockGitHubClient,
+		})
+
+		_, err := orchestrator.ReviewBranch(ctx, review.BranchRequest{
+			BaseRef:           "main",
+			TargetRef:         "feature",
+			OutputDir:         t.TempDir(),
+			PostToGitHub:      true,
+			GitHubOwner:       "owner",
+			GitHubRepo:        "repo",
+			PRNumber:          123,
+			CommitSHA:         "abc123",
+			RepoAccessChecker: mockChecker,
+		})
+
+		if err != nil {
+			t.Fatalf("expected no error when access is allowed, got: %v", err)
+		}
+		if !mockChecker.called {
+			t.Error("expected RepoAccessChecker to be called")
+		}
+	})
+}

@@ -105,8 +105,14 @@ type prAPIResponse struct {
 		Login string `json:"login"`
 	} `json:"user"`
 	Head struct {
-		Ref string `json:"ref"`
-		SHA string `json:"sha"`
+		Ref  string `json:"ref"`
+		SHA  string `json:"sha"`
+		Repo struct {
+			Private bool `json:"private"`
+			Owner   struct {
+				Type string `json:"type"`
+			} `json:"owner"`
+		} `json:"repo"`
 	} `json:"head"`
 	Base struct {
 		Ref string `json:"ref"`
@@ -136,5 +142,7 @@ func prToDomain(pr prAPIResponse, owner, repo string) *domain.PRMetadata {
 		State:       state,
 		CreatedAt:   pr.CreatedAt,
 		UpdatedAt:   pr.UpdatedAt,
+		IsPrivate:   pr.Head.Repo.Private,
+		OwnerType:   pr.Head.Repo.Owner.Type,
 	}
 }

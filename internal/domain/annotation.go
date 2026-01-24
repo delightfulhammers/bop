@@ -322,6 +322,12 @@ type PRMetadata struct {
 
 	// UpdatedAt is when the PR was last updated.
 	UpdatedAt time.Time `json:"updatedAt"`
+
+	// IsPrivate indicates whether the repository is private.
+	IsPrivate bool `json:"isPrivate"`
+
+	// OwnerType is the type of the repository owner ("User" or "Organization").
+	OwnerType string `json:"ownerType"`
 }
 
 // FullName returns the owner/repo format.
