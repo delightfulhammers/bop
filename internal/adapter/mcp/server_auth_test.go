@@ -72,27 +72,27 @@ func TestServer_RequireEntitlement(t *testing.T) {
 	}{
 		{
 			name:        "grants with explicit entitlement",
-			auth:        authWith([]string{"code-review"}),
-			entitlement: "code-review",
+			auth:        authWith([]string{auth.EntitlementPublicRepos}),
+			entitlement: auth.EntitlementPublicRepos,
 			wantErr:     false,
 		},
 		{
 			name:        "denies without entitlement",
 			auth:        authWith([]string{"other-feature"}),
-			entitlement: "code-review",
+			entitlement: auth.EntitlementPrivateRepos,
 			wantErr:     true,
-			errContains: "code-review",
+			errContains: "private-repos",
 		},
 		{
 			name:        "graceful fallback with empty entitlements",
 			auth:        authWith([]string{}),
-			entitlement: "code-review",
+			entitlement: auth.EntitlementPublicRepos,
 			wantErr:     false, // Empty = all granted (graceful fallback)
 		},
 		{
 			name:        "requires auth first in platform mode",
 			auth:        nil,
-			entitlement: "code-review",
+			entitlement: auth.EntitlementPublicRepos,
 			wantErr:     true,
 			errContains: "not authenticated",
 		},
@@ -130,7 +130,7 @@ func TestServer_RequireEntitlement_LegacyMode(t *testing.T) {
 		auth: nil,
 	}
 
-	err := s.RequireEntitlement("code-review")
+	err := s.RequireEntitlement(auth.EntitlementPublicRepos)
 	assert.NoError(t, err)
 }
 
@@ -142,16 +142,16 @@ func TestServer_Entitlements(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "checker with valid auth and code-review entitlement",
-			auth:     authWith([]string{"code-review"}),
+			name:     "checker with valid auth can always review code (logged in)",
+			auth:     authWith([]string{auth.EntitlementPublicRepos}),
 			checkFn:  func(c *auth.EntitlementChecker) bool { return c.CanReviewCode() },
 			expected: true,
 		},
 		{
-			name:     "checker with valid auth but no code-review entitlement",
+			name:     "logged in user can review code regardless of entitlements",
 			auth:     authWith([]string{"other-feature"}),
 			checkFn:  func(c *auth.EntitlementChecker) bool { return c.CanReviewCode() },
-			expected: false,
+			expected: true, // New behavior: logged-in users can always review
 		},
 		{
 			name:     "checker with empty entitlements grants all (graceful fallback)",
@@ -163,6 +163,18 @@ func TestServer_Entitlements(t *testing.T) {
 			name:     "checker with nil auth grants nothing",
 			auth:     nil,
 			checkFn:  func(c *auth.EntitlementChecker) bool { return c.CanReviewCode() },
+			expected: false,
+		},
+		{
+			name:     "private repos check with entitlement",
+			auth:     authWith([]string{auth.EntitlementPrivateRepos}),
+			checkFn:  func(c *auth.EntitlementChecker) bool { return c.CanReviewPrivateRepos() },
+			expected: true,
+		},
+		{
+			name:     "private repos check without entitlement",
+			auth:     authWith([]string{auth.EntitlementPublicRepos}),
+			checkFn:  func(c *auth.EntitlementChecker) bool { return c.CanReviewPrivateRepos() },
 			expected: false,
 		},
 	}
@@ -181,8 +193,8 @@ func TestServer_Entitlements(t *testing.T) {
 }
 
 func TestEntitlementError(t *testing.T) {
-	err := &EntitlementError{Entitlement: "code-review"}
-	assert.Equal(t, `feature "code-review" not available on your plan`, err.Error())
+	err := &EntitlementError{Entitlement: auth.EntitlementPrivateRepos}
+	assert.Equal(t, `feature "private-repos" not available on your plan`, err.Error())
 }
 
 // Test helper functions
@@ -194,10 +206,15 @@ func validAuth() *auth.StoredAuth {
 			GitHubLogin: "testuser",
 			Email:       "test@example.com",
 		},
-		TenantID:     "tenant-123",
-		ExpiresAt:    time.Now().Add(1 * time.Hour),
-		Entitlements: []string{"code-review", "unlimited-reviews"},
-		Plan:         "pro",
+		TenantID:  "tenant-123",
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+		Entitlements: []string{
+			auth.EntitlementPublicRepos,
+			auth.EntitlementPrivateRepos,
+			auth.EntitlementAnyOrg,
+			auth.EntitlementModelSelection,
+		},
+		Plan: "pro",
 	}
 }
 
@@ -208,10 +225,12 @@ func expiredAuth() *auth.StoredAuth {
 			GitHubLogin: "testuser",
 			Email:       "test@example.com",
 		},
-		TenantID:     "tenant-123",
-		ExpiresAt:    time.Now().Add(-1 * time.Hour), // Expired
-		Entitlements: []string{"code-review"},
-		Plan:         "pro",
+		TenantID:  "tenant-123",
+		ExpiresAt: time.Now().Add(-1 * time.Hour), // Expired
+		Entitlements: []string{
+			auth.EntitlementPublicRepos,
+		},
+		Plan: "pro",
 	}
 }
 
