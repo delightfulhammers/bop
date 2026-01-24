@@ -105,6 +105,10 @@ func (o *Orchestrator) ReviewPR(ctx context.Context, req PRRequest) (Result, err
 
 	// Check repository access entitlements (if checker provided)
 	if req.RepoAccessChecker != nil {
+		// Validate OwnerType is an expected value to prevent incorrect authorization decisions
+		if metadata.OwnerType != "User" && metadata.OwnerType != "Organization" {
+			return Result{}, fmt.Errorf("unexpected repository owner type %q (expected User or Organization)", metadata.OwnerType)
+		}
 		if err := req.RepoAccessChecker.CanAccessRepo(metadata.IsPrivate, metadata.OwnerType); err != nil {
 			return Result{}, err
 		}

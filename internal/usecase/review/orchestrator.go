@@ -687,6 +687,10 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 		if err != nil {
 			return Result{}, fmt.Errorf("fetch PR metadata for entitlement check: %w", err)
 		}
+		// Validate OwnerType is an expected value to prevent incorrect authorization decisions
+		if metadata.OwnerType != "User" && metadata.OwnerType != "Organization" {
+			return Result{}, fmt.Errorf("unexpected repository owner type %q (expected User or Organization)", metadata.OwnerType)
+		}
 		if err := req.RepoAccessChecker.CanAccessRepo(metadata.IsPrivate, metadata.OwnerType); err != nil {
 			return Result{}, err
 		}

@@ -183,6 +183,10 @@ func TestPRToDomain(t *testing.T) {
 			Login string `json:"login"`
 		}{Login: "testuser"},
 		Head: struct {
+			Ref string `json:"ref"`
+			SHA string `json:"sha"`
+		}{Ref: "feature-branch", SHA: "abc123"},
+		Base: struct {
 			Ref  string `json:"ref"`
 			SHA  string `json:"sha"`
 			Repo struct {
@@ -192,8 +196,8 @@ func TestPRToDomain(t *testing.T) {
 				} `json:"owner"`
 			} `json:"repo"`
 		}{
-			Ref: "feature-branch",
-			SHA: "abc123",
+			Ref: "main",
+			SHA: "def456",
 			Repo: struct {
 				Private bool `json:"private"`
 				Owner   struct {
@@ -206,10 +210,6 @@ func TestPRToDomain(t *testing.T) {
 				}{Type: "Organization"},
 			},
 		},
-		Base: struct {
-			Ref string `json:"ref"`
-			SHA string `json:"sha"`
-		}{Ref: "main", SHA: "def456"},
 		Merged: false,
 	}
 
