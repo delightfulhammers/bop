@@ -180,7 +180,7 @@ Use this for:
 
 func (s *Server) handleReviewPR(ctx context.Context, req *mcp.CallToolRequest, input ReviewPRInput) (*mcp.CallToolResult, ReviewPROutput, error) {
 	// Auth check for platform mode
-	if err := s.RequireEntitlement(auth.EntitlementCodeReview); err != nil {
+	if err := s.RequireEntitlement(auth.EntitlementPublicRepos); err != nil {
 		return &mcp.CallToolResult{
 			IsError: true,
 			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
@@ -312,7 +312,7 @@ Use this for:
 
 func (s *Server) handlePostFindings(ctx context.Context, req *mcp.CallToolRequest, input PostFindingsInput) (*mcp.CallToolResult, PostFindingsOutput, error) {
 	// Auth check for platform mode
-	if err := s.RequireEntitlement(auth.EntitlementCodeReview); err != nil {
+	if err := s.RequireEntitlement(auth.EntitlementPublicRepos); err != nil {
 		return &mcp.CallToolResult{
 			IsError: true,
 			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
@@ -680,7 +680,7 @@ Parameters:
 
 func (s *Server) handleReviewBranch(ctx context.Context, req *mcp.CallToolRequest, input ReviewBranchInput) (*mcp.CallToolResult, ReviewBranchOutput, error) {
 	// Auth check for platform mode
-	if err := s.RequireEntitlement(auth.EntitlementCodeReview); err != nil {
+	if err := s.RequireEntitlement(auth.EntitlementPublicRepos); err != nil {
 		return &mcp.CallToolResult{
 			IsError: true,
 			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
@@ -972,7 +972,7 @@ Patterns support simple wildcards (*.go, *.ts) but not recursive ** patterns.`,
 
 func (s *Server) handleReviewFiles(ctx context.Context, req *mcp.CallToolRequest, input ReviewFilesInput) (*mcp.CallToolResult, ReviewFilesOutput, error) {
 	// Auth check for platform mode
-	if err := s.RequireEntitlement(auth.EntitlementCodeReview); err != nil {
+	if err := s.RequireEntitlement(auth.EntitlementPublicRepos); err != nil {
 		return &mcp.CallToolResult{
 			IsError: true,
 			Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}},
