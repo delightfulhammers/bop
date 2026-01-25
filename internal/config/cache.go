@@ -2,10 +2,15 @@ package config
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
+
+// maxCacheFileSize limits cache file reads to prevent memory exhaustion from corrupted/malicious files.
+const maxCacheFileSize = 1 << 20 // 1MB - same limit as network fetch
 
 // DefaultCacheTTL is how long cached config is valid before re-fetching.
 const DefaultCacheTTL = 1 * time.Hour
@@ -46,7 +51,8 @@ func (c *CachedConfig) IsValid(tenantID, tier string) bool {
 		return false
 	}
 	// Tier must match to prevent using Enterprise config on downgraded account
-	if c.Tier != tier {
+	// Case-insensitive to handle platform capitalization variations (e.g., "Pro" vs "pro")
+	if !strings.EqualFold(c.Tier, tier) {
 		return false
 	}
 	return !c.IsExpired()
@@ -86,17 +92,22 @@ func NewConfigCacheWithPath(path string, ttl time.Duration) *ConfigCache {
 
 // Load reads the cached config from disk.
 // Returns nil if no cache exists, cache is expired, or tenant/tier doesn't match.
+// Limits file size to maxCacheFileSize to prevent memory exhaustion from corrupted files.
 func (c *ConfigCache) Load(tenantID, tier string) (*CachedConfig, error) {
-	data, err := os.ReadFile(c.path)
+	f, err := os.Open(c.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil // No cache exists, not an error
 		}
 		return nil, err
 	}
+	defer func() { _ = f.Close() }()
+
+	// Limit read size to prevent memory exhaustion from corrupted/malicious cache files
+	limitedReader := io.LimitReader(f, maxCacheFileSize)
 
 	var cached CachedConfig
-	if err := json.Unmarshal(data, &cached); err != nil {
+	if err := json.NewDecoder(limitedReader).Decode(&cached); err != nil {
 		// Corrupt cache, treat as missing
 		return nil, nil
 	}

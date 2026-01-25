@@ -135,9 +135,13 @@ func getStringSlice(m map[string]any, key string) ([]string, bool) {
 		if slice, ok := v.([]any); ok {
 			result := make([]string, 0, len(slice))
 			for _, item := range slice {
-				if s, ok := item.(string); ok {
-					result = append(result, s)
+				s, ok := item.(string)
+				if !ok {
+					// Fail closed: if any element is non-string, reject the whole slice
+					// This prevents silently accepting partially invalid configs
+					return nil, false
 				}
+				result = append(result, s)
 			}
 			return result, len(result) > 0
 		}
@@ -155,9 +159,12 @@ func getFloatMap(m map[string]any, key string) (map[string]float64, bool) {
 		if raw, ok := v.(map[string]any); ok {
 			result := make(map[string]float64)
 			for k, val := range raw {
-				if f, ok := val.(float64); ok {
-					result[k] = f
+				f, ok := toFloat64(val)
+				if !ok {
+					// Fail closed: if any value is non-numeric, reject the whole map
+					return nil, false
 				}
+				result[k] = f
 			}
 			return result, len(result) > 0
 		}
@@ -167,6 +174,25 @@ func getFloatMap(m map[string]any, key string) (map[string]float64, bool) {
 		}
 	}
 	return nil, false
+}
+
+// toFloat64 converts various numeric types to float64.
+// JSON numbers decode as float64, but other sources may use int/int64.
+func toFloat64(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	default:
+		return 0, false
+	}
 }
 
 func getStringMap(m map[string]any, key string) (map[string]string, bool) {

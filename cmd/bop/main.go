@@ -270,7 +270,12 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 		return nil, err
 	}
 
-	// Cache the response using stored.Plan for consistent keying
+	// Validate before caching to prevent caching invalid config
+	if err := config.ValidatePlatformConfig(resp.Config); err != nil {
+		return nil, fmt.Errorf("platform config validation failed: %w", err)
+	}
+
+	// Cache the validated response using stored.Plan for consistent keying
 	// (Load uses stored.Plan, so Save must too for cache hits)
 	if cache != nil {
 		_ = cache.Save(resp.Config, stored.Plan, stored.TenantID)
@@ -308,14 +313,11 @@ func tryRefreshToken(ctx context.Context, platformURL string, stored *auth.Store
 
 	// Fetch updated user info to get current entitlements
 	// (entitlements may have changed since original login)
+	// This is a hard requirement - we can't use stale entitlements for security reasons
 	userResp, err := client.GetCurrentUser(ctx, resp.AccessToken)
 	if err != nil {
-		log.Printf("[WARN] Token refreshed but failed to get user info: %v. Using cached entitlements.", err)
-		// Fall back to preserved entitlements
-		userResp = &auth.CurrentUserResponse{
-			Entitlements: stored.Entitlements,
-			PlanID:       stored.Plan,
-		}
+		log.Printf("[WARN] Token refreshed but failed to verify entitlements: %v. Run 'bop auth login' to re-authenticate.", err)
+		return nil
 	}
 
 	// Build new stored auth from refresh response
