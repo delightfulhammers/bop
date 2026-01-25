@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/delightfulhammers/bop/internal/auth"
 	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
 )
@@ -34,6 +35,7 @@ const maxSummarySize = 900 * 1024 // 900KB to leave buffer
 type GitHubActionDeps struct {
 	BranchReviewer BranchReviewer
 	AuthDeps       AuthDependencies
+	PlatformURL    string // Platform URL for OIDC audience
 }
 
 // NewGitHubActionCommand creates the 'github-action' subcommand for running in GitHub Actions.
@@ -63,6 +65,7 @@ Environment variables:
   BOP_REVIEWERS        Comma-separated list of reviewers
   BOP_BLOCK_THRESHOLD  Severity threshold for blocking (critical, high, medium, low, none)
   BOP_LOG_LEVEL        Log level (trace, debug, info, warn, error)
+  BOP_TENANT_ID        Tenant ID for OIDC authentication (required for platform mode)
 
   GITHUB_TOKEN         GitHub token for API access
   GITHUB_HEAD_REF      PR head branch
@@ -74,7 +77,12 @@ Environment variables:
 
 GitHub pull_request event context:
   GITHUB_PR_NUMBER     Pull request number
-  GITHUB_PR_SHA        Head commit SHA`,
+  GITHUB_PR_SHA        Head commit SHA
+
+OIDC authentication (recommended):
+  When running with 'permissions: id-token: write', bop automatically uses
+  GitHub Actions OIDC for keyless authentication with the platform. Set
+  BOP_TENANT_ID to your organization's tenant ID.`,
 		Hidden: false, // Visible but primarily for action use
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGitHubAction(cmd.Context(), deps)
@@ -118,19 +126,31 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 		return errors.New("GITHUB_TOKEN is required when post-findings is enabled")
 	}
 
-	// Auth check for platform mode (if configured)
-	checker, err := deps.AuthDeps.RequireAuth()
-	if err != nil {
-		return err
-	}
-	if checker != nil && !checker.CanReviewCode() {
-		return errors.New("code review not available on your plan")
-	}
-
-	// Build RepoAccessChecker from entitlements (nil in legacy mode)
+	// Authenticate: try stored auth first (may already be populated by OIDC bootstrap
+	// in runPlatformMode), then fall back to direct OIDC if available.
 	var repoAccessChecker review.RepoAccessChecker
-	if checker != nil {
-		repoAccessChecker = checker
+	checker, authErr := deps.AuthDeps.RequireAuth()
+	if authErr != nil && auth.IsAvailable() && deps.PlatformURL != "" {
+		// No stored auth but OIDC is available - authenticate directly.
+		// This handles the case where the github-action command is invoked
+		// without the platform mode bootstrap (e.g., via legacy mode).
+		oidcResult, oidcErr := authenticateOIDC(ctx, deps)
+		if oidcErr != nil {
+			return fmt.Errorf("OIDC authentication: %w", oidcErr)
+		}
+		if !oidcResult.Entitlements.CanReviewCode() {
+			return errors.New("code review not available on your plan")
+		}
+		repoAccessChecker = oidcResult.Entitlements
+	} else if authErr != nil {
+		return authErr
+	} else {
+		if checker != nil && !checker.CanReviewCode() {
+			return errors.New("code review not available on your plan")
+		}
+		if checker != nil {
+			repoAccessChecker = checker
+		}
 	}
 
 	// Create unique output directory to avoid collisions with concurrent jobs
@@ -370,6 +390,35 @@ func writeGitHubOutputs(result review.Result, reviewErr error) error {
 		total, counts["critical"], counts["high"], counts["medium"], counts["low"])
 
 	return nil
+}
+
+// authenticateOIDC performs OIDC authentication for GitHub Actions.
+// Returns the authentication result containing entitlements for access checking.
+func authenticateOIDC(ctx context.Context, deps GitHubActionDeps) (*auth.OIDCAuthResult, error) {
+	tenantID := os.Getenv("BOP_TENANT_ID")
+	if tenantID == "" {
+		return nil, fmt.Errorf("BOP_TENANT_ID is required for OIDC authentication; " +
+			"set it to your organization's tenant ID")
+	}
+
+	client, err := auth.NewClient(auth.ClientConfig{
+		BaseURL:   deps.PlatformURL,
+		ProductID: "bop",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create auth client: %w", err)
+	}
+
+	oidc := auth.NewGitHubActionsOIDC(client, deps.PlatformURL)
+	result, err := oidc.Authenticate(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Fprintf(os.Stderr, "::notice::Authenticated via OIDC as %s (tenant: %s)\n",
+		result.StoredAuth.User.GitHubLogin, result.StoredAuth.TenantID)
+
+	return result, nil
 }
 
 // getEnvOrDefault returns the environment variable value or a default.

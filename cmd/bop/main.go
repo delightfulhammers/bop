@@ -141,8 +141,19 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 	var entitlements *auth.BopEntitlements
 	var tokenWasExpired bool // Track if token refresh was attempted
 
-	// Attempt to load stored auth if available
-	if tokenStore != nil {
+	// Try OIDC authentication if running in GitHub Actions.
+	// This must happen before loading stored auth so that OIDC-acquired credentials
+	// are available to all downstream commands (review branch, github-action, etc.).
+	if tokenStore != nil && auth.IsAvailable() {
+		var oidcErr error
+		storedAuth, oidcErr = tryOIDCAuth(ctx, opConfig.PlatformURL, tokenStore)
+		if oidcErr != nil {
+			return oidcErr
+		}
+	}
+
+	// Attempt to load stored auth if not already acquired via OIDC
+	if storedAuth == nil && tokenStore != nil {
 		storedAuth, _ = tokenStore.Load()
 	}
 
@@ -329,6 +340,47 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 	}
 
 	return resp.Config, nil
+}
+
+// tryOIDCAuth attempts GitHub Actions OIDC authentication.
+// Returns (nil, nil) if BOP_TENANT_ID is not set (OIDC not configured).
+// Returns (nil, error) if BOP_TENANT_ID is set but authentication fails (hard error).
+// Returns (auth, nil) on success. The token is saved to the token store so downstream
+// commands can use it via RequireAuth().
+func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.TokenStore) (*auth.StoredAuth, error) {
+	tenantID := os.Getenv("BOP_TENANT_ID")
+	if tenantID == "" {
+		// OIDC env vars are present but no tenant ID configured.
+		// This is expected when the workflow hasn't set BOP_TENANT_ID.
+		log.Printf("[WARN] GitHub Actions OIDC available but BOP_TENANT_ID not set. " +
+			"Set BOP_TENANT_ID for keyless platform authentication.")
+		return nil, nil
+	}
+
+	client, err := auth.NewClient(auth.ClientConfig{
+		BaseURL:   platformURL,
+		ProductID: "bop",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("OIDC auth: failed to create client: %w", err)
+	}
+
+	oidc := auth.NewGitHubActionsOIDC(client, platformURL)
+	result, err := oidc.Authenticate(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC authentication failed: %w", err)
+	}
+
+	// Save to token store so RequireAuth() and other commands can find it
+	if err := tokenStore.Save(result.StoredAuth); err != nil {
+		log.Printf("[WARN] Failed to cache OIDC credentials: %v", err)
+		// Continue anyway - we have valid auth in memory
+	}
+
+	log.Printf("[INFO] Authenticated via GitHub Actions OIDC (tenant: %s, user: %s)",
+		result.StoredAuth.TenantID, result.StoredAuth.User.GitHubLogin)
+
+	return result.StoredAuth, nil
 }
 
 // tryRefreshToken attempts to refresh an expired access token.
@@ -659,7 +711,8 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 			ConfidenceMedium:   cfg.Verification.Confidence.Medium,
 			ConfidenceLow:      cfg.Verification.Confidence.Low,
 		},
-		Version: version.Value(),
+		Version:     version.Value(),
+		PlatformURL: config.GetPlatformURL(),
 	})
 
 	if err := root.ExecuteContext(ctx); err != nil {
