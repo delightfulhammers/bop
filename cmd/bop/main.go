@@ -228,7 +228,31 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 		}
 	}
 
+	// BYOK enforcement for beta users
+	// Beta tier requires users to configure their own API keys
+	if entitlements != nil {
+		hasConfiguredKeys := hasProviderAPIKeys(cfg)
+		if err := entitlements.RequireBYOK(hasConfiguredKeys); err != nil {
+			return err
+		}
+	}
+
 	return runWithConfig(ctx, cfg)
+}
+
+// hasProviderAPIKeys returns true if any LLM provider has an API key configured.
+// This is used for BYOK (bring your own keys) enforcement for beta tier users.
+func hasProviderAPIKeys(cfg config.Config) bool {
+	for _, providerCfg := range cfg.Providers {
+		if providerCfg.APIKey != "" {
+			return true
+		}
+	}
+	// Also check for Ollama which doesn't need API key but does need explicit enablement
+	if ollama, ok := cfg.Providers["ollama"]; ok && ollama.Enabled != nil && *ollama.Enabled {
+		return true
+	}
+	return false
 }
 
 // loadBaselineConfig loads config with defaults only - no local files, no env vars.
