@@ -139,10 +139,17 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 	var storedAuth *auth.StoredAuth
 	var platformConfig map[string]any
 	var entitlements *auth.BopEntitlements
+	var tokenWasExpired bool // Track if token refresh was attempted
 
 	// Attempt to load stored auth if available
 	if tokenStore != nil {
 		storedAuth, _ = tokenStore.Load()
+	}
+
+	// Handle token refresh if expired
+	if storedAuth != nil && storedAuth.IsExpired() {
+		tokenWasExpired = true
+		storedAuth = tryRefreshToken(ctx, opConfig.PlatformURL, storedAuth, tokenStore)
 	}
 
 	if storedAuth != nil && !storedAuth.IsExpired() {
@@ -194,12 +201,22 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 	} else {
 		// No entitlement - warn about local config or env vars if present
 		if config.HasLocalConfig() {
-			log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
-				"Local configuration requires Enterprise plan. " +
-				"Using platform configuration instead.")
+			if tokenWasExpired {
+				// Already warned about token expiration in tryRefreshToken
+				log.Printf("[WARN] Local config file (bop.yaml) found but ignored due to expired token.")
+			} else if entitlements == nil {
+				log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
+					"Run 'bop auth login' to authenticate.")
+			} else {
+				log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
+					"Local configuration requires Enterprise plan.")
+			}
 		}
 		if config.HasConfigEnvVars() {
-			if entitlements == nil {
+			if tokenWasExpired {
+				// Already warned about token expiration in tryRefreshToken
+				log.Printf("[WARN] Config environment variables ignored due to expired token.")
+			} else if entitlements == nil {
 				// User not logged in - can't verify entitlement
 				log.Printf("[WARN] Config environment variables detected but cannot verify entitlement. " +
 					"Run 'bop auth login' to authenticate. Proceeding with platform defaults.")
@@ -260,6 +277,69 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 	}
 
 	return resp.Config, nil
+}
+
+// tryRefreshToken attempts to refresh an expired access token.
+// Returns the refreshed auth on success, or nil if refresh fails.
+// On success, the new token is saved to the token store.
+func tryRefreshToken(ctx context.Context, platformURL string, stored *auth.StoredAuth, tokenStore *auth.TokenStore) *auth.StoredAuth {
+	if stored.RefreshToken == "" {
+		log.Printf("[WARN] Access token expired and no refresh token available. Run 'bop auth login' to re-authenticate.")
+		return nil
+	}
+
+	client, err := auth.NewClient(auth.ClientConfig{
+		BaseURL:   platformURL,
+		ProductID: "bop",
+	})
+	if err != nil {
+		log.Printf("[WARN] Access token expired and refresh failed: %v. Run 'bop auth login' to re-authenticate.", err)
+		return nil
+	}
+
+	resp, err := client.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
+	if err != nil {
+		log.Printf("[WARN] Access token expired and refresh failed: %v. Run 'bop auth login' to re-authenticate.", err)
+		return nil
+	}
+
+	// Calculate expiry time from ExpiresIn (seconds)
+	expiresAt := time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
+
+	// Fetch updated user info to get current entitlements
+	// (entitlements may have changed since original login)
+	userResp, err := client.GetCurrentUser(ctx, resp.AccessToken)
+	if err != nil {
+		log.Printf("[WARN] Token refreshed but failed to get user info: %v. Using cached entitlements.", err)
+		// Fall back to preserved entitlements
+		userResp = &auth.CurrentUserResponse{
+			Entitlements: stored.Entitlements,
+			PlanID:       stored.Plan,
+		}
+	}
+
+	// Build new stored auth from refresh response
+	newAuth := &auth.StoredAuth{
+		Version:      stored.Version,
+		AccessToken:  resp.AccessToken,
+		RefreshToken: resp.RefreshToken,
+		ExpiresAt:    expiresAt,
+		User:         stored.User, // Preserve user display info
+		TenantID:     stored.TenantID,
+		Plan:         userResp.PlanID,
+		Entitlements: userResp.Entitlements,
+	}
+
+	// Save refreshed token
+	if tokenStore != nil {
+		if err := tokenStore.Save(newAuth); err != nil {
+			log.Printf("[WARN] Failed to save refreshed token: %v", err)
+			// Continue anyway - we have a valid token in memory
+		}
+	}
+
+	log.Printf("[INFO] Access token refreshed successfully")
+	return newAuth
 }
 
 // runWithConfig runs the CLI with the given configuration.
