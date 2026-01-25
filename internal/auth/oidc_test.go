@@ -180,6 +180,59 @@ func TestGitHubActionsOIDC_RequestOIDCToken(t *testing.T) {
 	}
 }
 
+func TestGitHubActionsOIDC_RequestOIDCToken_AudienceEncoding(t *testing.T) {
+	// Verify that the audience parameter is properly URL-encoded
+	// (not just string-concatenated) when added to the OIDC request URL.
+	var receivedAudience string
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAudience = r.URL.Query().Get("audience")
+		// Also verify existing params are preserved
+		if got := r.URL.Query().Get("api-version"); got != "2.0" {
+			t.Errorf("existing param lost: api-version = %q, want %q", got, "2.0")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": "test-token"})
+	}))
+	defer oidcServer.Close()
+
+	// URL already has query params (like GitHub's actual runtime URL)
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", oidcServer.URL+"?api-version=2.0")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "test-token")
+
+	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/actions-oidc":
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken: "a", RefreshToken: "r", TokenType: "Bearer", ExpiresIn: 3600,
+			})
+		case "/auth/me":
+			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
+				UserID: "u", Username: "u", TenantID: "t", PlanID: "beta",
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer platformServer.Close()
+
+	client, err := NewClient(ClientConfig{BaseURL: platformServer.URL, ProductID: "bop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Use a URL with special characters as audience to test encoding
+	audience := "https://api.example.com"
+	oidc := NewGitHubActionsOIDC(client, audience)
+	_, authErr := oidc.Authenticate(context.Background(), "tenant-123")
+	if authErr != nil {
+		t.Fatalf("Authenticate() error: %v", authErr)
+	}
+
+	if receivedAudience != audience {
+		t.Errorf("audience = %q, want %q", receivedAudience, audience)
+	}
+}
+
 func TestGitHubActionsOIDC_RequestOIDCToken_OIDCUnavailable(t *testing.T) {
 	// Set env vars to empty to simulate OIDC not available
 	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", "")

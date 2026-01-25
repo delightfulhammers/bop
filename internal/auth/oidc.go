@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 )
@@ -14,17 +15,18 @@ import (
 // GitHubActionsOIDC provides OIDC token exchange for GitHub Actions authentication.
 // This enables keyless authentication from CI/CD pipelines.
 type GitHubActionsOIDC struct {
-	client      *Client
-	httpClient  *http.Client
-	platformURL string
+	client     *Client
+	httpClient *http.Client
+	audience   string
 }
 
 // NewGitHubActionsOIDC creates a new OIDC handler for GitHub Actions.
-// The platformURL is used as the audience for OIDC tokens.
-func NewGitHubActionsOIDC(client *Client, platformURL string) *GitHubActionsOIDC {
+// The audience parameter specifies the intended recipient of the OIDC token
+// (typically the platform URL, e.g. "https://api.delightfulhammers.com").
+func NewGitHubActionsOIDC(client *Client, audience string) *GitHubActionsOIDC {
 	return &GitHubActionsOIDC{
-		client:      client,
-		platformURL: platformURL,
+		client:   client,
+		audience: audience,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -118,11 +120,17 @@ func (g *GitHubActionsOIDC) requestOIDCToken(ctx context.Context) (string, error
 			"ensure workflow has 'permissions: id-token: write'")
 	}
 
-	// Add audience parameter - the platform URL tells GitHub who this token is for
-	// This prevents token reuse against unintended services
-	tokenURL := fmt.Sprintf("%s&audience=%s", requestURL, g.platformURL)
+	// Add audience parameter - tells GitHub who this token is for.
+	// This prevents token reuse against unintended services.
+	parsed, err := url.Parse(requestURL)
+	if err != nil {
+		return "", fmt.Errorf("parse OIDC request URL: %w", err)
+	}
+	q := parsed.Query()
+	q.Set("audience", g.audience)
+	parsed.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, tokenURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return "", fmt.Errorf("create token request: %w", err)
 	}
