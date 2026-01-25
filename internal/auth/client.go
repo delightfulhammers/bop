@@ -385,8 +385,12 @@ func (c *Client) FetchProductConfig(ctx context.Context, accessToken string) (*P
 		return nil, c.parseError(resp)
 	}
 
+	// Limit response body size to prevent memory exhaustion from malicious/misconfigured server
+	const maxConfigBodySize = 1 << 20 // 1MB - plenty for config, defensive against abuse
+	limitedReader := io.LimitReader(resp.Body, maxConfigBodySize)
+
 	var result ProductConfigResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(limitedReader).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode config response: %w", err)
 	}
 

@@ -168,10 +168,13 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 		}
 	}
 
-	// Check if local config should be loaded
-	if config.HasLocalConfig() {
-		if entitlements != nil && entitlements.CanUseLocalConfig() == nil {
-			// User has local-bop-config entitlement, load and merge local config
+	// Determine if user has local-bop-config entitlement
+	hasLocalConfigEntitlement := entitlements != nil && entitlements.CanUseLocalConfig() == nil
+
+	// Load local config and/or env vars if user has entitlement
+	if hasLocalConfigEntitlement {
+		// User has entitlement - load local files and env vars
+		if config.HasLocalConfig() || config.HasConfigEnvVars() {
 			localCfg, err := config.Load(config.LoaderOptions{
 				ConfigPaths: defaultConfigPaths(),
 				FileName:    "bop",
@@ -187,38 +190,42 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 					cfg = merged
 				}
 			}
-		} else {
-			// No entitlement for local config - warn user
+		}
+	} else {
+		// No entitlement - warn about local config or env vars if present
+		if config.HasLocalConfig() {
 			log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
 				"Local configuration requires Enterprise plan. " +
 				"Using platform configuration instead.")
 		}
-	}
-
-	// Check for config env vars without entitlement
-	if config.HasConfigEnvVars() && entitlements != nil && entitlements.CanUseLocalConfig() != nil {
-		log.Printf("[WARN] Config environment variables detected but ignored. " +
-			"Environment-based configuration requires Enterprise plan.")
+		if config.HasConfigEnvVars() {
+			if entitlements == nil {
+				// User not logged in - can't verify entitlement
+				log.Printf("[WARN] Config environment variables detected but cannot verify entitlement. " +
+					"Run 'bop auth login' to authenticate. Proceeding with platform defaults.")
+			} else {
+				// User logged in but lacks entitlement
+				log.Printf("[WARN] Config environment variables detected but ignored. " +
+					"Environment-based configuration requires Enterprise plan.")
+			}
+		}
 	}
 
 	return runWithConfig(ctx, cfg)
 }
 
-// loadBaselineConfig loads config with defaults and env vars, but no local files.
+// loadBaselineConfig loads config with defaults only - no local files, no env vars.
 // This is the starting point for platform mode before merging platform config.
 //
-// NOTE: Environment variables ARE loaded here (EnvPrefix: "BOP"). This is intentional
-// because operational env vars like BOP_LOG_LEVEL need to work. Config env vars
-// (API keys, etc.) are checked separately via HasConfigEnvVars() and warned about
-// if the user lacks local-bop-config entitlement.
-//
-// TODO: For stricter security, consider loading ONLY operational env vars here
-// and deferring all config env vars until after entitlement check.
+// Environment variables are NOT loaded here to prevent bypassing entitlement checks.
+// Operational env vars (BOP_LOG_LEVEL, BOP_PLATFORM_URL) are handled separately by
+// LoadOperational() before this function is called.
+// Config env vars (API keys, etc.) are loaded later only if user has local-bop-config entitlement.
 func loadBaselineConfig() (config.Config, error) {
 	return config.Load(config.LoaderOptions{
 		ConfigPaths: nil, // No local file paths - requires entitlement check
 		FileName:    "bop",
-		EnvPrefix:   "BOP", // Env vars loaded - operational vars needed early
+		EnvPrefix:   "", // No env vars - requires entitlement check
 	})
 }
 
@@ -246,9 +253,10 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 		return nil, err
 	}
 
-	// Cache the response
+	// Cache the response using stored.Plan for consistent keying
+	// (Load uses stored.Plan, so Save must too for cache hits)
 	if cache != nil {
-		_ = cache.Save(resp.Config, resp.Tier, stored.TenantID)
+		_ = cache.Save(resp.Config, stored.Plan, stored.TenantID)
 	}
 
 	return resp.Config, nil
