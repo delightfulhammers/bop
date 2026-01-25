@@ -242,16 +242,39 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 
 // hasProviderAPIKeys returns true if any LLM provider has an API key configured.
 // This is used for BYOK (bring your own keys) enforcement for beta tier users.
+//
+// This function checks both config values AND environment variables directly,
+// matching the behavior of getAPIKey() which providers use at construction time.
+// Environment variables are allowed for BYOK even without the local-bop-config
+// entitlement because beta users need a way to supply their API keys.
 func hasProviderAPIKeys(cfg config.Config) bool {
-	for _, providerCfg := range cfg.Providers {
-		if providerCfg.APIKey != "" {
+	// Check each known provider using the same logic as getAPIKey():
+	// config value first, then environment variable fallback
+	providerEnvVars := map[string]string{
+		"anthropic": "ANTHROPIC_API_KEY",
+		"openai":    "OPENAI_API_KEY",
+		"gemini":    "GEMINI_API_KEY",
+	}
+
+	for provider, envVar := range providerEnvVars {
+		// Check config first
+		if providerCfg, ok := cfg.Providers[provider]; ok && providerCfg.APIKey != "" {
+			return true
+		}
+		// Fall back to env var (same as getAPIKey does)
+		if os.Getenv(envVar) != "" {
 			return true
 		}
 	}
-	// Also check for Ollama which doesn't need API key but does need explicit enablement
+
+	// Ollama doesn't need API key but does need explicit enablement or OLLAMA_HOST
 	if ollama, ok := cfg.Providers["ollama"]; ok && ollama.Enabled != nil && *ollama.Enabled {
 		return true
 	}
+	if os.Getenv("OLLAMA_HOST") != "" {
+		return true
+	}
+
 	return false
 }
 
