@@ -80,6 +80,12 @@ Examples:
 				return err
 			}
 
+			// Build RepoAccessChecker from entitlements (nil in legacy mode)
+			var repoAccessChecker review.RepoAccessChecker
+			if checker != nil {
+				repoAccessChecker = checker
+			}
+
 			// Use config instructions as fallback if --instructions flag not provided
 			if customInstructions == "" {
 				customInstructions = defaultInstructions
@@ -145,7 +151,8 @@ Examples:
 					ConfidenceLow:      resolvedConfLow,
 				},
 
-				Reviewers: reviewers,
+				Reviewers:         reviewers,
+				RepoAccessChecker: repoAccessChecker,
 			})
 			return err
 		},

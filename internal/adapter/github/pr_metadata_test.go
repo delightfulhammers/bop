@@ -187,9 +187,29 @@ func TestPRToDomain(t *testing.T) {
 			SHA string `json:"sha"`
 		}{Ref: "feature-branch", SHA: "abc123"},
 		Base: struct {
-			Ref string `json:"ref"`
-			SHA string `json:"sha"`
-		}{Ref: "main", SHA: "def456"},
+			Ref  string `json:"ref"`
+			SHA  string `json:"sha"`
+			Repo struct {
+				Private bool `json:"private"`
+				Owner   struct {
+					Type string `json:"type"`
+				} `json:"owner"`
+			} `json:"repo"`
+		}{
+			Ref: "main",
+			SHA: "def456",
+			Repo: struct {
+				Private bool `json:"private"`
+				Owner   struct {
+					Type string `json:"type"`
+				} `json:"owner"`
+			}{
+				Private: true,
+				Owner: struct {
+					Type string `json:"type"`
+				}{Type: "Organization"},
+			},
+		},
 		Merged: false,
 	}
 
@@ -206,6 +226,8 @@ func TestPRToDomain(t *testing.T) {
 	assert.Equal(t, "abc123", result.HeadSHA)
 	assert.Equal(t, "main", result.BaseRef)
 	assert.Equal(t, "def456", result.BaseSHA)
+	assert.True(t, result.IsPrivate)
+	assert.Equal(t, "Organization", result.OwnerType)
 }
 
 func TestPRToDomain_MergedState(t *testing.T) {

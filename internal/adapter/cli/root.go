@@ -228,6 +228,12 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 				return fmt.Errorf("code review not available on your plan")
 			}
 
+			// Build RepoAccessChecker from entitlements (nil in legacy mode)
+			var repoAccessChecker review.RepoAccessChecker
+			if checker != nil {
+				repoAccessChecker = checker
+			}
+
 			if len(args) > 0 {
 				targetRef = args[0]
 			}
@@ -336,7 +342,8 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 					ConfidenceMedium:   resolvedConfMedium,
 					ConfidenceLow:      resolvedConfLow,
 				},
-				Reviewers: reviewers,
+				Reviewers:         reviewers,
+				RepoAccessChecker: repoAccessChecker,
 			})
 			return err
 		},
