@@ -157,10 +157,14 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 
 	// Convert platform config to internal config structure
 	if platformConfig != nil {
-		baseCfg := config.ConvertPlatformConfig(platformConfig, storedAuth.Plan)
-		cfg, err = config.MergePlatformConfig(baseCfg, cfg)
-		if err != nil {
-			log.Printf("[WARN] Failed to merge platform config: %v", err)
+		if err := config.ValidatePlatformConfig(platformConfig); err != nil {
+			log.Printf("[WARN] Platform config validation failed: %v (using baseline config)", err)
+		} else {
+			baseCfg := config.ConvertPlatformConfig(platformConfig, storedAuth.Plan)
+			cfg, err = config.MergePlatformConfig(baseCfg, cfg)
+			if err != nil {
+				log.Printf("[WARN] Failed to merge platform config: %v (using baseline config)", err)
+			}
 		}
 	}
 
@@ -176,7 +180,12 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 			if err != nil {
 				log.Printf("[WARN] Failed to load local config: %v", err)
 			} else {
-				cfg, _ = config.MergePlatformConfig(cfg, localCfg)
+				merged, mergeErr := config.MergePlatformConfig(cfg, localCfg)
+				if mergeErr != nil {
+					log.Printf("[WARN] Failed to merge local config: %v (using platform config)", mergeErr)
+				} else {
+					cfg = merged
+				}
 			}
 		} else {
 			// No entitlement for local config - warn user
@@ -195,24 +204,30 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 	return runWithConfig(ctx, cfg)
 }
 
-// loadBaselineConfig loads config with defaults but no local files.
+// loadBaselineConfig loads config with defaults and env vars, but no local files.
 // This is the starting point for platform mode before merging platform config.
+//
+// NOTE: Environment variables ARE loaded here (EnvPrefix: "BOP"). This is intentional
+// because operational env vars like BOP_LOG_LEVEL need to work. Config env vars
+// (API keys, etc.) are checked separately via HasConfigEnvVars() and warned about
+// if the user lacks local-bop-config entitlement.
+//
+// TODO: For stricter security, consider loading ONLY operational env vars here
+// and deferring all config env vars until after entitlement check.
 func loadBaselineConfig() (config.Config, error) {
-	// Create a minimal config with just defaults
-	// We don't load local files yet - that requires entitlement check
 	return config.Load(config.LoaderOptions{
-		ConfigPaths: nil, // No local paths
+		ConfigPaths: nil, // No local file paths - requires entitlement check
 		FileName:    "bop",
-		EnvPrefix:   "BOP",
+		EnvPrefix:   "BOP", // Env vars loaded - operational vars needed early
 	})
 }
 
 // fetchPlatformConfigWithCache fetches platform config, using cache if available.
 func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, stored *auth.StoredAuth) (map[string]any, error) {
-	// Try cache first
+	// Try cache first (must match both tenant and tier to prevent stale config)
 	cache, err := config.NewConfigCache()
 	if err == nil {
-		if cached, err := cache.Load(stored.TenantID); err == nil && cached != nil {
+		if cached, err := cache.Load(stored.TenantID, stored.Plan); err == nil && cached != nil {
 			return cached.Config, nil
 		}
 	}

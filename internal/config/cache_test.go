@@ -45,51 +45,71 @@ func TestCachedConfig_IsExpired(t *testing.T) {
 
 func TestCachedConfig_IsValid(t *testing.T) {
 	validTenant := "tenant-123"
+	validTier := "pro"
 
 	tests := []struct {
 		name     string
 		cache    *CachedConfig
 		tenantID string
+		tier     string
 		want     bool
 	}{
 		{
-			name: "valid cache for matching tenant",
+			name: "valid cache for matching tenant and tier",
 			cache: &CachedConfig{
 				TenantID:  validTenant,
+				Tier:      validTier,
 				ExpiresAt: time.Now().Add(1 * time.Hour),
 			},
 			tenantID: validTenant,
+			tier:     validTier,
 			want:     true,
 		},
 		{
 			name: "invalid cache for different tenant",
 			cache: &CachedConfig{
 				TenantID:  validTenant,
+				Tier:      validTier,
 				ExpiresAt: time.Now().Add(1 * time.Hour),
 			},
 			tenantID: "other-tenant",
+			tier:     validTier,
+			want:     false,
+		},
+		{
+			name: "invalid cache for different tier",
+			cache: &CachedConfig{
+				TenantID:  validTenant,
+				Tier:      validTier,
+				ExpiresAt: time.Now().Add(1 * time.Hour),
+			},
+			tenantID: validTenant,
+			tier:     "enterprise",
 			want:     false,
 		},
 		{
 			name: "expired cache is invalid",
 			cache: &CachedConfig{
 				TenantID:  validTenant,
+				Tier:      validTier,
 				ExpiresAt: time.Now().Add(-1 * time.Hour),
 			},
 			tenantID: validTenant,
+			tier:     validTier,
 			want:     false,
 		},
 		{
 			name:     "nil cache is invalid",
 			cache:    nil,
 			tenantID: validTenant,
+			tier:     validTier,
 			want:     false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.cache.IsValid(tt.tenantID); got != tt.want {
+			if got := tt.cache.IsValid(tt.tenantID, tt.tier); got != tt.want {
 				t.Errorf("IsValid() = %v, want %v", got, tt.want)
 			}
 		})
@@ -123,7 +143,7 @@ func TestConfigCache_SaveAndLoad(t *testing.T) {
 	}
 
 	// Load config
-	loaded, err := cache.Load(tenantID)
+	loaded, err := cache.Load(tenantID, tier)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -156,12 +176,34 @@ func TestConfigCache_LoadDifferentTenant(t *testing.T) {
 	}
 
 	// Load for different tenant should return nil
-	loaded, err := cache.Load("tenant-456")
+	loaded, err := cache.Load("tenant-456", "pro")
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 	if loaded != nil {
 		t.Error("Load() should return nil for different tenant")
+	}
+}
+
+func TestConfigCache_LoadDifferentTier(t *testing.T) {
+	tmpDir := t.TempDir()
+	cachePath := filepath.Join(tmpDir, "config-cache.json")
+
+	cache := NewConfigCacheWithPath(cachePath, 1*time.Hour)
+
+	// Save for pro tier
+	err := cache.Save(map[string]any{"model": "test"}, "pro", "tenant-123")
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	// Load for different tier should return nil (prevents stale config after upgrade/downgrade)
+	loaded, err := cache.Load("tenant-123", "enterprise")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if loaded != nil {
+		t.Error("Load() should return nil for different tier")
 	}
 }
 
@@ -172,7 +214,7 @@ func TestConfigCache_LoadNoCache(t *testing.T) {
 	cache := NewConfigCacheWithPath(cachePath, 1*time.Hour)
 
 	// Load should return nil when no cache exists
-	loaded, err := cache.Load("any-tenant")
+	loaded, err := cache.Load("any-tenant", "any-tier")
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}

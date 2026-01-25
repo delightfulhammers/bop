@@ -36,12 +36,17 @@ func (c *CachedConfig) IsExpired() bool {
 	return time.Now().After(c.ExpiresAt)
 }
 
-// IsValid returns true if the cached config is valid for the given tenant.
-func (c *CachedConfig) IsValid(tenantID string) bool {
+// IsValid returns true if the cached config is valid for the given tenant and tier.
+// Both tenant ID and tier must match to prevent using stale config after tier changes.
+func (c *CachedConfig) IsValid(tenantID, tier string) bool {
 	if c == nil {
 		return false
 	}
 	if c.TenantID != tenantID {
+		return false
+	}
+	// Tier must match to prevent using Enterprise config on downgraded account
+	if c.Tier != tier {
 		return false
 	}
 	return !c.IsExpired()
@@ -80,8 +85,8 @@ func NewConfigCacheWithPath(path string, ttl time.Duration) *ConfigCache {
 }
 
 // Load reads the cached config from disk.
-// Returns nil if no cache exists or cache is expired.
-func (c *ConfigCache) Load(tenantID string) (*CachedConfig, error) {
+// Returns nil if no cache exists, cache is expired, or tenant/tier doesn't match.
+func (c *ConfigCache) Load(tenantID, tier string) (*CachedConfig, error) {
 	data, err := os.ReadFile(c.path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,15 +101,16 @@ func (c *ConfigCache) Load(tenantID string) (*CachedConfig, error) {
 		return nil, nil
 	}
 
-	// Check if cache is valid for this tenant
-	if !cached.IsValid(tenantID) {
+	// Check if cache is valid for this tenant and tier
+	if !cached.IsValid(tenantID, tier) {
 		return nil, nil
 	}
 
 	return &cached, nil
 }
 
-// Save writes the config to cache.
+// Save writes the config to cache using atomic write (temp file + rename).
+// This prevents cache corruption when multiple bop instances run concurrently.
 func (c *ConfigCache) Save(config map[string]any, tier, tenantID string) error {
 	cached := CachedConfig{
 		Config:    config,
@@ -120,12 +126,47 @@ func (c *ConfigCache) Save(config map[string]any, tier, tenantID string) error {
 	}
 
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(c.path), 0755); err != nil {
+	dir := filepath.Dir(c.path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 
-	// Write with restricted permissions (user-only)
-	return os.WriteFile(c.path, data, 0600)
+	// Write to temp file first, then atomically rename
+	// This prevents partial reads if another process reads during write
+	tmpFile, err := os.CreateTemp(dir, ".config-cache-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+
+	// Clean up temp file on error
+	success := false
+	defer func() {
+		if !success {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	// Write data with restricted permissions
+	if err := tmpFile.Chmod(0600); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpPath, c.path); err != nil {
+		return err
+	}
+
+	success = true
+	return nil
 }
 
 // Clear removes the cached config.
