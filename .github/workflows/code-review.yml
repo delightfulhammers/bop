@@ -49,6 +49,8 @@ jobs:
         id: skip-check
         working-directory: bop
         env:
+          # Use legacy mode until OIDC auth is configured for Actions
+          BOP_PLATFORM_URL: ""
           # Use environment variables to safely pass potentially untrusted content
           COMMIT_MSG: ${{ steps.get-commit.outputs.message }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -79,6 +81,8 @@ jobs:
         if: steps.skip-check.outputs.skip != 'true'
         working-directory: bop
         env:
+          # Use legacy mode until OIDC auth is configured for Actions
+          BOP_PLATFORM_URL: ""
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

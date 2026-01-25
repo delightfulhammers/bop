@@ -17,10 +17,49 @@ type LoaderOptions struct {
 	EnvPrefix   string
 }
 
+// OperationalConfig contains settings that control how bop operates.
+// These can be loaded without authentication and don't require entitlements.
+type OperationalConfig struct {
+	// LogLevel is the logging verbosity (trace, debug, info, error).
+	LogLevel string
+
+	// LogFormat is the log format (json, human).
+	LogFormat string
+
+	// PlatformURL is the platform service URL.
+	// Empty string means legacy mode (no platform).
+	PlatformURL string
+
+	// IsLegacyMode is true if using legacy mode escape hatch.
+	IsLegacyMode bool
+}
+
+// LoadOperational loads only operational configuration settings.
+// These settings don't require authentication or entitlements.
+// Use this for early initialization before auth is available.
+func LoadOperational() OperationalConfig {
+	cfg := OperationalConfig{
+		LogLevel:     "info",
+		LogFormat:    "human",
+		PlatformURL:  GetPlatformURL(),
+		IsLegacyMode: IsLegacyEscapeHatch(),
+	}
+
+	// Override from environment variables
+	if level := os.Getenv("BOP_LOG_LEVEL"); level != "" {
+		cfg.LogLevel = level
+	}
+
+	return cfg
+}
+
 // Load returns the merged configuration from files and environment variables.
 // Config files are loaded in order: user config (~/.config/bop/) first as base,
 // then project config (current directory) overlays it. Environment variables
 // override both.
+//
+// In platform mode (default), this function should only be called after
+// authentication to respect entitlement gating of local config.
 func Load(opts LoaderOptions) (Config, error) {
 	name := opts.FileName
 	if name == "" {
@@ -244,6 +283,33 @@ func expandEnvStringSlice(slice []string) []string {
 	return result
 }
 
+// HasLocalConfig returns true if a local config file exists.
+// This checks for bop.yaml in the current directory.
+func HasLocalConfig() bool {
+	_, err := os.Stat("bop.yaml")
+	return err == nil
+}
+
+// HasConfigEnvVars returns true if any config-controlling env vars are set.
+// This is used to warn when env vars are ignored due to entitlement gating.
+func HasConfigEnvVars() bool {
+	for _, v := range ConfigEnvVars {
+		if os.Getenv(v) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// GetLocalConfigPath returns the path to the local config file if it exists.
+// Returns empty string if no local config is found.
+func GetLocalConfigPath() string {
+	if _, err := os.Stat("bop.yaml"); err == nil {
+		return "bop.yaml"
+	}
+	return ""
+}
+
 // locateConfigFiles returns all matching config files in load order (base → overlay).
 // User config (~/.config/bop/) is loaded first as base, then paths in order,
 // finally current directory. Later files override earlier ones during merge.
@@ -317,10 +383,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("store.path", defaultStorePath())
 
 	// Auth defaults (Week 14: Platform Authentication)
-	// Default to legacy mode for backward compatibility
-	v.SetDefault("auth.mode", "legacy")
+	// Default to platform mode - legacy mode is an escape hatch via BOP_PLATFORM_URL=""
+	// The serviceUrl is derived from GetPlatformURL() if not explicitly set.
+	v.SetDefault("auth.mode", "platform")
 	v.SetDefault("auth.productId", "bop")
-	// Note: auth.serviceUrl has no default - must be set when mode is "platform"
+	// Note: auth.serviceUrl is now derived from platform URL if not explicitly set
 
 	// Observability defaults (Phase 3)
 	v.SetDefault("observability.logging.enabled", true)

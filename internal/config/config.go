@@ -236,16 +236,16 @@ type StoreConfig struct {
 
 // AuthConfig configures platform authentication.
 // When mode is "platform", bop authenticates via the Delightful Hammers platform.
-// When mode is "legacy" (default), bop uses environment variables directly.
+// When mode is "legacy", bop uses environment variables directly (escape hatch).
 type AuthConfig struct {
 	// Mode determines the authentication mode.
 	// Valid values: "platform" (use platform auth), "legacy" (use env vars directly).
-	// Default: "legacy" for backward compatibility.
+	// Default: "platform". Legacy mode is an escape hatch via BOP_PLATFORM_URL="".
 	Mode string `yaml:"mode"`
 
 	// ServiceURL is the platform auth-service URL.
-	// Example: "https://auth.delightfulhammers.com"
-	// Required when mode is "platform".
+	// Example: "https://api.delightfulhammers.com"
+	// If not set, derived from GetPlatformURL().
 	ServiceURL string `yaml:"serviceUrl"`
 
 	// ProductID identifies this product to the platform.
@@ -254,14 +254,29 @@ type AuthConfig struct {
 }
 
 // IsPlatformMode returns true if platform authentication is enabled.
+// Platform mode is the default unless BOP_PLATFORM_URL is explicitly empty.
 func (c AuthConfig) IsPlatformMode() bool {
-	return strings.EqualFold(c.Mode, "platform")
+	// Check legacy escape hatch first
+	if IsLegacyEscapeHatch() {
+		return false
+	}
+	// Mode defaults to platform, but explicit "legacy" disables it
+	return !strings.EqualFold(c.Mode, "legacy")
 }
 
 // IsLegacyMode returns true if legacy (env var) authentication is used.
-// This is the default when mode is empty or explicitly "legacy".
+// Legacy mode is enabled via BOP_PLATFORM_URL="" or explicit mode: legacy.
 func (c AuthConfig) IsLegacyMode() bool {
-	return c.Mode == "" || strings.EqualFold(c.Mode, "legacy")
+	return !c.IsPlatformMode()
+}
+
+// GetServiceURL returns the effective service URL.
+// If ServiceURL is not explicitly set, returns the platform URL from GetPlatformURL().
+func (c AuthConfig) GetServiceURL() string {
+	if c.ServiceURL != "" {
+		return c.ServiceURL
+	}
+	return GetPlatformURL()
 }
 
 // AnalyticsConfig configures usage telemetry emission to the platform analytics service.

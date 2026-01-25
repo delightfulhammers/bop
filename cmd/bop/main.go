@@ -69,10 +69,25 @@ func run() error {
 	defer cancel()
 
 	// Parse --log-level flag early, before config loading and observability setup.
-	// This uses pflag directly (which Cobra uses internally) to allow CLI override
-	// of the log level before the logger is created.
 	cliLogLevel := parseLogLevelFlag()
 
+	// Load operational config (always works, no auth needed)
+	opConfig := config.LoadOperational()
+
+	// Determine run mode based on platform URL
+	if opConfig.IsLegacyMode {
+		log.Println("[WARN] Legacy mode enabled via BOP_PLATFORM_URL=\"\". " +
+			"This is deprecated and will be removed. Run 'bop auth login' to migrate to platform mode.")
+		return runLegacyMode(ctx, cliLogLevel)
+	}
+
+	// Platform mode is the default
+	return runPlatformMode(ctx, cliLogLevel, opConfig)
+}
+
+// runLegacyMode runs bop with full local config (deprecated escape hatch).
+// This mode loads all configuration from local files and environment variables.
+func runLegacyMode(ctx context.Context, cliLogLevel string) error {
 	cfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
 		FileName:    "bop",
@@ -82,7 +97,7 @@ func run() error {
 		return fmt.Errorf("config load failed: %w", err)
 	}
 
-	// Apply log level overrides: CLI flag takes precedence, then BOP_LOG_LEVEL env var
+	// Apply log level overrides
 	if cliLogLevel != "" {
 		cfg.Observability.Logging.Level = cliLogLevel
 	} else if envLogLevel := os.Getenv("BOP_LOG_LEVEL"); envLogLevel != "" {
@@ -90,6 +105,248 @@ func run() error {
 			cfg.Observability.Logging.Level = validated
 		}
 	}
+
+	// Build all components and run CLI
+	return runWithConfig(ctx, cfg)
+}
+
+// runPlatformMode runs bop with platform authentication and config.
+// This is the default mode where config comes from the platform.
+func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.OperationalConfig) error {
+	// Load baseline config with defaults (but no local files yet)
+	cfg, err := loadBaselineConfig()
+	if err != nil {
+		return fmt.Errorf("baseline config failed: %w", err)
+	}
+
+	// Apply log level overrides
+	if cliLogLevel != "" {
+		cfg.Observability.Logging.Level = cliLogLevel
+	} else if opConfig.LogLevel != "" {
+		cfg.Observability.Logging.Level = opConfig.LogLevel
+	}
+
+	// Set up auth service URL from operational config
+	cfg.Auth.ServiceURL = opConfig.PlatformURL
+	cfg.Auth.Mode = "platform"
+
+	// Try to load cached auth (don't require login yet - commands may not need it)
+	tokenStore, err := auth.NewTokenStore()
+	if err != nil {
+		log.Printf("[WARN] Failed to initialize token store: %v", err)
+	}
+
+	var storedAuth *auth.StoredAuth
+	var platformConfig map[string]any
+	var entitlements *auth.BopEntitlements
+	var tokenWasExpired bool // Track if token refresh was attempted
+
+	// Attempt to load stored auth if available
+	if tokenStore != nil {
+		storedAuth, _ = tokenStore.Load()
+	}
+
+	// Handle token refresh if expired
+	if storedAuth != nil && storedAuth.IsExpired() {
+		tokenWasExpired = true
+		storedAuth = tryRefreshToken(ctx, opConfig.PlatformURL, storedAuth, tokenStore)
+	}
+
+	if storedAuth != nil && !storedAuth.IsExpired() {
+		entitlements = auth.NewBopEntitlements(storedAuth, os.Stderr)
+
+		// Try to fetch platform config (with cache fallback)
+		platformConfig, err = fetchPlatformConfigWithCache(ctx, opConfig.PlatformURL, storedAuth)
+		if err != nil {
+			log.Printf("[WARN] Failed to fetch platform config: %v (using local config)", err)
+		}
+	}
+
+	// Convert platform config to internal config structure
+	if platformConfig != nil {
+		if err := config.ValidatePlatformConfig(platformConfig); err != nil {
+			log.Printf("[WARN] Platform config validation failed: %v (using baseline config)", err)
+		} else {
+			baseCfg := config.ConvertPlatformConfig(platformConfig, storedAuth.Plan)
+			cfg, err = config.MergePlatformConfig(baseCfg, cfg)
+			if err != nil {
+				log.Printf("[WARN] Failed to merge platform config: %v (using baseline config)", err)
+			}
+		}
+	}
+
+	// Determine if user has local-bop-config entitlement
+	hasLocalConfigEntitlement := entitlements != nil && entitlements.CanUseLocalConfig() == nil
+
+	// Load local config and/or env vars if user has entitlement
+	if hasLocalConfigEntitlement {
+		// User has entitlement - load local files and env vars
+		if config.HasLocalConfig() || config.HasConfigEnvVars() {
+			localCfg, err := config.Load(config.LoaderOptions{
+				ConfigPaths: defaultConfigPaths(),
+				FileName:    "bop",
+				EnvPrefix:   "BOP",
+			})
+			if err != nil {
+				log.Printf("[WARN] Failed to load local config: %v", err)
+			} else {
+				merged, mergeErr := config.MergePlatformConfig(cfg, localCfg)
+				if mergeErr != nil {
+					log.Printf("[WARN] Failed to merge local config: %v (using platform config)", mergeErr)
+				} else {
+					cfg = merged
+				}
+			}
+		}
+	} else {
+		// No entitlement - warn about local config or env vars if present
+		if config.HasLocalConfig() {
+			if tokenWasExpired {
+				// Already warned about token expiration in tryRefreshToken
+				log.Printf("[WARN] Local config file (bop.yaml) found but ignored due to expired token.")
+			} else if entitlements == nil {
+				log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
+					"Run 'bop auth login' to authenticate.")
+			} else {
+				log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
+					"Local configuration requires Enterprise plan.")
+			}
+		}
+		if config.HasConfigEnvVars() {
+			if tokenWasExpired {
+				// Already warned about token expiration in tryRefreshToken
+				log.Printf("[WARN] Config environment variables ignored due to expired token.")
+			} else if entitlements == nil {
+				// User not logged in - can't verify entitlement
+				log.Printf("[WARN] Config environment variables detected but cannot verify entitlement. " +
+					"Run 'bop auth login' to authenticate. Proceeding with platform defaults.")
+			} else {
+				// User logged in but lacks entitlement
+				log.Printf("[WARN] Config environment variables detected but ignored. " +
+					"Environment-based configuration requires Enterprise plan.")
+			}
+		}
+	}
+
+	return runWithConfig(ctx, cfg)
+}
+
+// loadBaselineConfig loads config with defaults only - no local files, no env vars.
+// This is the starting point for platform mode before merging platform config.
+//
+// Environment variables are NOT loaded here to prevent bypassing entitlement checks.
+// Operational env vars (BOP_LOG_LEVEL, BOP_PLATFORM_URL) are handled separately by
+// LoadOperational() before this function is called.
+// Config env vars (API keys, etc.) are loaded later only if user has local-bop-config entitlement.
+func loadBaselineConfig() (config.Config, error) {
+	return config.Load(config.LoaderOptions{
+		ConfigPaths: nil, // No local file paths - requires entitlement check
+		FileName:    "bop",
+		EnvPrefix:   "", // No env vars - requires entitlement check
+	})
+}
+
+// fetchPlatformConfigWithCache fetches platform config, using cache if available.
+func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, stored *auth.StoredAuth) (map[string]any, error) {
+	// Try cache first (must match both tenant and tier to prevent stale config)
+	cache, err := config.NewConfigCache()
+	if err == nil {
+		if cached, err := cache.Load(stored.TenantID, stored.Plan); err == nil && cached != nil {
+			return cached.Config, nil
+		}
+	}
+
+	// Fetch from platform
+	client, err := auth.NewClient(auth.ClientConfig{
+		BaseURL:   platformURL,
+		ProductID: "bop",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := client.FetchProductConfig(ctx, stored.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate before caching to prevent caching invalid config
+	if err := config.ValidatePlatformConfig(resp.Config); err != nil {
+		return nil, fmt.Errorf("platform config validation failed: %w", err)
+	}
+
+	// Cache the validated response using stored.Plan for consistent keying
+	// (Load uses stored.Plan, so Save must too for cache hits)
+	if cache != nil {
+		_ = cache.Save(resp.Config, stored.Plan, stored.TenantID)
+	}
+
+	return resp.Config, nil
+}
+
+// tryRefreshToken attempts to refresh an expired access token.
+// Returns the refreshed auth on success, or nil if refresh fails.
+// On success, the new token is saved to the token store.
+func tryRefreshToken(ctx context.Context, platformURL string, stored *auth.StoredAuth, tokenStore *auth.TokenStore) *auth.StoredAuth {
+	if stored.RefreshToken == "" {
+		log.Printf("[WARN] Access token expired and no refresh token available. Run 'bop auth login' to re-authenticate.")
+		return nil
+	}
+
+	client, err := auth.NewClient(auth.ClientConfig{
+		BaseURL:   platformURL,
+		ProductID: "bop",
+	})
+	if err != nil {
+		log.Printf("[WARN] Access token expired and refresh failed: %v. Run 'bop auth login' to re-authenticate.", err)
+		return nil
+	}
+
+	resp, err := client.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
+	if err != nil {
+		log.Printf("[WARN] Access token expired and refresh failed: %v. Run 'bop auth login' to re-authenticate.", err)
+		return nil
+	}
+
+	// Calculate expiry time from ExpiresIn (seconds)
+	expiresAt := time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
+
+	// Fetch updated user info to get current entitlements
+	// (entitlements may have changed since original login)
+	// This is a hard requirement - we can't use stale entitlements for security reasons
+	userResp, err := client.GetCurrentUser(ctx, resp.AccessToken)
+	if err != nil {
+		log.Printf("[WARN] Token refreshed but failed to verify entitlements: %v. Run 'bop auth login' to re-authenticate.", err)
+		return nil
+	}
+
+	// Build new stored auth from refresh response
+	newAuth := &auth.StoredAuth{
+		Version:      stored.Version,
+		AccessToken:  resp.AccessToken,
+		RefreshToken: resp.RefreshToken,
+		ExpiresAt:    expiresAt,
+		User:         stored.User, // Preserve user display info
+		TenantID:     stored.TenantID,
+		Plan:         userResp.PlanID,
+		Entitlements: userResp.Entitlements,
+	}
+
+	// Save refreshed token
+	if tokenStore != nil {
+		if err := tokenStore.Save(newAuth); err != nil {
+			log.Printf("[WARN] Failed to save refreshed token: %v", err)
+			// Continue anyway - we have a valid token in memory
+		}
+	}
+
+	log.Printf("[INFO] Access token refreshed successfully")
+	return newAuth
+}
+
+// runWithConfig runs the CLI with the given configuration.
+// This is the common path for both legacy and platform modes.
+func runWithConfig(ctx context.Context, cfg config.Config) error {
 
 	repoDir := cfg.Git.RepositoryDir
 	if repoDir == "" {
@@ -475,14 +732,19 @@ func buildAnalyticsEmitter(cfg config.AnalyticsConfig) analytics.Emitter {
 // Returns empty AuthDependencies if auth mode is "legacy" or configuration is incomplete.
 // This enables graceful degradation: auth commands won't be available in legacy mode.
 func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
-	// Skip auth setup in legacy mode (default, backward compatible)
+	// Skip auth setup in legacy mode (escape hatch via BOP_PLATFORM_URL="")
 	if cfg.IsLegacyMode() {
+		if config.IsLegacyEscapeHatch() {
+			log.Println("[WARN] Legacy mode enabled via BOP_PLATFORM_URL=\"\". " +
+				"This is deprecated and will be removed. Run 'bop auth login' to migrate.")
+		}
 		return cli.AuthDependencies{}
 	}
 
-	// Platform mode requires service URL
-	if cfg.ServiceURL == "" {
-		log.Println("[WARN] Platform auth mode enabled but auth.serviceUrl not configured - auth commands unavailable")
+	// Get service URL (derived from platform URL if not explicitly set)
+	serviceURL := cfg.GetServiceURL()
+	if serviceURL == "" {
+		log.Println("[WARN] Platform auth mode enabled but no service URL available - auth commands unavailable")
 		return cli.AuthDependencies{}
 	}
 
@@ -499,7 +761,7 @@ func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
 		productID = "bop"
 	}
 	authClient, err := auth.NewClient(auth.ClientConfig{
-		BaseURL:   cfg.ServiceURL,
+		BaseURL:   serviceURL,
 		ProductID: productID,
 	})
 	if err != nil {
@@ -523,8 +785,8 @@ func buildFeedbackClient(cfg config.AuthConfig, authDeps cli.AuthDependencies, v
 		return nil
 	}
 
-	// Feedback service URL defaults to auth service URL (same platform)
-	serviceURL := cfg.ServiceURL
+	// Feedback service URL defaults to platform URL
+	serviceURL := cfg.GetServiceURL()
 	if serviceURL == "" {
 		return nil
 	}

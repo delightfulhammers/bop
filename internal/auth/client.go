@@ -345,6 +345,58 @@ func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest)
 	return &result, nil
 }
 
+// ProductConfigResponse is the response from the config API.
+// This matches the platform's /products/{product_id}/config endpoint.
+type ProductConfigResponse struct {
+	// Config is the rendered configuration for the user's tier.
+	Config map[string]any `json:"config"`
+
+	// EditableFields lists fields the user can modify (for UI).
+	EditableFields []string `json:"editable_fields"`
+
+	// Tier is the user's subscription tier (beta, solo, pro, enterprise).
+	Tier string `json:"tier"`
+
+	// IsReadOnly indicates if the user can modify config.
+	IsReadOnly bool `json:"is_read_only"`
+
+	// Schema is the JSON schema for editable fields (optional).
+	Schema map[string]any `json:"schema,omitempty"`
+}
+
+// FetchProductConfig retrieves the user's configuration from the platform.
+// The configuration is tier-based: beta/solo users get defaults, pro/enterprise can customize.
+func (c *Client) FetchProductConfig(ctx context.Context, accessToken string) (*ProductConfigResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.buildURL("/products/"+c.productID+"/config"), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch config request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseError(resp)
+	}
+
+	// Limit response body size to prevent memory exhaustion from malicious/misconfigured server
+	const maxConfigBodySize = 1 << 20 // 1MB - plenty for config, defensive against abuse
+	limitedReader := io.LimitReader(resp.Body, maxConfigBodySize)
+
+	var result ProductConfigResponse
+	if err := json.NewDecoder(limitedReader).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode config response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // parseError parses an error response from the auth-service.
 // Limits response body to 4KB to prevent memory exhaustion from large error pages.
 func (c *Client) parseError(resp *http.Response) error {
