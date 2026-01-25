@@ -82,6 +82,7 @@ type Dependencies struct {
 	DefaultVerification  DefaultVerification
 	DefaultPostOutOfDiff bool // Post out-of-diff findings as issue comments (default: true)
 	Version              string
+	PlatformURL          string // Platform URL for OIDC audience in GitHub Actions
 }
 
 // NewRootCommand constructs the root Cobra command.
@@ -130,6 +131,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		root.AddCommand(NewGitHubActionCommand(GitHubActionDeps{
 			BranchReviewer: deps.BranchReviewer,
 			AuthDeps:       deps.AuthDeps,
+			PlatformURL:    deps.PlatformURL,
 		}))
 	}
 	// Add auth commands if auth is configured (platform mode)
