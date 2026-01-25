@@ -204,11 +204,11 @@ func TestMergePlatformConfig(t *testing.T) {
 // Helper function tests
 func TestGetStringSlice(t *testing.T) {
 	tests := []struct {
-		name    string
-		m       map[string]any
-		key     string
-		want    []string
-		wantOk  bool
+		name   string
+		m      map[string]any
+		key    string
+		want   []string
+		wantOk bool
 	}{
 		{
 			name:   "[]any converts to []string",

@@ -154,10 +154,10 @@ func TestIsConfigEnvVar(t *testing.T) {
 		{"OPENAI_API_KEY", true},
 		{"GEMINI_API_KEY", true},
 		{"GITHUB_TOKEN", true},
-		{"BOP_REVIEW_ENABLED", true},   // BOP_* except operational
-		{"BOP_PLATFORM_URL", false},    // operational
-		{"BOP_LOG_LEVEL", false},       // operational
-		{"RANDOM_VAR", false},          // not a bop config var
+		{"BOP_REVIEW_ENABLED", true}, // BOP_* except operational
+		{"BOP_PLATFORM_URL", false},  // operational
+		{"BOP_LOG_LEVEL", false},     // operational
+		{"RANDOM_VAR", false},        // not a bop config var
 	}
 
 	for _, tt := range tests {
