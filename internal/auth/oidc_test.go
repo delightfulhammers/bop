@@ -55,9 +55,48 @@ func TestIsAvailable(t *testing.T) {
 	}
 }
 
-func TestGitHubActionsOIDC_Authenticate_MissingTenantID(t *testing.T) {
+func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
+	// When tenant_id is empty, the platform derives the tenant from the
+	// OIDC token's repository_owner claim. Verify that the client sends
+	// the request without tenant_id and accepts the response.
+	expectedToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": expectedToken})
+	}))
+	defer oidcServer.Close()
+
+	var receivedBody map[string]string
+	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/actions-oidc":
+			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "access-token-derived",
+				RefreshToken: "refresh-token-derived",
+				TokenType:    "Bearer",
+				ExpiresIn:    3600,
+			})
+		case "/auth/me":
+			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
+				UserID:       "user-derived",
+				Username:     "deriveduser",
+				Email:        "derived@example.com",
+				TenantID:     "tenant-derived-from-token",
+				PlanID:       "beta",
+				Entitlements: []string{"public-repos", "private-repos"},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer platformServer.Close()
+
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", oidcServer.URL+"?param=value")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "test-request-token")
+
 	client, err := NewClient(ClientConfig{
-		BaseURL:   "https://api.example.com",
+		BaseURL:   platformServer.URL,
 		ProductID: "bop",
 	})
 	if err != nil {
@@ -65,12 +104,22 @@ func TestGitHubActionsOIDC_Authenticate_MissingTenantID(t *testing.T) {
 	}
 
 	oidc := NewGitHubActionsOIDC(client, "https://api.example.com")
-	_, authErr := oidc.Authenticate(context.Background(), "")
-	if authErr == nil {
-		t.Fatal("expected error for empty tenant ID")
+	result, authErr := oidc.Authenticate(context.Background(), "")
+	if authErr != nil {
+		t.Fatalf("Authenticate() error: %v", authErr)
 	}
-	if got := authErr.Error(); got != "tenant_id is required for OIDC authentication (set BOP_TENANT_ID)" {
-		t.Errorf("unexpected error: %s", got)
+
+	// Verify tenant_id was NOT sent in the request body
+	if _, hasTenantID := receivedBody["tenant_id"]; hasTenantID {
+		t.Errorf("expected no tenant_id in request body, got %q", receivedBody["tenant_id"])
+	}
+
+	// Verify result uses the platform-derived tenant
+	if result.StoredAuth.TenantID != "tenant-derived-from-token" {
+		t.Errorf("unexpected tenant ID: %s", result.StoredAuth.TenantID)
+	}
+	if result.StoredAuth.AccessToken != "access-token-derived" {
+		t.Errorf("unexpected access token: %s", result.StoredAuth.AccessToken)
 	}
 }
 

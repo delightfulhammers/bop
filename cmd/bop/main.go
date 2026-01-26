@@ -343,19 +343,16 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 }
 
 // tryOIDCAuth attempts GitHub Actions OIDC authentication.
-// Returns (nil, nil) if BOP_TENANT_ID is not set (OIDC not configured).
+// Returns (nil, nil) if OIDC auth fails without explicit BOP_TENANT_ID (soft fallback).
 // Returns (nil, error) if BOP_TENANT_ID is set but authentication fails (hard error).
 // Returns (auth, nil) on success. The token is saved to the token store so downstream
 // commands can use it via RequireAuth().
+//
+// When BOP_TENANT_ID is set, it is passed to the platform for explicit tenant selection.
+// When BOP_TENANT_ID is omitted, the platform derives the tenant from the OIDC token's
+// repository_owner claim (requires OIDC trust configuration on the tenant).
 func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.TokenStore) (*auth.StoredAuth, error) {
 	tenantID := os.Getenv("BOP_TENANT_ID")
-	if tenantID == "" {
-		// OIDC env vars are present but no tenant ID configured.
-		// This is expected when the workflow hasn't set BOP_TENANT_ID.
-		log.Printf("[WARN] GitHub Actions OIDC available but BOP_TENANT_ID not set. " +
-			"Set BOP_TENANT_ID for keyless platform authentication.")
-		return nil, nil
-	}
 
 	client, err := auth.NewClient(auth.ClientConfig{
 		BaseURL:   platformURL,
@@ -368,6 +365,12 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 	oidc := auth.NewGitHubActionsOIDC(client, platformURL)
 	result, err := oidc.Authenticate(ctx, tenantID)
 	if err != nil {
+		if tenantID == "" {
+			// No explicit tenant_id — platform couldn't derive tenant from token.
+			// Fall back to stored auth rather than failing hard.
+			log.Printf("[WARN] GitHub Actions OIDC: %v (set BOP_TENANT_ID or configure OIDC trust)", err)
+			return nil, nil
+		}
 		return nil, fmt.Errorf("OIDC authentication failed: %w", err)
 	}
 

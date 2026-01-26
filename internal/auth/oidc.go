@@ -54,13 +54,10 @@ type OIDCAuthResult struct {
 // for platform credentials. Returns the authentication result on success.
 //
 // The tenantID parameter identifies which tenant to authenticate to.
-// The platform validates that the repository owner matches the tenant's
-// ExternalProviderLogin to prevent unauthorized cross-tenant access.
+// When empty, the platform derives the tenant from the OIDC token's
+// repository_owner claim. When provided, the platform validates that
+// the repository owner matches the tenant's ExternalProviderLogin.
 func (g *GitHubActionsOIDC) Authenticate(ctx context.Context, tenantID string) (*OIDCAuthResult, error) {
-	if tenantID == "" {
-		return nil, fmt.Errorf("tenant_id is required for OIDC authentication (set BOP_TENANT_ID)")
-	}
-
 	// Request OIDC token from GitHub Actions runtime
 	idToken, err := g.requestOIDCToken(ctx)
 	if err != nil {

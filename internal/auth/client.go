@@ -283,7 +283,9 @@ func (c *Client) RevokeToken(ctx context.Context, tenantID, refreshToken string)
 
 // OIDCExchangeRequest contains parameters for exchanging an OIDC token.
 type OIDCExchangeRequest struct {
-	// TenantID is the tenant to authenticate to (required).
+	// TenantID is the tenant to authenticate to (optional).
+	// When empty, the platform derives the tenant from the OIDC token's
+	// repository_owner claim via ExternalProviderLogin lookup.
 	TenantID string
 
 	// IDToken is the OIDC token from GitHub Actions (required).
@@ -297,9 +299,6 @@ type OIDCExchangeRequest struct {
 // This is used for machine-to-machine authentication from CI/CD pipelines.
 func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest) (*TokenResponse, error) {
 	// Validate required inputs
-	if req.TenantID == "" {
-		return nil, fmt.Errorf("tenant_id is required")
-	}
 	if req.IDToken == "" {
 		return nil, fmt.Errorf("id_token is required")
 	}
@@ -311,9 +310,11 @@ func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest)
 
 	reqBody := map[string]interface{}{
 		"product_id":    c.productID,
-		"tenant_id":     req.TenantID,
 		"provider_type": providerType,
 		"id_token":      req.IDToken,
+	}
+	if req.TenantID != "" {
+		reqBody["tenant_id"] = req.TenantID
 	}
 
 	body, err := json.Marshal(reqBody)
