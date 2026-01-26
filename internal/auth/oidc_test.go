@@ -427,14 +427,24 @@ func TestIsTenantNotConfigured(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "401 APIError is tenant not configured",
+			name: "401 with tenant_not_configured code",
 			err:  &APIError{StatusCode: 401, ErrorCode: "tenant_not_configured"},
 			want: true,
 		},
 		{
-			name: "wrapped 401 APIError is tenant not configured",
-			err:  fmt.Errorf("exchange OIDC token: %w", &APIError{StatusCode: 401}),
+			name: "wrapped 401 with tenant_not_configured code",
+			err:  fmt.Errorf("exchange OIDC token: %w", &APIError{StatusCode: 401, ErrorCode: "tenant_not_configured"}),
 			want: true,
+		},
+		{
+			name: "401 without tenant_not_configured code is not a match",
+			err:  &APIError{StatusCode: 401, ErrorCode: "invalid_credentials"},
+			want: false,
+		},
+		{
+			name: "401 with no error code is not a match",
+			err:  &APIError{StatusCode: 401},
+			want: false,
 		},
 		{
 			name: "403 APIError is not tenant not configured",

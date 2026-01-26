@@ -33,12 +33,16 @@ func (e *APIError) Error() string {
 }
 
 // IsTenantNotConfigured returns true if the error indicates the platform could
-// not find a tenant for the OIDC token's repository owner (HTTP 401).
+// not find a tenant for the OIDC token's repository owner.
+// Matches only when the platform returns HTTP 401 with error code "tenant_not_configured".
 // This is the only error condition where soft-fallback to stored auth is safe —
-// all other errors (network, 5xx, token validation, tenant mismatch) should fail hard.
+// all other errors (network, 5xx, token validation, tenant mismatch, other 401s)
+// should fail hard.
 func IsTenantNotConfigured(err error) bool {
 	var apiErr *APIError
-	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnauthorized
+	return errors.As(err, &apiErr) &&
+		apiErr.StatusCode == http.StatusUnauthorized &&
+		apiErr.ErrorCode == "tenant_not_configured"
 }
 
 // Client is an HTTP client for the platform auth-service.
