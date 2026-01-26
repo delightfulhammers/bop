@@ -24,6 +24,8 @@ permissions:
 
 jobs:
   review:
+    # Skip fork PRs: secrets (API keys) are not available to fork PRs
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     name: AI Code Review
 
@@ -34,7 +36,7 @@ jobs:
           fetch-depth: 0  # Full history needed for diff comparison
 
       - name: Run bop Review
-        uses: delightfulhammers/bop-github-action@main
+        uses: delightfulhammers/bop-github-action@v0
         with:
           base-ref: ${{ github.base_ref }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

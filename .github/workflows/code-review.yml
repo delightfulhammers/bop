@@ -5,8 +5,16 @@ on:
     branches: [ main ]
     types: [ opened, synchronize, reopened ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
+    # Skip fork PRs: they don't have access to secrets (API keys, platform token)
+    # and would fail. This also guards against future trigger changes (e.g.,
+    # pull_request_target) that would expose secrets to fork PRs.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
