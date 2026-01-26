@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -343,14 +344,16 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 }
 
 // tryOIDCAuth attempts GitHub Actions OIDC authentication.
-// Returns (nil, nil) if OIDC auth fails without explicit BOP_TENANT_ID (soft fallback).
-// Returns (nil, error) if BOP_TENANT_ID is set but authentication fails (hard error).
+// Returns (nil, nil) only when BOP_TENANT_ID is empty AND the platform returns 401
+// (tenant not configured for this repository owner). This allows fallback to stored auth.
+// Returns (nil, error) for all other failures (network, server errors, explicit tenant mismatch).
 // Returns (auth, nil) on success. The token is saved to the token store so downstream
 // commands can use it via RequireAuth().
 //
 // When BOP_TENANT_ID is set, it is passed to the platform for explicit tenant selection.
 // When BOP_TENANT_ID is omitted, the platform derives the tenant from the OIDC token's
-// repository_owner claim (requires OIDC trust configuration on the tenant).
+// repository_owner claim. The platform enforces a unique mapping from (product, provider,
+// repository_owner) to tenant, so derivation is unambiguous.
 func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.TokenStore) (*auth.StoredAuth, error) {
 	tenantID := os.Getenv("BOP_TENANT_ID")
 
@@ -365,9 +368,9 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 	oidc := auth.NewGitHubActionsOIDC(client, platformURL)
 	result, err := oidc.Authenticate(ctx, tenantID)
 	if err != nil {
-		if tenantID == "" {
-			// No explicit tenant_id — platform couldn't derive tenant from token.
-			// Fall back to stored auth rather than failing hard.
+		if tenantID == "" && isTenantNotConfigured(err) {
+			// No explicit tenant_id and platform says no tenant is configured
+			// for this repository owner. Fall back to stored auth.
 			log.Printf("[WARN] GitHub Actions OIDC: %v (set BOP_TENANT_ID or configure OIDC trust)", err)
 			return nil, nil
 		}
@@ -384,6 +387,15 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 		result.StoredAuth.TenantID, result.StoredAuth.User.GitHubLogin)
 
 	return result.StoredAuth, nil
+}
+
+// isTenantNotConfigured checks if the error indicates the platform could not find
+// a tenant for the OIDC token's repository owner (HTTP 401). This is the only
+// error condition where soft-fallback is safe — all other errors (network, 5xx,
+// token validation, tenant mismatch) should fail hard.
+func isTenantNotConfigured(err error) bool {
+	var apiErr *auth.APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnauthorized
 }
 
 // tryRefreshToken attempts to refresh an expired access token.

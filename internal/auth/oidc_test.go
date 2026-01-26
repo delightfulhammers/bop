@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,11 +67,15 @@ func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
 	}))
 	defer oidcServer.Close()
 
-	var receivedBody map[string]string
+	var receivedBody map[string]any
+	var handlerHit bool
 	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/auth/actions-oidc":
-			_ = json.NewDecoder(r.Body).Decode(&receivedBody)
+			handlerHit = true
+			if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
+				t.Fatalf("failed to decode request body: %v", err)
+			}
 			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "access-token-derived",
 				RefreshToken: "refresh-token-derived",
@@ -109,9 +114,14 @@ func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
 		t.Fatalf("Authenticate() error: %v", authErr)
 	}
 
+	// Verify the OIDC exchange handler was actually hit
+	if !handlerHit {
+		t.Fatal("expected /auth/actions-oidc handler to be called")
+	}
+
 	// Verify tenant_id was NOT sent in the request body
 	if _, hasTenantID := receivedBody["tenant_id"]; hasTenantID {
-		t.Errorf("expected no tenant_id in request body, got %q", receivedBody["tenant_id"])
+		t.Errorf("expected no tenant_id in request body, got %v", receivedBody["tenant_id"])
 	}
 
 	// Verify result uses the platform-derived tenant
@@ -324,5 +334,81 @@ func TestGitHubActionsOIDC_RequestOIDCToken_ServerError(t *testing.T) {
 	_, authErr := oidc.Authenticate(context.Background(), "tenant-123")
 	if authErr == nil {
 		t.Fatal("expected error for server error response")
+	}
+}
+
+func TestAPIError_ErrorsAs(t *testing.T) {
+	// Verify APIError is properly propagated through error wrapping so that
+	// callers (like tryOIDCAuth) can use errors.As to inspect the status code.
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantCode   string
+		wantMsg    string
+	}{
+		{
+			name:       "JSON error with code and message",
+			statusCode: 401,
+			body:       `{"error":"tenant_not_configured","message":"No tenant configured for this repository owner"}`,
+			wantCode:   "tenant_not_configured",
+			wantMsg:    "No tenant configured for this repository owner",
+		},
+		{
+			name:       "JSON error with code only",
+			statusCode: 403,
+			body:       `{"error":"oidc_tenant_mismatch"}`,
+			wantCode:   "oidc_tenant_mismatch",
+		},
+		{
+			name:       "non-JSON error",
+			statusCode: 502,
+			body:       "Bad Gateway",
+			wantMsg:    "Bad Gateway",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/auth/actions-oidc":
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				default:
+					http.Error(w, "not found", http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			client, err := NewClient(ClientConfig{BaseURL: server.URL, ProductID: "bop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, exchangeErr := client.ExchangeOIDCToken(context.Background(), OIDCExchangeRequest{
+				IDToken:      "test-token",
+				TenantID:     "tenant-123",
+				ProviderType: "github",
+			})
+			if exchangeErr == nil {
+				t.Fatal("expected error from exchange")
+			}
+
+			// Verify errors.As works through the error chain
+			var apiErr *APIError
+			if !errors.As(exchangeErr, &apiErr) {
+				t.Fatalf("expected errors.As to find *APIError, got: %T: %v", exchangeErr, exchangeErr)
+			}
+			if apiErr.StatusCode != tt.statusCode {
+				t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, tt.statusCode)
+			}
+			if tt.wantCode != "" && apiErr.ErrorCode != tt.wantCode {
+				t.Errorf("ErrorCode = %q, want %q", apiErr.ErrorCode, tt.wantCode)
+			}
+			if tt.wantMsg != "" && apiErr.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", apiErr.Message, tt.wantMsg)
+			}
+		})
 	}
 }

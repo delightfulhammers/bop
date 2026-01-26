@@ -12,6 +12,25 @@ import (
 	"time"
 )
 
+// APIError represents an error response from the platform API.
+// It carries the HTTP status code so callers can distinguish between
+// client errors (4xx) and server errors (5xx) for error handling decisions.
+type APIError struct {
+	StatusCode int
+	ErrorCode  string
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.Message)
+	}
+	if e.ErrorCode != "" {
+		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.ErrorCode)
+	}
+	return fmt.Sprintf("auth-service error (%d)", e.StatusCode)
+}
+
 // Client is an HTTP client for the platform auth-service.
 type Client struct {
 	baseURL    *url.URL
@@ -285,7 +304,9 @@ func (c *Client) RevokeToken(ctx context.Context, tenantID, refreshToken string)
 type OIDCExchangeRequest struct {
 	// TenantID is the tenant to authenticate to (optional).
 	// When empty, the platform derives the tenant from the OIDC token's
-	// repository_owner claim via ExternalProviderLogin lookup.
+	// repository_owner claim via ExternalProviderLogin lookup. The platform
+	// enforces a UNIQUE constraint so derivation is unambiguous — at most one
+	// tenant can be configured for a given (product, provider, repository_owner).
 	TenantID string
 
 	// IDToken is the OIDC token from GitHub Actions (required).
@@ -399,32 +420,32 @@ func (c *Client) FetchProductConfig(ctx context.Context, accessToken string) (*P
 }
 
 // parseError parses an error response from the auth-service.
+// Returns an *APIError with the HTTP status code so callers can make
+// error-handling decisions based on the response type (4xx vs 5xx).
 // Limits response body to 4KB to prevent memory exhaustion from large error pages.
 func (c *Client) parseError(resp *http.Response) error {
 	const maxErrorBodySize = 4 * 1024 // 4KB
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
-	if len(body) > 0 {
-		// Check if response was truncated
-		truncated := len(body) == maxErrorBodySize
 
+	apiErr := &APIError{StatusCode: resp.StatusCode}
+
+	if len(body) > 0 {
 		var errResp struct {
 			Error   string `json:"error"`
 			Message string `json:"message"`
 		}
 		if err := json.Unmarshal(body, &errResp); err == nil {
-			if errResp.Message != "" {
-				return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, errResp.Message)
+			apiErr.ErrorCode = errResp.Error
+			apiErr.Message = errResp.Message
+		} else {
+			// Non-JSON response — use body as message
+			bodyStr := string(body)
+			if len(body) == maxErrorBodySize {
+				bodyStr += "... (truncated)"
 			}
-			if errResp.Error != "" {
-				return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, errResp.Error)
-			}
+			apiErr.Message = bodyStr
 		}
-
-		bodyStr := string(body)
-		if truncated {
-			bodyStr += "... (truncated)"
-		}
-		return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, bodyStr)
 	}
-	return fmt.Errorf("auth-service error: %s", resp.Status)
+
+	return apiErr
 }

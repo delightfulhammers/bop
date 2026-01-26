@@ -55,8 +55,12 @@ type OIDCAuthResult struct {
 //
 // The tenantID parameter identifies which tenant to authenticate to.
 // When empty, the platform derives the tenant from the OIDC token's
-// repository_owner claim. When provided, the platform validates that
-// the repository owner matches the tenant's ExternalProviderLogin.
+// repository_owner claim. The platform enforces a UNIQUE constraint on
+// (product_id, provider, repository_owner), so derivation is unambiguous.
+// If no tenant has OIDC trust configured for the repository owner, the
+// platform returns 401 (tenant_not_configured).
+// When provided, the platform validates that the repository owner matches
+// the tenant's ExternalProviderLogin and returns 403 on mismatch.
 func (g *GitHubActionsOIDC) Authenticate(ctx context.Context, tenantID string) (*OIDCAuthResult, error) {
 	// Request OIDC token from GitHub Actions runtime
 	idToken, err := g.requestOIDCToken(ctx)
