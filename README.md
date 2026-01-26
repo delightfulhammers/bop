@@ -77,7 +77,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: delightfulhammers/bop-github-action@main
+      - uses: delightfulhammers/bop-github-action@v0
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           # Or use multiple providers:
