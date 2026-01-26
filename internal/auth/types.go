@@ -29,7 +29,7 @@ type StoredAuth struct {
 	TenantID string `json:"tenant_id"`
 
 	// Entitlements are the features the user has access to.
-	// Empty slice means graceful fallback (all permissions granted).
+	// Empty slice means no permissions (default-deny).
 	Entitlements []string `json:"entitlements"`
 
 	// Plan is the user's subscription plan (e.g., "free", "individual", "business").

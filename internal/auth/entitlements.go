@@ -96,17 +96,11 @@ func (e *BopEntitlements) notifyFallback(entitlement, message string) {
 }
 
 // HasEntitlement checks if the user has a specific entitlement.
-// Graceful fallback: empty entitlements = all permissions granted (platform not enforcing yet).
+// Empty entitlements = no permissions (default-deny).
 func (e *BopEntitlements) HasEntitlement(name string) bool {
 	if e.auth == nil {
 		return false
 	}
-
-	// Graceful fallback: empty entitlements means platform isn't enforcing yet
-	if len(e.auth.Entitlements) == 0 {
-		return true
-	}
-
 	return slices.Contains(e.auth.Entitlements, name)
 }
 
