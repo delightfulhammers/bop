@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +30,15 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.ErrorCode)
 	}
 	return fmt.Sprintf("auth-service error (%d)", e.StatusCode)
+}
+
+// IsTenantNotConfigured returns true if the error indicates the platform could
+// not find a tenant for the OIDC token's repository owner (HTTP 401).
+// This is the only error condition where soft-fallback to stored auth is safe —
+// all other errors (network, 5xx, token validation, tenant mismatch) should fail hard.
+func IsTenantNotConfigured(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusUnauthorized
 }
 
 // Client is an HTTP client for the platform auth-service.
@@ -427,7 +437,7 @@ func (c *Client) parseError(resp *http.Response) error {
 	const maxErrorBodySize = 4 * 1024 // 4KB
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
 
-	apiErr := &APIError{StatusCode: resp.StatusCode}
+	apiErr := &APIError{StatusCode: resp.StatusCode, Message: http.StatusText(resp.StatusCode)}
 
 	if len(body) > 0 {
 		var errResp struct {

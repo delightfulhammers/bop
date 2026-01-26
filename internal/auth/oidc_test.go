@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -366,6 +367,12 @@ func TestAPIError_ErrorsAs(t *testing.T) {
 			body:       "Bad Gateway",
 			wantMsg:    "Bad Gateway",
 		},
+		{
+			name:       "empty body uses HTTP status text",
+			statusCode: 503,
+			body:       "",
+			wantMsg:    "Service Unavailable",
+		},
 	}
 
 	for _, tt := range tests {
@@ -408,6 +415,53 @@ func TestAPIError_ErrorsAs(t *testing.T) {
 			}
 			if tt.wantMsg != "" && apiErr.Message != tt.wantMsg {
 				t.Errorf("Message = %q, want %q", apiErr.Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestIsTenantNotConfigured(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "401 APIError is tenant not configured",
+			err:  &APIError{StatusCode: 401, ErrorCode: "tenant_not_configured"},
+			want: true,
+		},
+		{
+			name: "wrapped 401 APIError is tenant not configured",
+			err:  fmt.Errorf("exchange OIDC token: %w", &APIError{StatusCode: 401}),
+			want: true,
+		},
+		{
+			name: "403 APIError is not tenant not configured",
+			err:  &APIError{StatusCode: 403, ErrorCode: "oidc_tenant_mismatch"},
+			want: false,
+		},
+		{
+			name: "500 APIError is not tenant not configured",
+			err:  &APIError{StatusCode: 500},
+			want: false,
+		},
+		{
+			name: "non-APIError is not tenant not configured",
+			err:  fmt.Errorf("network error"),
+			want: false,
+		},
+		{
+			name: "nil error is not tenant not configured",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTenantNotConfigured(tt.err); got != tt.want {
+				t.Errorf("IsTenantNotConfigured() = %v, want %v", got, tt.want)
 			}
 		})
 	}
