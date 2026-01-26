@@ -66,6 +66,8 @@ on:
 
 jobs:
   review:
+    # Skip fork PRs: secrets (API keys) are not available to fork PRs
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -75,7 +77,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: delightfulhammers/bop/action@v0.7.2
+      - uses: delightfulhammers/bop-github-action@main
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           # Or use multiple providers:
