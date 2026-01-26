@@ -68,15 +68,17 @@ func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
 	}))
 	defer oidcServer.Close()
 
-	var receivedBody map[string]any
-	var handlerHit bool
+	// Use a channel to safely pass the request body from the handler goroutine
+	bodyCh := make(chan map[string]any, 1)
 	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/auth/actions-oidc":
-			handlerHit = true
-			if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
-				t.Fatalf("failed to decode request body: %v", err)
+			var b map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
 			}
+			bodyCh <- b
 			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "access-token-derived",
 				RefreshToken: "refresh-token-derived",
@@ -115,10 +117,8 @@ func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
 		t.Fatalf("Authenticate() error: %v", authErr)
 	}
 
-	// Verify the OIDC exchange handler was actually hit
-	if !handlerHit {
-		t.Fatal("expected /auth/actions-oidc handler to be called")
-	}
+	// Read the captured request body from the handler (channel ensures synchronization)
+	receivedBody := <-bodyCh
 
 	// Verify tenant_id was NOT sent in the request body
 	if _, hasTenantID := receivedBody["tenant_id"]; hasTenantID {
@@ -338,6 +338,42 @@ func TestGitHubActionsOIDC_RequestOIDCToken_ServerError(t *testing.T) {
 	}
 }
 
+func TestAPIError_Error(t *testing.T) {
+	tests := []struct {
+		name string
+		err  APIError
+		want string
+	}{
+		{
+			name: "code and message",
+			err:  APIError{StatusCode: 401, ErrorCode: "tenant_not_configured", Message: "No tenant configured"},
+			want: "auth-service error (401) [tenant_not_configured]: No tenant configured",
+		},
+		{
+			name: "message only",
+			err:  APIError{StatusCode: 500, Message: "Internal Server Error"},
+			want: "auth-service error (500): Internal Server Error",
+		},
+		{
+			name: "code only",
+			err:  APIError{StatusCode: 403, ErrorCode: "oidc_tenant_mismatch"},
+			want: "auth-service error (403): oidc_tenant_mismatch",
+		},
+		{
+			name: "no code or message",
+			err:  APIError{StatusCode: 502},
+			want: "auth-service error (502)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.err.Error(); got != tt.want {
+				t.Errorf("Error() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAPIError_ErrorsAs(t *testing.T) {
 	// Verify APIError is properly propagated through error wrapping so that
 	// callers (like tryOIDCAuth) can use errors.As to inspect the status code.
@@ -366,6 +402,12 @@ func TestAPIError_ErrorsAs(t *testing.T) {
 			statusCode: 502,
 			body:       "Bad Gateway",
 			wantMsg:    "Bad Gateway",
+		},
+		{
+			name:       "empty JSON preserves HTTP status text",
+			statusCode: 422,
+			body:       `{}`,
+			wantMsg:    "Unprocessable Entity",
 		},
 		{
 			name:       "empty body uses HTTP status text",

@@ -23,13 +23,16 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	if e.Message != "" {
+	switch {
+	case e.ErrorCode != "" && e.Message != "":
+		return fmt.Sprintf("auth-service error (%d) [%s]: %s", e.StatusCode, e.ErrorCode, e.Message)
+	case e.Message != "":
 		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.Message)
-	}
-	if e.ErrorCode != "" {
+	case e.ErrorCode != "":
 		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.ErrorCode)
+	default:
+		return fmt.Sprintf("auth-service error (%d)", e.StatusCode)
 	}
-	return fmt.Sprintf("auth-service error (%d)", e.StatusCode)
 }
 
 // IsTenantNotConfigured returns true if the error indicates the platform could
@@ -448,10 +451,12 @@ func (c *Client) parseError(resp *http.Response) error {
 			Error   string `json:"error"`
 			Message string `json:"message"`
 		}
-		if err := json.Unmarshal(body, &errResp); err == nil {
+		if err := json.Unmarshal(body, &errResp); err == nil && (errResp.Error != "" || errResp.Message != "") {
 			apiErr.ErrorCode = errResp.Error
-			apiErr.Message = errResp.Message
-		} else {
+			if errResp.Message != "" {
+				apiErr.Message = errResp.Message
+			}
+		} else if err != nil {
 			// Non-JSON response — use body as message
 			bodyStr := string(body)
 			if len(body) == maxErrorBodySize {
@@ -459,6 +464,7 @@ func (c *Client) parseError(resp *http.Response) error {
 			}
 			apiErr.Message = bodyStr
 		}
+		// If JSON parsed but both fields empty, keep the http.StatusText default
 	}
 
 	return apiErr
