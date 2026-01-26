@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,41 @@ import (
 	"strings"
 	"time"
 )
+
+// APIError represents an error response from the platform API.
+// It carries the HTTP status code so callers can distinguish between
+// client errors (4xx) and server errors (5xx) for error handling decisions.
+type APIError struct {
+	StatusCode int
+	ErrorCode  string
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	switch {
+	case e.ErrorCode != "" && e.Message != "":
+		return fmt.Sprintf("auth-service error (%d) [%s]: %s", e.StatusCode, e.ErrorCode, e.Message)
+	case e.Message != "":
+		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.Message)
+	case e.ErrorCode != "":
+		return fmt.Sprintf("auth-service error (%d): %s", e.StatusCode, e.ErrorCode)
+	default:
+		return fmt.Sprintf("auth-service error (%d)", e.StatusCode)
+	}
+}
+
+// IsTenantNotConfigured returns true if the error indicates the platform could
+// not find a tenant for the OIDC token's repository owner.
+// Matches only when the platform returns HTTP 401 with error code "tenant_not_configured".
+// This is the only error condition where soft-fallback to stored auth is safe —
+// all other errors (network, 5xx, token validation, tenant mismatch, other 401s)
+// should fail hard.
+func IsTenantNotConfigured(err error) bool {
+	var apiErr *APIError
+	return errors.As(err, &apiErr) &&
+		apiErr.StatusCode == http.StatusUnauthorized &&
+		apiErr.ErrorCode == "tenant_not_configured"
+}
 
 // Client is an HTTP client for the platform auth-service.
 type Client struct {
@@ -283,7 +319,11 @@ func (c *Client) RevokeToken(ctx context.Context, tenantID, refreshToken string)
 
 // OIDCExchangeRequest contains parameters for exchanging an OIDC token.
 type OIDCExchangeRequest struct {
-	// TenantID is the tenant to authenticate to (required).
+	// TenantID is the tenant to authenticate to (optional).
+	// When empty, the platform derives the tenant from the OIDC token's
+	// repository_owner claim via ExternalProviderLogin lookup. The platform
+	// enforces a UNIQUE constraint so derivation is unambiguous — at most one
+	// tenant can be configured for a given (product, provider, repository_owner).
 	TenantID string
 
 	// IDToken is the OIDC token from GitHub Actions (required).
@@ -297,9 +337,6 @@ type OIDCExchangeRequest struct {
 // This is used for machine-to-machine authentication from CI/CD pipelines.
 func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest) (*TokenResponse, error) {
 	// Validate required inputs
-	if req.TenantID == "" {
-		return nil, fmt.Errorf("tenant_id is required")
-	}
 	if req.IDToken == "" {
 		return nil, fmt.Errorf("id_token is required")
 	}
@@ -311,9 +348,11 @@ func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest)
 
 	reqBody := map[string]interface{}{
 		"product_id":    c.productID,
-		"tenant_id":     req.TenantID,
 		"provider_type": providerType,
 		"id_token":      req.IDToken,
+	}
+	if req.TenantID != "" {
+		reqBody["tenant_id"] = req.TenantID
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -398,32 +437,35 @@ func (c *Client) FetchProductConfig(ctx context.Context, accessToken string) (*P
 }
 
 // parseError parses an error response from the auth-service.
+// Returns an *APIError with the HTTP status code so callers can make
+// error-handling decisions based on the response type (4xx vs 5xx).
 // Limits response body to 4KB to prevent memory exhaustion from large error pages.
 func (c *Client) parseError(resp *http.Response) error {
 	const maxErrorBodySize = 4 * 1024 // 4KB
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
-	if len(body) > 0 {
-		// Check if response was truncated
-		truncated := len(body) == maxErrorBodySize
 
+	apiErr := &APIError{StatusCode: resp.StatusCode, Message: http.StatusText(resp.StatusCode)}
+
+	if len(body) > 0 {
 		var errResp struct {
 			Error   string `json:"error"`
 			Message string `json:"message"`
 		}
-		if err := json.Unmarshal(body, &errResp); err == nil {
+		if err := json.Unmarshal(body, &errResp); err == nil && (errResp.Error != "" || errResp.Message != "") {
+			apiErr.ErrorCode = errResp.Error
 			if errResp.Message != "" {
-				return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, errResp.Message)
+				apiErr.Message = errResp.Message
 			}
-			if errResp.Error != "" {
-				return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, errResp.Error)
+		} else if err != nil {
+			// Non-JSON response — use body as message
+			bodyStr := string(body)
+			if len(body) == maxErrorBodySize {
+				bodyStr += "... (truncated)"
 			}
+			apiErr.Message = bodyStr
 		}
-
-		bodyStr := string(body)
-		if truncated {
-			bodyStr += "... (truncated)"
-		}
-		return fmt.Errorf("auth-service error (%d): %s", resp.StatusCode, bodyStr)
+		// If JSON parsed but both fields empty, keep the http.StatusText default
 	}
-	return fmt.Errorf("auth-service error: %s", resp.Status)
+
+	return apiErr
 }

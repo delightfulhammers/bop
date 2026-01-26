@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -55,9 +57,54 @@ func TestIsAvailable(t *testing.T) {
 	}
 }
 
-func TestGitHubActionsOIDC_Authenticate_MissingTenantID(t *testing.T) {
+func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
+	// When tenant_id is empty, the platform derives the tenant from the
+	// OIDC token's repository_owner claim. Verify that the client sends
+	// the request without tenant_id and accepts the response.
+	expectedToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": expectedToken})
+	}))
+	defer oidcServer.Close()
+
+	// Use a channel to safely pass the request body from the handler goroutine
+	bodyCh := make(chan map[string]any, 1)
+	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/auth/actions-oidc":
+			var b map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			bodyCh <- b
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "access-token-derived",
+				RefreshToken: "refresh-token-derived",
+				TokenType:    "Bearer",
+				ExpiresIn:    3600,
+			})
+		case "/auth/me":
+			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
+				UserID:       "user-derived",
+				Username:     "deriveduser",
+				Email:        "derived@example.com",
+				TenantID:     "tenant-derived-from-token",
+				PlanID:       "beta",
+				Entitlements: []string{"public-repos", "private-repos"},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer platformServer.Close()
+
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", oidcServer.URL+"?param=value")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "test-request-token")
+
 	client, err := NewClient(ClientConfig{
-		BaseURL:   "https://api.example.com",
+		BaseURL:   platformServer.URL,
 		ProductID: "bop",
 	})
 	if err != nil {
@@ -65,12 +112,25 @@ func TestGitHubActionsOIDC_Authenticate_MissingTenantID(t *testing.T) {
 	}
 
 	oidc := NewGitHubActionsOIDC(client, "https://api.example.com")
-	_, authErr := oidc.Authenticate(context.Background(), "")
-	if authErr == nil {
-		t.Fatal("expected error for empty tenant ID")
+	result, authErr := oidc.Authenticate(context.Background(), "")
+	if authErr != nil {
+		t.Fatalf("Authenticate() error: %v", authErr)
 	}
-	if got := authErr.Error(); got != "tenant_id is required for OIDC authentication (set BOP_TENANT_ID)" {
-		t.Errorf("unexpected error: %s", got)
+
+	// Read the captured request body from the handler (channel ensures synchronization)
+	receivedBody := <-bodyCh
+
+	// Verify tenant_id was NOT sent in the request body
+	if _, hasTenantID := receivedBody["tenant_id"]; hasTenantID {
+		t.Errorf("expected no tenant_id in request body, got %v", receivedBody["tenant_id"])
+	}
+
+	// Verify result uses the platform-derived tenant
+	if result.StoredAuth.TenantID != "tenant-derived-from-token" {
+		t.Errorf("unexpected tenant ID: %s", result.StoredAuth.TenantID)
+	}
+	if result.StoredAuth.AccessToken != "access-token-derived" {
+		t.Errorf("unexpected access token: %s", result.StoredAuth.AccessToken)
 	}
 }
 
@@ -275,5 +335,186 @@ func TestGitHubActionsOIDC_RequestOIDCToken_ServerError(t *testing.T) {
 	_, authErr := oidc.Authenticate(context.Background(), "tenant-123")
 	if authErr == nil {
 		t.Fatal("expected error for server error response")
+	}
+}
+
+func TestAPIError_Error(t *testing.T) {
+	tests := []struct {
+		name string
+		err  APIError
+		want string
+	}{
+		{
+			name: "code and message",
+			err:  APIError{StatusCode: 401, ErrorCode: "tenant_not_configured", Message: "No tenant configured"},
+			want: "auth-service error (401) [tenant_not_configured]: No tenant configured",
+		},
+		{
+			name: "message only",
+			err:  APIError{StatusCode: 500, Message: "Internal Server Error"},
+			want: "auth-service error (500): Internal Server Error",
+		},
+		{
+			name: "code only",
+			err:  APIError{StatusCode: 403, ErrorCode: "oidc_tenant_mismatch"},
+			want: "auth-service error (403): oidc_tenant_mismatch",
+		},
+		{
+			name: "no code or message",
+			err:  APIError{StatusCode: 502},
+			want: "auth-service error (502)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.err.Error(); got != tt.want {
+				t.Errorf("Error() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAPIError_ErrorsAs(t *testing.T) {
+	// Verify APIError is properly propagated through error wrapping so that
+	// callers (like tryOIDCAuth) can use errors.As to inspect the status code.
+	tests := []struct {
+		name       string
+		statusCode int
+		body       string
+		wantCode   string
+		wantMsg    string
+	}{
+		{
+			name:       "JSON error with code and message",
+			statusCode: 401,
+			body:       `{"error":"tenant_not_configured","message":"No tenant configured for this repository owner"}`,
+			wantCode:   "tenant_not_configured",
+			wantMsg:    "No tenant configured for this repository owner",
+		},
+		{
+			name:       "JSON error with code only",
+			statusCode: 403,
+			body:       `{"error":"oidc_tenant_mismatch"}`,
+			wantCode:   "oidc_tenant_mismatch",
+		},
+		{
+			name:       "non-JSON error",
+			statusCode: 502,
+			body:       "Bad Gateway",
+			wantMsg:    "Bad Gateway",
+		},
+		{
+			name:       "empty JSON preserves HTTP status text",
+			statusCode: 422,
+			body:       `{}`,
+			wantMsg:    "Unprocessable Entity",
+		},
+		{
+			name:       "empty body uses HTTP status text",
+			statusCode: 503,
+			body:       "",
+			wantMsg:    "Service Unavailable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/auth/actions-oidc":
+					w.WriteHeader(tt.statusCode)
+					_, _ = w.Write([]byte(tt.body))
+				default:
+					http.Error(w, "not found", http.StatusNotFound)
+				}
+			}))
+			defer server.Close()
+
+			client, err := NewClient(ClientConfig{BaseURL: server.URL, ProductID: "bop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, exchangeErr := client.ExchangeOIDCToken(context.Background(), OIDCExchangeRequest{
+				IDToken:      "test-token",
+				TenantID:     "tenant-123",
+				ProviderType: "github",
+			})
+			if exchangeErr == nil {
+				t.Fatal("expected error from exchange")
+			}
+
+			// Verify errors.As works through the error chain
+			var apiErr *APIError
+			if !errors.As(exchangeErr, &apiErr) {
+				t.Fatalf("expected errors.As to find *APIError, got: %T: %v", exchangeErr, exchangeErr)
+			}
+			if apiErr.StatusCode != tt.statusCode {
+				t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, tt.statusCode)
+			}
+			if tt.wantCode != "" && apiErr.ErrorCode != tt.wantCode {
+				t.Errorf("ErrorCode = %q, want %q", apiErr.ErrorCode, tt.wantCode)
+			}
+			if tt.wantMsg != "" && apiErr.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", apiErr.Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestIsTenantNotConfigured(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "401 with tenant_not_configured code",
+			err:  &APIError{StatusCode: 401, ErrorCode: "tenant_not_configured"},
+			want: true,
+		},
+		{
+			name: "wrapped 401 with tenant_not_configured code",
+			err:  fmt.Errorf("exchange OIDC token: %w", &APIError{StatusCode: 401, ErrorCode: "tenant_not_configured"}),
+			want: true,
+		},
+		{
+			name: "401 without tenant_not_configured code is not a match",
+			err:  &APIError{StatusCode: 401, ErrorCode: "invalid_credentials"},
+			want: false,
+		},
+		{
+			name: "401 with no error code is not a match",
+			err:  &APIError{StatusCode: 401},
+			want: false,
+		},
+		{
+			name: "403 APIError is not tenant not configured",
+			err:  &APIError{StatusCode: 403, ErrorCode: "oidc_tenant_mismatch"},
+			want: false,
+		},
+		{
+			name: "500 APIError is not tenant not configured",
+			err:  &APIError{StatusCode: 500},
+			want: false,
+		},
+		{
+			name: "non-APIError is not tenant not configured",
+			err:  fmt.Errorf("network error"),
+			want: false,
+		},
+		{
+			name: "nil error is not tenant not configured",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTenantNotConfigured(tt.err); got != tt.want {
+				t.Errorf("IsTenantNotConfigured() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
