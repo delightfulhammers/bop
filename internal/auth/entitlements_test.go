@@ -20,10 +20,10 @@ func TestBopEntitlements_HasEntitlement(t *testing.T) {
 			expected:    false,
 		},
 		{
-			name:        "empty entitlements grants all (graceful fallback)",
+			name:        "empty entitlements denies all (default-deny)",
 			auth:        &StoredAuth{Entitlements: []string{}},
 			entitlement: EntitlementPrivateRepos,
-			expected:    true,
+			expected:    false,
 		},
 		{
 			name:        "has specific entitlement",
@@ -105,11 +105,12 @@ func TestBopEntitlements_CanAccessRepo(t *testing.T) {
 			errMsg:    "organization repositories requires Pro plan",
 		},
 		{
-			name:      "graceful fallback with empty entitlements",
+			name:      "empty entitlements denies private repo (default-deny)",
 			auth:      &StoredAuth{Entitlements: []string{}},
 			isPrivate: true,
 			ownerType: "Organization",
-			wantErr:   false,
+			wantErr:   true,
+			errMsg:    "Private repository access requires Solo plan",
 		},
 	}
 
@@ -181,11 +182,11 @@ func TestBopEntitlements_ResolveModel(t *testing.T) {
 			expectFallback: true,
 		},
 		{
-			name:           "graceful fallback with empty entitlements allows any model",
+			name:           "empty entitlements falls back to default model (default-deny)",
 			auth:           &StoredAuth{Entitlements: []string{}},
 			requested:      "gpt-4",
-			expected:       "gpt-4",
-			expectFallback: false,
+			expected:       DefaultModel,
+			expectFallback: true,
 		},
 	}
 
@@ -330,9 +331,9 @@ func TestBopEntitlements_CanUseLocalConfig(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "graceful fallback with empty entitlements",
+			name:    "empty entitlements denies local config (default-deny)",
 			auth:    &StoredAuth{Entitlements: []string{}},
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 
@@ -665,9 +666,9 @@ func TestBopEntitlements_CanReviewPrivateRepos(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "empty entitlements can review private (graceful fallback)",
+			name:     "empty entitlements cannot review private (default-deny)",
 			auth:     &StoredAuth{Entitlements: []string{}},
-			expected: true,
+			expected: false,
 		},
 		{
 			name:     "has private-repos entitlement",

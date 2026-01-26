@@ -84,10 +84,11 @@ func TestServer_RequireEntitlement(t *testing.T) {
 			errContains: "private-repos",
 		},
 		{
-			name:        "graceful fallback with empty entitlements",
+			name:        "default-deny with empty entitlements",
 			auth:        authWith([]string{}),
 			entitlement: auth.EntitlementPublicRepos,
-			wantErr:     false, // Empty = all granted (graceful fallback)
+			wantErr:     true, // Empty = no permissions (default-deny)
+			errContains: "public-repos",
 		},
 		{
 			name:        "requires auth first in platform mode",
