@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,20 +43,80 @@ func All() {
 // Build Targets
 // =============================================================================
 
+// PrepareEmbed copies bop.yaml to internal/config/embed/ for embedding.
+// Go's embed directive doesn't allow ".." paths, so we copy the file at build time.
+// We use a subdirectory to avoid the file being picked up by config.Load() tests.
+// The copied file IS committed to enable standard Go tools (go build, go test, gopls)
+// to work without requiring mage. Run this target to sync after editing root bop.yaml.
+func PrepareEmbed() error {
+	src := "bop.yaml"
+	dst := filepath.Join("internal", "config", "embed", "bop.yaml")
+
+	// Check if source exists
+	if _, err := os.Stat(src); err != nil {
+		return fmt.Errorf("source bop.yaml not found: %w", err)
+	}
+
+	fmt.Println("==> Copying bop.yaml for embedding...")
+
+	// Ensure destination directory exists
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("create embed directory: %w", err)
+	}
+
+	// Defense in depth: check for and remove symlinks at destination
+	// (prevents path traversal if attacker creates symlink in repo)
+	if lstat, err := os.Lstat(dst); err == nil {
+		if lstat.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("destination %s is a symlink (security risk)", dst)
+		}
+		// Remove existing file to ensure clean copy
+		if err := os.Remove(dst); err != nil {
+			return fmt.Errorf("remove existing destination: %w", err)
+		}
+	}
+
+	// Open source file
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer srcFile.Close()
+
+	// Create destination file with O_EXCL to prevent TOCTOU race
+	// (attacker could recreate symlink between Remove and OpenFile)
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("create destination: %w", err)
+	}
+
+	// Copy contents, cleaning up on failure
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		dstFile.Close()
+		os.Remove(dst) // Clean up partial file
+		return fmt.Errorf("copy file: %w", err)
+	}
+
+	return dstFile.Close()
+}
+
 // Build compiles the main bop binary with version info.
 func Build() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Building bop binary...")
 	return buildBinary("bop", "./cmd/bop")
 }
 
 // BuildMCP compiles the bop-mcp binary with version info.
 func BuildMCP() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Building bop-mcp binary...")
 	return buildBinary("bop-mcp", "./cmd/bop-mcp")
 }
 
 // BuildAll compiles all binaries (bop and bop-mcp).
 func BuildAll() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Building all binaries...")
 	// First verify all packages compile
 	if err := run("go", "build", "./..."); err != nil {
@@ -69,6 +130,7 @@ func BuildAll() error {
 
 // Install installs all binaries to $GOPATH/bin.
 func Install() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Installing binaries to GOPATH/bin...")
 	version := resolveVersion()
 	ldflags := fmt.Sprintf("-X github.com/delightfulhammers/bop/internal/version.version=%s", version)

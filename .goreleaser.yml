@@ -6,6 +6,9 @@ before:
   hooks:
     # Remove replace directive for release build (platform is private)
     - sed -i '/^replace github.com\/delightfulhammers\/platform/d' go.mod
+    # Prepare embedded config file for go:embed
+    - mkdir -p internal/config/embed
+    - cp bop.yaml internal/config/embed/bop.yaml
     - go test ./...
 
 builds:
