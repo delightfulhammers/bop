@@ -297,13 +297,12 @@ func hasProviderAPIKeys(cfg config.Config) bool {
 // This is NOT gated by entitlements since it's controlled by bop maintainers.
 //
 // Note on environment variable handling:
-//   - BOP_* config overrides (e.g., BOP_OUTPUT_DIRECTORY) are NOT loaded here.
-//     These require the local-bop-config entitlement and are loaded later.
 //   - ${VAR} placeholders in embedded config ARE expanded (e.g., ${ANTHROPIC_API_KEY}).
-//     This is intentional: API keys are credentials, not configuration overrides,
-//     and are required for the zero-config experience to work.
+//     This enables zero-config operation where users just set API key env vars.
 //   - Operational env vars (BOP_LOG_LEVEL, BOP_PLATFORM_URL) are handled separately
 //     by LoadOperational() before this function is called.
+//   - Reviewer/model overrides from local config files require the local-bop-config
+//     entitlement (enterprise tier, for air-gapped environments).
 func loadBaselineConfig() (config.Config, error) {
 	return config.LoadEmbedded()
 }

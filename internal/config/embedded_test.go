@@ -1,15 +1,11 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
 func TestLoadEmbedded(t *testing.T) {
-	// Skip if embedded config is not available (e.g., during local development without mage prepareEmbed)
-	if !HasEmbeddedConfig() {
-		t.Skip("embedded config not available (run 'mage prepareEmbed' first)")
-	}
-
 	cfg, err := LoadEmbedded()
 	if err != nil {
 		t.Fatalf("LoadEmbedded() error = %v", err)
@@ -45,10 +41,6 @@ func TestLoadEmbedded(t *testing.T) {
 }
 
 func TestLoadEmbeddedHasReviewers(t *testing.T) {
-	if !HasEmbeddedConfig() {
-		t.Skip("embedded config not available (run 'mage prepareEmbed' first)")
-	}
-
 	cfg, err := LoadEmbedded()
 	if err != nil {
 		t.Fatalf("LoadEmbedded() error = %v", err)
@@ -82,10 +74,6 @@ func TestLoadEmbeddedHasReviewers(t *testing.T) {
 }
 
 func TestLoadEmbeddedMergePrecedence(t *testing.T) {
-	if !HasEmbeddedConfig() {
-		t.Skip("embedded config not available (run 'mage prepareEmbed' first)")
-	}
-
 	// Load embedded as base
 	embedded, err := LoadEmbedded()
 	if err != nil {
@@ -123,14 +111,31 @@ func TestLoadEmbeddedMergePrecedence(t *testing.T) {
 }
 
 func TestHasEmbeddedConfig(t *testing.T) {
-	// HasEmbeddedConfig should return true if the embed worked
-	// This test verifies the embed directive compiled successfully
-	hasConfig := HasEmbeddedConfig()
+	// The embedded config file is committed to the repo, so this should always pass.
+	// This test validates the build pipeline hasn't broken the embed.
+	if !HasEmbeddedConfig() {
+		t.Fatal("HasEmbeddedConfig() = false; embedded config file is missing or empty")
+	}
+}
 
-	// Log the result for debugging
-	t.Logf("HasEmbeddedConfig() = %v", hasConfig)
+func TestEmbeddedConfigInCI(t *testing.T) {
+	// In CI environments, we additionally verify the embedded config has real content
+	// (not just a placeholder). This catches cases where the embed file gets corrupted
+	// or the sync from root bop.yaml fails.
+	if os.Getenv("CI") == "" {
+		t.Skip("skipping CI-specific validation")
+	}
 
-	// The test passes either way - we just want to verify the function works.
-	// In CI after mage prepareEmbed, this should be true.
-	// During local development without prepareEmbed, this may be false.
+	cfg, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	// Verify it's the real config, not a stub
+	if len(cfg.Reviewers) < 4 {
+		t.Errorf("expected at least 4 reviewers in CI, got %d", len(cfg.Reviewers))
+	}
+	if len(cfg.Providers) < 3 {
+		t.Errorf("expected at least 3 providers in CI, got %d", len(cfg.Providers))
+	}
 }

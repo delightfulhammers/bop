@@ -46,7 +46,8 @@ func All() {
 // PrepareEmbed copies bop.yaml to internal/config/embed/ for embedding.
 // Go's embed directive doesn't allow ".." paths, so we copy the file at build time.
 // We use a subdirectory to avoid the file being picked up by config.Load() tests.
-// The copied file is gitignored to avoid committing duplicates.
+// The copied file IS committed to enable standard Go tools (go build, go test, gopls)
+// to work without requiring mage. Run this target to sync after editing root bop.yaml.
 func PrepareEmbed() error {
 	src := "bop.yaml"
 	dst := filepath.Join("internal", "config", "embed", "bop.yaml")
@@ -82,8 +83,9 @@ func PrepareEmbed() error {
 	}
 	defer srcFile.Close()
 
-	// Create destination file with explicit flags (no following symlinks)
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	// Create destination file with O_EXCL to prevent TOCTOU race
+	// (attacker could recreate symlink between Remove and OpenFile)
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("create destination: %w", err)
 	}
