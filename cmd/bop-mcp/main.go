@@ -97,15 +97,27 @@ func run() error {
 		SessionStore: nil,
 	})
 
-	// Load config for reviewer and provider settings.
-	cfg, err := config.Load(config.LoaderOptions{
+	// Load embedded config as baseline (provides sensible defaults).
+	cfg, err := config.LoadEmbedded()
+	if err != nil {
+		log.Printf("warning: embedded config load failed: %v", err)
+		cfg = config.Config{}
+	}
+
+	// Try to load local config and merge over embedded config.
+	// Local config takes precedence, allowing user customization.
+	localCfg, localErr := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
 		FileName:    "bop",
 		EnvPrefix:   "BOP",
 	})
-	if err != nil {
-		log.Printf("warning: config load failed: %v", err)
-		cfg = config.Config{}
+	if localErr == nil {
+		merged, mergeErr := config.Merge(cfg, localCfg)
+		if mergeErr != nil {
+			log.Printf("warning: config merge failed: %v", mergeErr)
+		} else {
+			cfg = merged
+		}
 	}
 
 	// Initialize platform auth if configured (Week 14)

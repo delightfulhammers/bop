@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,20 +43,71 @@ func All() {
 // Build Targets
 // =============================================================================
 
+// PrepareEmbed copies bop.yaml to internal/config/embed/ for embedding.
+// Go's embed directive doesn't allow ".." paths, so we copy the file at build time.
+// We use a subdirectory to avoid the file being picked up by config.Load() tests.
+// The copied file is gitignored to avoid committing duplicates.
+func PrepareEmbed() error {
+	src := "bop.yaml"
+	dst := filepath.Join("internal", "config", "embed", "bop.yaml")
+
+	// Check if source exists
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("source bop.yaml not found: %w", err)
+	}
+
+	// Check if destination exists and is up to date
+	dstInfo, err := os.Stat(dst)
+	if err == nil {
+		// Destination exists - check if source is newer
+		if !srcInfo.ModTime().After(dstInfo.ModTime()) {
+			// Destination is up to date, skip copy
+			return nil
+		}
+	}
+
+	fmt.Println("==> Copying bop.yaml for embedding...")
+
+	// Open source file
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source: %w", err)
+	}
+	defer srcFile.Close()
+
+	// Create destination file
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("create destination: %w", err)
+	}
+	defer dstFile.Close()
+
+	// Copy contents
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("copy file: %w", err)
+	}
+
+	return nil
+}
+
 // Build compiles the main bop binary with version info.
 func Build() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Building bop binary...")
 	return buildBinary("bop", "./cmd/bop")
 }
 
 // BuildMCP compiles the bop-mcp binary with version info.
 func BuildMCP() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Building bop-mcp binary...")
 	return buildBinary("bop-mcp", "./cmd/bop-mcp")
 }
 
 // BuildAll compiles all binaries (bop and bop-mcp).
 func BuildAll() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Building all binaries...")
 	// First verify all packages compile
 	if err := run("go", "build", "./..."); err != nil {
@@ -69,6 +121,7 @@ func BuildAll() error {
 
 // Install installs all binaries to $GOPATH/bin.
 func Install() error {
+	mg.Deps(PrepareEmbed)
 	fmt.Println("==> Installing binaries to GOPATH/bin...")
 	version := resolveVersion()
 	ldflags := fmt.Sprintf("-X github.com/delightfulhammers/bop/internal/version.version=%s", version)

@@ -16,3 +16,7 @@
 # Go workspace (local development only)
 go.work
 go.work.sum
+
+# Embedded config file (copied by mage prepareEmbed)
+# The source is bop.yaml at repo root; this copy is for go:embed
+/internal/config/embed/bop.yaml

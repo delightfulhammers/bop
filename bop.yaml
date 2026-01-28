@@ -1,5 +1,9 @@
 # Code Reviewer Configuration File
-# This file configures the bop application for CI/CD usage
+# This file configures the bop application for CI/CD usage.
+#
+# NOTE: This file is embedded into the bop binary at build time to enable
+# zero-config operation. Users can override any setting with their own
+# bop.yaml file or environment variables.
 
 # LLM Provider Configuration
 # Providers define connection details (API keys, credentials, timeouts) for LLM services.

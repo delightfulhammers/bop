@@ -289,19 +289,19 @@ func hasProviderAPIKeys(cfg config.Config) bool {
 	return false
 }
 
-// loadBaselineConfig loads config with defaults only - no local files, no env vars.
+// loadBaselineConfig loads the embedded default configuration.
 // This is the starting point for platform mode before merging platform config.
+//
+// The embedded config provides sensible defaults (reviewers, providers, thresholds)
+// that enable bop to work out of the box without any configuration files.
+// This is NOT gated by entitlements since it's controlled by bop maintainers.
 //
 // Environment variables are NOT loaded here to prevent bypassing entitlement checks.
 // Operational env vars (BOP_LOG_LEVEL, BOP_PLATFORM_URL) are handled separately by
 // LoadOperational() before this function is called.
 // Config env vars (API keys, etc.) are loaded later only if user has local-bop-config entitlement.
 func loadBaselineConfig() (config.Config, error) {
-	return config.Load(config.LoaderOptions{
-		ConfigPaths: nil, // No local file paths - requires entitlement check
-		FileName:    "bop",
-		EnvPrefix:   "", // No env vars - requires entitlement check
-	})
+	return config.LoadEmbedded()
 }
 
 // fetchPlatformConfigWithCache fetches platform config, using cache if available.
