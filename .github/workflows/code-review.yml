@@ -41,6 +41,12 @@ jobs:
         with:
           go-version-file: bop/go.mod
 
+      - name: Prepare embed
+        working-directory: bop
+        run: |
+          mkdir -p internal/config/embed
+          cp bop.yaml internal/config/embed/bop.yaml
+
       - name: Build bop
         working-directory: bop
         run: go build -o bop ./cmd/bop

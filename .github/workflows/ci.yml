@@ -47,6 +47,12 @@ jobs:
             exit 1
           fi
 
+      - name: Prepare embed
+        working-directory: bop
+        run: |
+          mkdir -p internal/config/embed
+          cp bop.yaml internal/config/embed/bop.yaml
+
       - name: Vet
         working-directory: bop
         run: go vet ./...
