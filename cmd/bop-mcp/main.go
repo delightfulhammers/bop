@@ -111,7 +111,12 @@ func run() error {
 		FileName:    "bop",
 		EnvPrefix:   "BOP",
 	})
-	if localErr == nil {
+	if localErr != nil {
+		// Only warn if it's not a simple "no config files found" case
+		if config.HasLocalConfig() {
+			log.Printf("warning: local config load failed: %v", localErr)
+		}
+	} else {
 		merged, mergeErr := config.Merge(cfg, localCfg)
 		if mergeErr != nil {
 			log.Printf("warning: config merge failed: %v", mergeErr)
