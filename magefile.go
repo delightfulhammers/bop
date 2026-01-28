@@ -52,22 +52,28 @@ func PrepareEmbed() error {
 	dst := filepath.Join("internal", "config", "embed", "bop.yaml")
 
 	// Check if source exists
-	srcInfo, err := os.Stat(src)
-	if err != nil {
+	if _, err := os.Stat(src); err != nil {
 		return fmt.Errorf("source bop.yaml not found: %w", err)
 	}
 
-	// Check if destination exists and is up to date
-	dstInfo, err := os.Stat(dst)
-	if err == nil {
-		// Destination exists - check if source is newer
-		if !srcInfo.ModTime().After(dstInfo.ModTime()) {
-			// Destination is up to date, skip copy
-			return nil
-		}
+	fmt.Println("==> Copying bop.yaml for embedding...")
+
+	// Ensure destination directory exists
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("create embed directory: %w", err)
 	}
 
-	fmt.Println("==> Copying bop.yaml for embedding...")
+	// Defense in depth: check for and remove symlinks at destination
+	// (prevents path traversal if attacker creates symlink in repo)
+	if lstat, err := os.Lstat(dst); err == nil {
+		if lstat.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("destination %s is a symlink (security risk)", dst)
+		}
+		// Remove existing file to ensure clean copy
+		if err := os.Remove(dst); err != nil {
+			return fmt.Errorf("remove existing destination: %w", err)
+		}
+	}
 
 	// Open source file
 	srcFile, err := os.Open(src)
@@ -76,19 +82,20 @@ func PrepareEmbed() error {
 	}
 	defer srcFile.Close()
 
-	// Create destination file
-	dstFile, err := os.Create(dst)
+	// Create destination file with explicit flags (no following symlinks)
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return fmt.Errorf("create destination: %w", err)
 	}
-	defer dstFile.Close()
 
-	// Copy contents
+	// Copy contents, cleaning up on failure
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		dstFile.Close()
+		os.Remove(dst) // Clean up partial file
 		return fmt.Errorf("copy file: %w", err)
 	}
 
-	return nil
+	return dstFile.Close()
 }
 
 // Build compiles the main bop binary with version info.
