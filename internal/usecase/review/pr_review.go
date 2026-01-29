@@ -216,13 +216,19 @@ func (o *Orchestrator) executeReviewWithDiff(ctx context.Context, req BranchRequ
 	return o.ReviewBranchWithDiff(ctx, req, diff, projectCtx)
 }
 
+// sshRemoteRegex matches SSH git remote URLs: git@hostname:owner/repo.git
+var sshRemoteRegex = regexp.MustCompile(`^git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$`)
+
 // ParseGitHubRemoteURL parses owner and repo from a git remote URL.
 // Supports both HTTPS and SSH formats:
 // - https://github.com/owner/repo.git
 // - https://github.com/owner/repo
 // - git@github.com:owner/repo.git
 // - git@github.com:owner/repo
-// Also supports GitHub Enterprise URLs with custom domains.
+//
+// This function accepts any hostname, not just github.com, to support GitHub
+// Enterprise deployments with custom domains. Invalid remotes will fail later
+// when the GitHub API is called.
 func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
 	remoteURL = strings.TrimSpace(remoteURL)
 	if remoteURL == "" {
@@ -230,8 +236,7 @@ func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
 	}
 
 	// Try SSH format first: git@hostname:owner/repo.git
-	sshRegex := regexp.MustCompile(`^git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$`)
-	if matches := sshRegex.FindStringSubmatch(remoteURL); len(matches) == 3 {
+	if matches := sshRemoteRegex.FindStringSubmatch(remoteURL); len(matches) == 3 {
 		return matches[1], matches[2], nil
 	}
 
@@ -241,18 +246,13 @@ func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
 		return "", "", fmt.Errorf("invalid remote URL: %s", remoteURL)
 	}
 
-	// Must be a GitHub-like host (contains "github" in hostname)
-	if !strings.Contains(strings.ToLower(parsed.Host), "github") {
-		return "", "", fmt.Errorf("not a GitHub remote URL: %s", remoteURL)
-	}
-
 	// Parse path: /owner/repo or /owner/repo.git
 	path := strings.Trim(parsed.Path, "/")
 	path = strings.TrimSuffix(path, ".git")
 	parts := strings.Split(path, "/")
 
-	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid GitHub remote URL: %s (expected /owner/repo)", remoteURL)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid remote URL: %s (expected /owner/repo)", remoteURL)
 	}
 
 	return parts[0], parts[1], nil

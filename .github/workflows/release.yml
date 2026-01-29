@@ -7,6 +7,8 @@ on:
 
 jobs:
   release:
+    # Explicit condition to prevent spurious workflow runs on non-tag pushes
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -47,6 +49,7 @@ jobs:
   # This allows users to download binaries without access to the private bop repo
   sync-public-binaries:
     needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Get release version

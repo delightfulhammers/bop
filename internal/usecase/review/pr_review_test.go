@@ -397,6 +397,19 @@ func TestParseGitHubRemoteURL(t *testing.T) {
 			wantOwner: "my-org-123",
 			wantRepo:  "my-repo-456",
 		},
+		// Non-GitHub hosts (accepted to support GHE with custom domains)
+		{
+			name:      "GitLab URL accepted (validation deferred to API)",
+			input:     "https://gitlab.com/owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+		},
+		{
+			name:      "custom GHE domain without github in name",
+			input:     "https://git.mycompany.com/team/project.git",
+			wantOwner: "team",
+			wantRepo:  "project",
+		},
 		// Error cases
 		{
 			name:    "empty string",
@@ -414,8 +427,8 @@ func TestParseGitHubRemoteURL(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "non-GitHub URL",
-			input:   "https://gitlab.com/owner/repo.git",
+			name:    "URL with extra path segments",
+			input:   "https://github.com/owner/repo/extra",
 			wantErr: true,
 		},
 	}

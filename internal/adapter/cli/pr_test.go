@@ -393,7 +393,9 @@ func TestPRCommand_NumberShorthand_RemoteError(t *testing.T) {
 	assert.Contains(t, err.Error(), "git error")
 }
 
-func TestPRCommand_NumberShorthand_NonGitHubRemote(t *testing.T) {
+func TestPRCommand_NumberShorthand_AnyRemoteAccepted(t *testing.T) {
+	// Non-GitHub remotes are accepted to support GHE with custom domains.
+	// Validation is deferred to the GitHub API call.
 	prMock := &mockPRReviewer{result: review.Result{}}
 	gitMock := &mockGitRemoteResolver{remoteURL: "https://gitlab.com/owner/repo.git"}
 	var stdout, stderr bytes.Buffer
@@ -411,6 +413,8 @@ func TestPRCommand_NumberShorthand_NonGitHubRemote(t *testing.T) {
 	cmd.SetArgs([]string{"review", "pr", "123"})
 	err := cmd.Execute()
 
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not a GitHub remote")
+	require.NoError(t, err)
+	assert.Equal(t, "owner", prMock.lastRequest.Owner)
+	assert.Equal(t, "repo", prMock.lastRequest.Repo)
+	assert.Equal(t, 123, prMock.lastRequest.PRNumber)
 }
