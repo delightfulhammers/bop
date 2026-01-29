@@ -42,3 +42,67 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_GITHUB_TOKEN: ${{ secrets.HOMEBREW_GITHUB_TOKEN }}
           GOPRIVATE: github.com/delightfulhammers/*
+
+  # Sync Linux and Windows binaries to the public homebrew-tap repo
+  # This allows users to download binaries without access to the private bop repo
+  sync-public-binaries:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get release version
+        id: version
+        run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets
+          cd assets
+          # Download Linux and Windows archives (not macOS - Homebrew handles that)
+          gh release download ${{ steps.version.outputs.tag }} \
+            --repo delightfulhammers/bop \
+            --pattern 'bop_*_linux_*.tar.gz' \
+            --pattern 'bop_*_windows_*.zip' \
+            --pattern 'checksums.txt'
+
+      - name: Create or update homebrew-tap release
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+
+          # Check if release exists
+          if gh release view "$TAG" --repo delightfulhammers/homebrew-tap &>/dev/null; then
+            echo "Release $TAG exists, uploading assets..."
+            gh release upload "$TAG" assets/* \
+              --repo delightfulhammers/homebrew-tap \
+              --clobber
+          else
+            echo "Creating release $TAG..."
+            gh release create "$TAG" assets/* \
+              --repo delightfulhammers/homebrew-tap \
+              --title "$TAG" \
+              --notes "Linux and Windows binaries for bop $TAG
+
+## Installation
+
+**Linux (amd64):**
+\`\`\`bash
+curl -LO https://github.com/delightfulhammers/homebrew-tap/releases/download/${TAG}/bop_${TAG#v}_linux_amd64.tar.gz
+tar xzf bop_${TAG#v}_linux_amd64.tar.gz
+sudo mv bop /usr/local/bin/
+\`\`\`
+
+**Linux (arm64):**
+\`\`\`bash
+curl -LO https://github.com/delightfulhammers/homebrew-tap/releases/download/${TAG}/bop_${TAG#v}_linux_arm64.tar.gz
+tar xzf bop_${TAG#v}_linux_arm64.tar.gz
+sudo mv bop /usr/local/bin/
+\`\`\`
+
+**Windows:** Download the appropriate .zip file and extract to your PATH.
+
+**macOS:** Use Homebrew: \`brew install delightfulhammers/tap/bop\`
+"
+          fi
