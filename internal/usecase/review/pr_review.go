@@ -252,7 +252,7 @@ func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
 	parts := strings.Split(path, "/")
 
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("invalid remote URL: %s (expected /owner/repo)", remoteURL)
+		return "", "", fmt.Errorf("invalid remote URL: %s (expected owner/repo format; nested paths like group/subgroup/repo are not supported)", remoteURL)
 	}
 
 	return parts[0], parts[1], nil
