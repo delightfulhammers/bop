@@ -458,3 +458,13 @@ func TestParseGitHubRemoteURL(t *testing.T) {
 		})
 	}
 }
+
+func TestParseGitHubRemoteURL_SanitizesCredentials(t *testing.T) {
+	// URLs with credentials should have them redacted in error messages
+	_, _, err := ParseGitHubRemoteURL("https://secret-token@github.com/owner")
+	require.Error(t, err)
+	// Error should not contain the actual token
+	assert.NotContains(t, err.Error(), "secret-token")
+	// Error should contain the redacted placeholder (URL-encoded as %2A%2A%2A)
+	assert.Contains(t, err.Error(), "%2A%2A%2A")
+}
