@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -10,7 +12,7 @@ import (
 
 // prCommand creates the 'review pr' subcommand for reviewing GitHub PRs remotely.
 // This allows reviewing any PR without needing a local clone.
-func prCommand(prReviewer PRReviewer, authDeps AuthDependencies, defaultOutput, defaultInstructions string, defaultActions DefaultReviewActions, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
+func prCommand(prReviewer PRReviewer, gitRemoteResolver GitRemoteResolver, authDeps AuthDependencies, defaultOutput, defaultInstructions string, defaultActions DefaultReviewActions, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
 	var outputDir string
 	var customInstructions string
 	var noArchitecture bool
@@ -49,6 +51,7 @@ func prCommand(prReviewer PRReviewer, authDeps AuthDependencies, defaultOutput, 
 		Long: `Review a GitHub pull request without needing a local clone.
 
 The PR can be specified as:
+  - 123 (PR number only - infers owner/repo from git remote)
   - owner/repo#123
   - https://github.com/owner/repo/pull/123
   - github.mycompany.com/owner/repo/pull/123 (GHE)
@@ -57,6 +60,7 @@ By default, the review is written to local files only. Use --post to upload
 findings to the PR as inline comments.
 
 Examples:
+  bop review pr 123                              # Uses current repo's remote
   bop review pr delightfulhammers/bop#172
   bop review pr https://github.com/owner/repo/pull/123 --reviewers security
   bop review pr owner/repo#1 --post --output ./review-output`,
@@ -74,10 +78,34 @@ Examples:
 			identifier := args[0]
 			ctx := cmd.Context()
 
-			// Parse PR identifier
-			owner, repo, prNumber, err := review.ParsePRIdentifier(identifier)
-			if err != nil {
-				return err
+			// Check if identifier is just a number (PR shorthand)
+			identifier = strings.TrimSpace(identifier)
+			var owner, repo string
+			var prNumber int
+
+			if num, err := strconv.Atoi(identifier); err == nil && num > 0 {
+				// Just a number - try to infer owner/repo from git remote
+				if gitRemoteResolver == nil {
+					return fmt.Errorf("PR number shorthand requires a git repository; use owner/repo#%d format instead", num)
+				}
+				remoteURL, err := gitRemoteResolver.GetRemoteURL(ctx)
+				if err != nil {
+					return fmt.Errorf("failed to get git remote: %w (use owner/repo#%d format instead)", err, num)
+				}
+				if remoteURL == "" {
+					return fmt.Errorf("no git remote found; use owner/repo#%d format instead", num)
+				}
+				owner, repo, err = review.ParseGitHubRemoteURL(remoteURL)
+				if err != nil {
+					return fmt.Errorf("could not parse GitHub remote URL: %w (use owner/repo#%d format instead)", err, num)
+				}
+				prNumber = num
+			} else {
+				// Full identifier - parse normally
+				owner, repo, prNumber, err = review.ParsePRIdentifier(identifier)
+				if err != nil {
+					return err
+				}
 			}
 
 			// Build RepoAccessChecker from entitlements (nil in legacy mode)

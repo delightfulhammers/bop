@@ -90,9 +90,10 @@ brews:
       Quick start:
         bop review branch main
 
-      For GitHub PR integration:
+      Review a GitHub PR (with posting):
         export GITHUB_TOKEN="your-token"
-        bop review branch main --github-post --pr 123
+        bop review pr owner/repo#123 --post
+        bop review pr 123 --post              # Infers owner/repo from git remote
 
 checksum:
   name_template: 'checksums.txt'

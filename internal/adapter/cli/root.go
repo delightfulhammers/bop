@@ -27,6 +27,12 @@ type PRReviewer interface {
 	ReviewPR(ctx context.Context, req review.PRRequest) (review.Result, error)
 }
 
+// GitRemoteResolver provides access to git remote URL for PR shorthand resolution.
+// This allows "bop review pr 123" to infer owner/repo from the current directory.
+type GitRemoteResolver interface {
+	GetRemoteURL(ctx context.Context) (string, error)
+}
+
 // Arguments encapsulates IO writers injected from the host process.
 type Arguments struct {
 	OutWriter io.Writer
@@ -68,11 +74,12 @@ type DefaultVerification struct {
 // Dependencies captures the collaborators for the CLI.
 type Dependencies struct {
 	BranchReviewer       BranchReviewer
-	PRReviewer           PRReviewer       // Optional: only required for cr review pr
-	FindingsPoster       FindingsPoster   // Optional: only required for cr post
-	SessionManager       SessionManager   // Optional: only required for cr sessions
-	AuthDeps             AuthDependencies // Optional: only required for bop auth commands
-	FeedbackClient       FeedbackClient   // Optional: only required for bop feedback commands
+	PRReviewer           PRReviewer        // Optional: only required for cr review pr
+	GitRemoteResolver    GitRemoteResolver // Optional: enables "bop review pr 123" shorthand
+	FindingsPoster       FindingsPoster    // Optional: only required for cr post
+	SessionManager       SessionManager    // Optional: only required for cr sessions
+	AuthDeps             AuthDependencies  // Optional: only required for bop auth commands
+	FeedbackClient       FeedbackClient    // Optional: only required for bop feedback commands
 	Args                 Arguments
 	DefaultOutput        string
 	DefaultRepo          string
@@ -116,7 +123,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	}
 	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.AuthDeps, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	if deps.PRReviewer != nil {
-		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.AuthDeps, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
+		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.GitRemoteResolver, deps.AuthDeps, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())

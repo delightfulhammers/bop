@@ -269,3 +269,152 @@ func TestPRCommand_NoAutoContextFlag(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, mock.lastRequest.NoAutoContext)
 }
+
+// mockGitRemoteResolver implements GitRemoteResolver for testing
+type mockGitRemoteResolver struct {
+	remoteURL string
+	err       error
+}
+
+func (m *mockGitRemoteResolver) GetRemoteURL(ctx context.Context) (string, error) {
+	return m.remoteURL, m.err
+}
+
+func TestPRCommand_NumberShorthand_Success(t *testing.T) {
+	prMock := &mockPRReviewer{result: review.Result{}}
+	gitMock := &mockGitRemoteResolver{remoteURL: "https://github.com/myorg/myrepo.git"}
+	var stdout, stderr bytes.Buffer
+
+	cmd := NewRootCommand(Dependencies{
+		PRReviewer:        prMock,
+		GitRemoteResolver: gitMock,
+		Args: Arguments{
+			OutWriter: &stdout,
+			ErrWriter: &stderr,
+		},
+		DefaultOutput: "out",
+	})
+
+	cmd.SetArgs([]string{"review", "pr", "42"})
+	err := cmd.Execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, "myorg", prMock.lastRequest.Owner)
+	assert.Equal(t, "myrepo", prMock.lastRequest.Repo)
+	assert.Equal(t, 42, prMock.lastRequest.PRNumber)
+}
+
+func TestPRCommand_NumberShorthand_SSHRemote(t *testing.T) {
+	prMock := &mockPRReviewer{result: review.Result{}}
+	gitMock := &mockGitRemoteResolver{remoteURL: "git@github.com:owner/repo.git"}
+	var stdout, stderr bytes.Buffer
+
+	cmd := NewRootCommand(Dependencies{
+		PRReviewer:        prMock,
+		GitRemoteResolver: gitMock,
+		Args: Arguments{
+			OutWriter: &stdout,
+			ErrWriter: &stderr,
+		},
+		DefaultOutput: "out",
+	})
+
+	cmd.SetArgs([]string{"review", "pr", "123"})
+	err := cmd.Execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, "owner", prMock.lastRequest.Owner)
+	assert.Equal(t, "repo", prMock.lastRequest.Repo)
+	assert.Equal(t, 123, prMock.lastRequest.PRNumber)
+}
+
+func TestPRCommand_NumberShorthand_NoResolver(t *testing.T) {
+	prMock := &mockPRReviewer{result: review.Result{}}
+	var stdout, stderr bytes.Buffer
+
+	cmd := NewRootCommand(Dependencies{
+		PRReviewer:        prMock,
+		GitRemoteResolver: nil, // No resolver
+		Args: Arguments{
+			OutWriter: &stdout,
+			ErrWriter: &stderr,
+		},
+		DefaultOutput: "out",
+	})
+
+	cmd.SetArgs([]string{"review", "pr", "123"})
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "owner/repo#123")
+}
+
+func TestPRCommand_NumberShorthand_NoRemote(t *testing.T) {
+	prMock := &mockPRReviewer{result: review.Result{}}
+	gitMock := &mockGitRemoteResolver{remoteURL: ""} // No remote
+	var stdout, stderr bytes.Buffer
+
+	cmd := NewRootCommand(Dependencies{
+		PRReviewer:        prMock,
+		GitRemoteResolver: gitMock,
+		Args: Arguments{
+			OutWriter: &stdout,
+			ErrWriter: &stderr,
+		},
+		DefaultOutput: "out",
+	})
+
+	cmd.SetArgs([]string{"review", "pr", "123"})
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no git remote found")
+}
+
+func TestPRCommand_NumberShorthand_RemoteError(t *testing.T) {
+	prMock := &mockPRReviewer{result: review.Result{}}
+	gitMock := &mockGitRemoteResolver{err: errors.New("git error")}
+	var stdout, stderr bytes.Buffer
+
+	cmd := NewRootCommand(Dependencies{
+		PRReviewer:        prMock,
+		GitRemoteResolver: gitMock,
+		Args: Arguments{
+			OutWriter: &stdout,
+			ErrWriter: &stderr,
+		},
+		DefaultOutput: "out",
+	})
+
+	cmd.SetArgs([]string{"review", "pr", "123"})
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "git error")
+}
+
+func TestPRCommand_NumberShorthand_AnyRemoteAccepted(t *testing.T) {
+	// Non-GitHub remotes are accepted to support GHE with custom domains.
+	// Validation is deferred to the GitHub API call.
+	prMock := &mockPRReviewer{result: review.Result{}}
+	gitMock := &mockGitRemoteResolver{remoteURL: "https://gitlab.com/owner/repo.git"}
+	var stdout, stderr bytes.Buffer
+
+	cmd := NewRootCommand(Dependencies{
+		PRReviewer:        prMock,
+		GitRemoteResolver: gitMock,
+		Args: Arguments{
+			OutWriter: &stdout,
+			ErrWriter: &stderr,
+		},
+		DefaultOutput: "out",
+	})
+
+	cmd.SetArgs([]string{"review", "pr", "123"})
+	err := cmd.Execute()
+
+	require.NoError(t, err)
+	assert.Equal(t, "owner", prMock.lastRequest.Owner)
+	assert.Equal(t, "repo", prMock.lastRequest.Repo)
+	assert.Equal(t, 123, prMock.lastRequest.PRNumber)
+}

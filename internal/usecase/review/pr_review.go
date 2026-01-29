@@ -216,6 +216,69 @@ func (o *Orchestrator) executeReviewWithDiff(ctx context.Context, req BranchRequ
 	return o.ReviewBranchWithDiff(ctx, req, diff, projectCtx)
 }
 
+// sshRemoteRegex matches SSH git remote URLs: git@hostname:owner/repo.git
+var sshRemoteRegex = regexp.MustCompile(`^git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$`)
+
+// sanitizeURLForError removes credentials from a URL for safe inclusion in error messages.
+// Returns the URL with userinfo redacted (e.g., "https://***@github.com/owner/repo").
+func sanitizeURLForError(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		// If we can't parse it, return a generic description
+		return "<invalid URL>"
+	}
+	if parsed.User != nil {
+		parsed.User = url.User("***")
+	}
+	return parsed.String()
+}
+
+// ParseGitHubRemoteURL parses owner and repo from a git remote URL.
+// Supports both HTTPS and SSH formats:
+// - https://github.com/owner/repo.git
+// - https://github.com/owner/repo
+// - git@github.com:owner/repo.git
+// - git@github.com:owner/repo
+//
+// This function accepts any hostname, not just github.com, to support GitHub
+// Enterprise deployments with custom domains. Invalid remotes will fail later
+// when the GitHub API is called.
+func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
+	remoteURL = strings.TrimSpace(remoteURL)
+	if remoteURL == "" {
+		return "", "", fmt.Errorf("empty remote URL")
+	}
+
+	// Try SSH format first: git@hostname:owner/repo.git
+	if matches := sshRemoteRegex.FindStringSubmatch(remoteURL); len(matches) == 3 {
+		return matches[1], matches[2], nil
+	}
+
+	// Try HTTPS format: https://hostname/owner/repo.git
+	parsed, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid remote URL: %s", sanitizeURLForError(remoteURL))
+	}
+
+	// Validate that url.Parse actually recognized this as a URL with a host.
+	// Inputs like "user@host:owner/repo" (non-git user) or "host:owner/repo"
+	// will have empty Scheme and Host, making path extraction unreliable.
+	if parsed.Host == "" && parsed.Scheme == "" {
+		return "", "", fmt.Errorf("invalid remote URL format: %s (expected https://host/owner/repo or git@host:owner/repo)", sanitizeURLForError(remoteURL))
+	}
+
+	// Parse path: /owner/repo or /owner/repo.git
+	path := strings.Trim(parsed.Path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	parts := strings.Split(path, "/")
+
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid remote URL: %s (expected owner/repo format; nested paths like group/subgroup/repo are not supported)", sanitizeURLForError(remoteURL))
+	}
+
+	return parts[0], parts[1], nil
+}
+
 // ParsePRIdentifier parses a PR identifier from various formats:
 // - owner/repo#123
 // - https://github.com/owner/repo/pull/123
