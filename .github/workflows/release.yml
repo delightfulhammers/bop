@@ -66,6 +66,12 @@ jobs:
             --pattern 'bop_*_windows_*.zip' \
             --pattern 'checksums.txt'
 
+          # Create version-agnostic copies for stable download URLs
+          for f in bop_*_linux_amd64.tar.gz; do cp "$f" bop-linux-amd64.tar.gz; done
+          for f in bop_*_linux_arm64.tar.gz; do cp "$f" bop-linux-arm64.tar.gz; done
+          for f in bop_*_windows_amd64.zip; do cp "$f" bop-windows-amd64.zip; done
+          for f in bop_*_windows_arm64.zip; do cp "$f" bop-windows-arm64.zip; done
+
       - name: Create or update homebrew-tap release
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_GITHUB_TOKEN }}
