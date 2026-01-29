@@ -246,6 +246,13 @@ func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
 		return "", "", fmt.Errorf("invalid remote URL: %s", remoteURL)
 	}
 
+	// Validate that url.Parse actually recognized this as a URL with a host.
+	// Inputs like "user@host:owner/repo" (non-git user) or "host:owner/repo"
+	// will have empty Scheme and Host, making path extraction unreliable.
+	if parsed.Host == "" && parsed.Scheme == "" {
+		return "", "", fmt.Errorf("invalid remote URL format: %s (expected https://host/owner/repo or git@host:owner/repo)", remoteURL)
+	}
+
 	// Parse path: /owner/repo or /owner/repo.git
 	path := strings.Trim(parsed.Path, "/")
 	path = strings.TrimSuffix(path, ".git")

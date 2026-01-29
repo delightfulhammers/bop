@@ -431,6 +431,16 @@ func TestParseGitHubRemoteURL(t *testing.T) {
 			input:   "https://github.com/owner/repo/extra",
 			wantErr: true,
 		},
+		{
+			name:    "SCP-like format with non-git user",
+			input:   "user@host:owner/repo",
+			wantErr: true,
+		},
+		{
+			name:    "SCP-like format without user",
+			input:   "host:owner/repo",
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

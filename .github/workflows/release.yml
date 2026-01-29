@@ -87,33 +87,27 @@ jobs:
               --clobber
           else
             echo "Creating release $TAG..."
-            # Use heredoc for release notes to avoid YAML indentation issues
-            NOTES=$(cat <<EOF
-          Linux and Windows binaries for bop $TAG
-
-          ## Installation
-
-          **Linux (amd64):**
-          \`\`\`bash
-          curl -LO https://github.com/delightfulhammers/homebrew-tap/releases/download/${TAG}/bop_\${TAG#v}_linux_amd64.tar.gz
-          tar xzf bop_\${TAG#v}_linux_amd64.tar.gz
-          sudo mv bop /usr/local/bin/
-          \`\`\`
-
-          **Linux (arm64):**
-          \`\`\`bash
-          curl -LO https://github.com/delightfulhammers/homebrew-tap/releases/download/${TAG}/bop_\${TAG#v}_linux_arm64.tar.gz
-          tar xzf bop_\${TAG#v}_linux_arm64.tar.gz
-          sudo mv bop /usr/local/bin/
-          \`\`\`
-
-          **Windows:** Download the appropriate .zip file and extract to your PATH.
-
-          **macOS:** Use Homebrew: \`brew install delightfulhammers/tap/bop\`
-          EOF
-          )
+            # Build release notes using printf to avoid YAML heredoc issues
+            {
+              printf 'Linux and Windows binaries for bop %s\n\n' "$TAG"
+              printf '## Installation\n\n'
+              printf '**Linux (amd64):**\n'
+              printf '```bash\n'
+              printf 'curl -LO https://github.com/delightfulhammers/homebrew-tap/releases/download/%s/bop_%s_linux_amd64.tar.gz\n' "$TAG" "${TAG#v}"
+              printf 'tar xzf bop_%s_linux_amd64.tar.gz\n' "${TAG#v}"
+              printf 'sudo mv bop /usr/local/bin/\n'
+              printf '```\n\n'
+              printf '**Linux (arm64):**\n'
+              printf '```bash\n'
+              printf 'curl -LO https://github.com/delightfulhammers/homebrew-tap/releases/download/%s/bop_%s_linux_arm64.tar.gz\n' "$TAG" "${TAG#v}"
+              printf 'tar xzf bop_%s_linux_arm64.tar.gz\n' "${TAG#v}"
+              printf 'sudo mv bop /usr/local/bin/\n'
+              printf '```\n\n'
+              printf '**Windows:** Download the appropriate .zip file and extract to your PATH.\n\n'
+              printf '**macOS:** Use Homebrew: `brew install delightfulhammers/tap/bop`\n'
+            } > /tmp/release-notes.md
             gh release create "$TAG" assets/* \
               --repo delightfulhammers/homebrew-tap \
               --title "$TAG" \
-              --notes "$NOTES"
+              --notes-file /tmp/release-notes.md
           fi
