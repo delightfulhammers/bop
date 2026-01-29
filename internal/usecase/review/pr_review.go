@@ -216,6 +216,48 @@ func (o *Orchestrator) executeReviewWithDiff(ctx context.Context, req BranchRequ
 	return o.ReviewBranchWithDiff(ctx, req, diff, projectCtx)
 }
 
+// ParseGitHubRemoteURL parses owner and repo from a git remote URL.
+// Supports both HTTPS and SSH formats:
+// - https://github.com/owner/repo.git
+// - https://github.com/owner/repo
+// - git@github.com:owner/repo.git
+// - git@github.com:owner/repo
+// Also supports GitHub Enterprise URLs with custom domains.
+func ParseGitHubRemoteURL(remoteURL string) (owner, repo string, err error) {
+	remoteURL = strings.TrimSpace(remoteURL)
+	if remoteURL == "" {
+		return "", "", fmt.Errorf("empty remote URL")
+	}
+
+	// Try SSH format first: git@hostname:owner/repo.git
+	sshRegex := regexp.MustCompile(`^git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$`)
+	if matches := sshRegex.FindStringSubmatch(remoteURL); len(matches) == 3 {
+		return matches[1], matches[2], nil
+	}
+
+	// Try HTTPS format: https://hostname/owner/repo.git
+	parsed, err := url.Parse(remoteURL)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid remote URL: %s", remoteURL)
+	}
+
+	// Must be a GitHub-like host (contains "github" in hostname)
+	if !strings.Contains(strings.ToLower(parsed.Host), "github") {
+		return "", "", fmt.Errorf("not a GitHub remote URL: %s", remoteURL)
+	}
+
+	// Parse path: /owner/repo or /owner/repo.git
+	path := strings.Trim(parsed.Path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	parts := strings.Split(path, "/")
+
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid GitHub remote URL: %s (expected /owner/repo)", remoteURL)
+	}
+
+	return parts[0], parts[1], nil
+}
+
 // ParsePRIdentifier parses a PR identifier from various formats:
 // - owner/repo#123
 // - https://github.com/owner/repo/pull/123

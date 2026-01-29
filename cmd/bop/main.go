@@ -691,6 +691,7 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
 		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
+		GitRemoteResolver:   gitEngine,    // Enables "bop review pr 123" shorthand
 		FindingsPoster:      findingsPoster,
 		SessionManager:      sessionManager,
 		AuthDeps:            authDeps,       // Week 14: Platform authentication

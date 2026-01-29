@@ -336,3 +336,102 @@ func (m *mockRepoAccessChecker) CanAccessRepo(isPrivate bool, ownerType string) 
 	m.ownerType = ownerType
 	return m.err
 }
+
+func TestParseGitHubRemoteURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantOwner string
+		wantRepo  string
+		wantErr   bool
+	}{
+		// HTTPS formats
+		{
+			name:      "HTTPS URL with .git suffix",
+			input:     "https://github.com/owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+		},
+		{
+			name:      "HTTPS URL without .git suffix",
+			input:     "https://github.com/owner/repo",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+		},
+		{
+			name:      "HTTPS URL with trailing slash",
+			input:     "https://github.com/owner/repo/",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+		},
+		// SSH formats
+		{
+			name:      "SSH URL with .git suffix",
+			input:     "git@github.com:owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+		},
+		{
+			name:      "SSH URL without .git suffix",
+			input:     "git@github.com:owner/repo",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+		},
+		// GHE formats
+		{
+			name:      "GHE HTTPS URL",
+			input:     "https://github.mycompany.com/team/project.git",
+			wantOwner: "team",
+			wantRepo:  "project",
+		},
+		{
+			name:      "GHE SSH URL",
+			input:     "git@github.mycompany.com:team/project.git",
+			wantOwner: "team",
+			wantRepo:  "project",
+		},
+		// Edge cases
+		{
+			name:      "owner with hyphens and numbers",
+			input:     "https://github.com/my-org-123/my-repo-456.git",
+			wantOwner: "my-org-123",
+			wantRepo:  "my-repo-456",
+		},
+		// Error cases
+		{
+			name:    "empty string",
+			input:   "",
+			wantErr: true,
+		},
+		{
+			name:    "invalid URL format",
+			input:   "not-a-url",
+			wantErr: true,
+		},
+		{
+			name:    "URL with missing repo",
+			input:   "https://github.com/owner",
+			wantErr: true,
+		},
+		{
+			name:    "non-GitHub URL",
+			input:   "https://gitlab.com/owner/repo.git",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			owner, repo, err := ParseGitHubRemoteURL(tt.input)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantOwner, owner)
+			assert.Equal(t, tt.wantRepo, repo)
+		})
+	}
+}
