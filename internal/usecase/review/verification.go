@@ -3,7 +3,6 @@ package review
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/delightfulhammers/bop/internal/domain"
@@ -195,7 +194,13 @@ func convertVerifiedToFindings(verified []domain.VerifiedFinding) []domain.Findi
 
 // logVerificationDetails logs detailed verification results for each finding.
 // This provides visibility into what was filtered and why.
+// Only logs at debug level to avoid cluttering INFO-level output.
 func logVerificationDetails(ctx context.Context, verified []domain.VerifiedFinding, reportable []domain.VerifiedFinding, settings VerificationSettings, logger Logger) {
+	// Skip if no logger - detailed verification logging is debug-level only
+	if logger == nil {
+		return
+	}
+
 	// Build set of reportable findings for quick lookup
 	reportableSet := make(map[string]bool)
 	for _, f := range reportable {
@@ -203,13 +208,14 @@ func logVerificationDetails(ctx context.Context, verified []domain.VerifiedFindi
 		reportableSet[key] = true
 	}
 
-	// Log header
-	log.Println("=== VERIFICATION REPORT ===")
-	log.Printf("Total findings: %d | Reportable: %d | Filtered: %d",
-		len(verified), len(reportable), len(verified)-len(reportable))
-	log.Println("")
+	// Log summary at debug level
+	logger.LogDebug(ctx, "verification report", map[string]interface{}{
+		"total_findings": len(verified),
+		"reportable":     len(reportable),
+		"filtered":       len(verified) - len(reportable),
+	})
 
-	// Log each finding's verification result
+	// Log each finding's verification result at debug level
 	for i, v := range verified {
 		key := fmt.Sprintf("%s:%d", v.Finding.File, v.Finding.LineStart)
 		isReportable := reportableSet[key]
@@ -226,24 +232,24 @@ func logVerificationDetails(ctx context.Context, verified []domain.VerifiedFindi
 		}
 
 		// Status indicator
-		status := "✓ PASS"
+		status := "PASS"
 		if !isReportable {
-			status = "✗ FILTERED"
+			status = "FILTERED"
 		}
 
-		// Log the finding
-		log.Printf("[%d] %s | %s:%d | %s | confidence=%d threshold=%d",
-			i+1, status, v.Finding.File, v.Finding.LineStart, v.Finding.Severity, v.Confidence, threshold)
-		log.Printf("    Description: %.80s...", truncateString(v.Finding.Description, 80))
-		log.Printf("    Verified: %t | Classification: %s", v.Verified, v.Classification)
-		log.Printf("    Evidence: %.100s", truncateString(v.Evidence, 100))
-		if filterReason != "" {
-			log.Printf("    Filter Reason: %s", filterReason)
-		}
-		log.Println("")
+		logger.LogDebug(ctx, "verification finding", map[string]interface{}{
+			"index":          i + 1,
+			"status":         status,
+			"file":           v.Finding.File,
+			"line":           v.Finding.LineStart,
+			"severity":       v.Finding.Severity,
+			"confidence":     v.Confidence,
+			"threshold":      threshold,
+			"verified":       v.Verified,
+			"classification": v.Classification,
+			"filter_reason":  filterReason,
+		})
 	}
-
-	log.Println("=== END VERIFICATION REPORT ===")
 }
 
 // truncateString truncates a string to maxLen characters.

@@ -26,18 +26,21 @@ func NewWriter(now clock) *Writer {
 }
 
 // Write persists a Markdown artifact to disk.
+// Uses the same directory structure as JSON/SARIF for consistency:
+// {OutputDir}/{repo}_{target}/{timestamp}/review-{provider}.md
 func (w *Writer) Write(ctx context.Context, artifact domain.MarkdownArtifact) (string, error) {
-	if err := os.MkdirAll(artifact.OutputDir, 0o755); err != nil {
+	// Build directory path: out/repo_target/timestamp/
+	outputDir := filepath.Join(
+		artifact.OutputDir,
+		fmt.Sprintf("%s_%s", sanitise(artifact.Repository), sanitise(artifact.TargetRef)),
+		w.now(),
+	)
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return "", fmt.Errorf("create output dir: %w", err)
 	}
 
-	filename := fmt.Sprintf("%s_%s_%s_%s.md",
-		sanitise(artifact.Repository),
-		sanitise(artifact.TargetRef),
-		sanitise(artifact.ProviderName),
-		w.now(),
-	)
-	path := filepath.Join(artifact.OutputDir, filename)
+	filename := fmt.Sprintf("review-%s.md", sanitise(artifact.ProviderName))
+	path := filepath.Join(outputDir, filename)
 
 	content := buildContent(artifact)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

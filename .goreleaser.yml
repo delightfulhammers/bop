@@ -16,8 +16,8 @@ builds:
     main: ./cmd/bop
     binary: bop
     env:
-      # CGO disabled for static binaries. SQLite store (currently unused) will
-      # show a warning at runtime but tool functions normally without it.
+      # CGO disabled for static binaries. Uses modernc.org/sqlite (pure Go)
+      # for SQLite store support without cgo.
       - CGO_ENABLED=0
     goos:
       - linux
@@ -59,7 +59,6 @@ archives:
       - README.md
       - docs/GITHUB_ACTION_SETUP.md
       - .claude/skills/triage-pr-review.md
-      - bop.yaml
 
 # Homebrew formula publishing
 # Install with: brew install delightfulhammers/homebrew-tap/bop

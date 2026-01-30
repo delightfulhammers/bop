@@ -145,7 +145,7 @@ Examples:
 			resolvedConfMedium := resolveInt(cmd, "confidence-medium", confidenceMedium, defaultVerification.ConfidenceMedium)
 			resolvedConfLow := resolveInt(cmd, "confidence-low", confidenceLow, defaultVerification.ConfidenceLow)
 
-			_, err = prReviewer.ReviewPR(ctx, review.PRRequest{
+			result, err := prReviewer.ReviewPR(ctx, review.PRRequest{
 				Owner:              owner,
 				Repo:               repo,
 				PRNumber:           prNumber,
@@ -182,7 +182,13 @@ Examples:
 				Reviewers:         reviewers,
 				RepoAccessChecker: repoAccessChecker,
 			})
-			return err
+			if err != nil {
+				return err
+			}
+
+			// Print artifact paths for user visibility
+			printArtifactPaths(cmd.OutOrStdout(), result)
+			return nil
 		},
 	}
 

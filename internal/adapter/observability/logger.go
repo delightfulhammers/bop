@@ -30,3 +30,9 @@ func (l *ReviewLogger) LogWarning(ctx context.Context, message string, fields ma
 func (l *ReviewLogger) LogInfo(ctx context.Context, message string, fields map[string]interface{}) {
 	l.logger.LogInfo(ctx, message, fields)
 }
+
+// LogDebug logs a debug message with structured fields.
+// Delegates to the underlying llmhttp.Logger for consistent structured logging.
+func (l *ReviewLogger) LogDebug(ctx context.Context, message string, fields map[string]interface{}) {
+	l.logger.LogDebug(ctx, message, fields)
+}

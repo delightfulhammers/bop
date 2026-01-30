@@ -29,6 +29,14 @@ type IssueCommentClient interface {
 	ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error)
 }
 
+// Logger provides structured logging for the github use case.
+// This interface allows verbose internal details to be logged at debug level
+// without cluttering INFO-level output.
+type Logger interface {
+	// LogDebug logs a debug message with structured fields (only when log level is debug or trace).
+	LogDebug(ctx context.Context, message string, fields map[string]interface{})
+}
+
 // ReviewPoster orchestrates posting code review findings to GitHub as PR reviews.
 // It determines the appropriate review event based on finding severities,
 // filters out findings that are not in the diff, and delegates the actual
@@ -38,6 +46,7 @@ type ReviewPoster struct {
 	issueCommentClient IssueCommentClient
 	semanticComparer   dedup.SemanticComparer
 	semanticConfig     SemanticDedupConfig
+	logger             Logger
 }
 
 // SemanticDedupConfig configures semantic deduplication behavior.
@@ -74,6 +83,14 @@ func WithSemanticComparer(comparer dedup.SemanticComparer, config SemanticDedupC
 func WithIssueCommentClient(client IssueCommentClient) ReviewPosterOption {
 	return func(p *ReviewPoster) {
 		p.issueCommentClient = client
+	}
+}
+
+// WithLogger sets the logger for debug-level internal logging.
+// If set, verbose internal details (semantic dedup metrics, etc.) will be logged at debug level.
+func WithLogger(logger Logger) ReviewPosterOption {
+	return func(p *ReviewPoster) {
+		p.logger = logger
 	}
 }
 
@@ -964,12 +981,18 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 		return findings, 0, nil
 	}
 
-	// Log token usage for cost accounting if the comparer tracks it
+	// Log token usage for cost accounting if the comparer tracks it (debug level)
 	if up, ok := p.semanticComparer.(dedup.UsageProvider); ok {
 		usage := up.TotalUsage()
 		if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-			log.Printf("semantic dedup: tokens=%d/%d, candidates=%d, duplicates=%d",
-				usage.InputTokens, usage.OutputTokens, len(candidates), len(result.Duplicates))
+			if p.logger != nil {
+				p.logger.LogDebug(ctx, "semantic dedup token usage", map[string]interface{}{
+					"tokens_in":  usage.InputTokens,
+					"tokens_out": usage.OutputTokens,
+					"candidates": len(candidates),
+					"duplicates": len(result.Duplicates),
+				})
+			}
 		}
 	}
 
@@ -980,7 +1003,12 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 	semanticDupMap := make(SemanticDuplicateMap)
 	for _, dup := range result.Duplicates {
 		fp := domain.FingerprintFromFinding(dup.NewFinding)
-		log.Printf("semantic dedup: %s is duplicate of existing (reason: %s)", fp, dup.Reason)
+		if p.logger != nil {
+			p.logger.LogDebug(ctx, "semantic duplicate found", map[string]interface{}{
+				"fingerprint": string(fp),
+				"reason":      dup.Reason,
+			})
+		}
 
 		// Record the mapping from new fingerprint to existing fingerprint
 		// This allows determineEffectiveEvent to inherit the original's status
@@ -1003,8 +1031,11 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 	}
 
 	// Overflow findings remain in the original list (couldn't verify them, fail-open)
-	if len(overflow) > 0 {
-		log.Printf("semantic dedup: %d candidates exceeded limit, treating as unique", len(overflow))
+	if len(overflow) > 0 && p.logger != nil {
+		p.logger.LogDebug(ctx, "semantic dedup overflow", map[string]interface{}{
+			"count":   len(overflow),
+			"message": "candidates exceeded limit, treating as unique",
+		})
 	}
 
 	// Filter out semantic duplicates from positioned findings by index

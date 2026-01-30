@@ -610,6 +610,11 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		// This makes them visible to MCP triage tools
 		posterOpts = append(posterOpts, usecasegithub.WithIssueCommentClient(githubClient))
 
+		// Add logger for debug-level output (verbose semantic dedup logs, etc.)
+		if obs.logger != nil {
+			posterOpts = append(posterOpts, usecasegithub.WithLogger(obs.logger))
+		}
+
 		reviewPoster := usecasegithub.NewReviewPoster(githubClient, posterOpts...)
 		githubPoster = &githubPosterAdapter{poster: reviewPoster}
 

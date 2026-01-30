@@ -1,21 +1,46 @@
 package review
 
 import (
-	"bytes"
 	"context"
-	"log"
-	"strings"
+	"sync"
 	"testing"
 
 	"github.com/delightfulhammers/bop/internal/domain"
 )
 
+// mockLogger captures log calls for testing
+type mockLogger struct {
+	mu          sync.Mutex
+	debugCalls  []mockLogCall
+	infoCalls   []mockLogCall
+	warnCalls   []mockLogCall
+}
+
+type mockLogCall struct {
+	message string
+	fields  map[string]interface{}
+}
+
+func (m *mockLogger) LogDebug(ctx context.Context, message string, fields map[string]interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.debugCalls = append(m.debugCalls, mockLogCall{message: message, fields: fields})
+}
+
+func (m *mockLogger) LogInfo(ctx context.Context, message string, fields map[string]interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.infoCalls = append(m.infoCalls, mockLogCall{message: message, fields: fields})
+}
+
+func (m *mockLogger) LogWarning(ctx context.Context, message string, fields map[string]interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.warnCalls = append(m.warnCalls, mockLogCall{message: message, fields: fields})
+}
+
 func TestLogVerificationDetails(t *testing.T) {
-	// Capture log output
-	var buf bytes.Buffer
-	originalOutput := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(originalOutput) // Restore original output
+	logger := &mockLogger{}
 
 	verified := []domain.VerifiedFinding{
 		{
@@ -66,72 +91,94 @@ func TestLogVerificationDetails(t *testing.T) {
 		ConfidenceMedium:  70,
 	}
 
-	logVerificationDetails(context.Background(), verified, reportable, settings, nil)
+	logVerificationDetails(context.Background(), verified, reportable, settings, logger)
 
-	output := buf.String()
-
-	// Verify header
-	if !strings.Contains(output, "=== VERIFICATION REPORT ===") {
-		t.Error("expected verification report header")
+	// Verify summary log was emitted
+	if len(logger.debugCalls) == 0 {
+		t.Fatal("expected debug calls to be made")
 	}
 
-	// Verify counts
-	if !strings.Contains(output, "Total findings: 3") {
-		t.Error("expected total findings count")
+	// First call should be the summary
+	summaryCall := logger.debugCalls[0]
+	if summaryCall.message != "verification report" {
+		t.Errorf("expected first call to be 'verification report', got %q", summaryCall.message)
 	}
-	if !strings.Contains(output, "Reportable: 1") {
-		t.Error("expected reportable count")
+	if summaryCall.fields["total_findings"] != 3 {
+		t.Errorf("expected total_findings=3, got %v", summaryCall.fields["total_findings"])
 	}
-	if !strings.Contains(output, "Filtered: 2") {
-		t.Error("expected filtered count")
+	if summaryCall.fields["reportable"] != 1 {
+		t.Errorf("expected reportable=1, got %v", summaryCall.fields["reportable"])
 	}
-
-	// Verify first finding (not verified - should be filtered)
-	if !strings.Contains(output, "FILTERED") {
-		t.Error("expected FILTERED status for non-verified finding")
-	}
-	if !strings.Contains(output, "NOT_VERIFIED") {
-		t.Error("expected NOT_VERIFIED filter reason")
+	if summaryCall.fields["filtered"] != 2 {
+		t.Errorf("expected filtered=2, got %v", summaryCall.fields["filtered"])
 	}
 
-	// Verify second finding (verified and passes threshold - should pass)
-	if !strings.Contains(output, "PASS") {
-		t.Error("expected PASS status for reportable finding")
+	// Should have 3 finding detail logs + 1 summary = 4 total
+	if len(logger.debugCalls) != 4 {
+		t.Errorf("expected 4 debug calls (1 summary + 3 findings), got %d", len(logger.debugCalls))
 	}
 
-	// Verify third finding (verified but below threshold - should be filtered)
-	if !strings.Contains(output, "CONFIDENCE_BELOW_THRESHOLD") {
-		t.Error("expected CONFIDENCE_BELOW_THRESHOLD filter reason")
+	// Check first finding (not verified - should be filtered)
+	finding1 := logger.debugCalls[1]
+	if finding1.fields["status"] != "FILTERED" {
+		t.Errorf("expected first finding status=FILTERED, got %v", finding1.fields["status"])
+	}
+	if finding1.fields["filter_reason"] != "NOT_VERIFIED" {
+		t.Errorf("expected first finding filter_reason=NOT_VERIFIED, got %v", finding1.fields["filter_reason"])
 	}
 
-	// Verify evidence is logged
-	if !strings.Contains(output, "Evidence:") {
-		t.Error("expected evidence to be logged")
+	// Check second finding (verified and passes threshold - should pass)
+	finding2 := logger.debugCalls[2]
+	if finding2.fields["status"] != "PASS" {
+		t.Errorf("expected second finding status=PASS, got %v", finding2.fields["status"])
+	}
+
+	// Check third finding (verified but below threshold - should be filtered)
+	finding3 := logger.debugCalls[3]
+	if finding3.fields["status"] != "FILTERED" {
+		t.Errorf("expected third finding status=FILTERED, got %v", finding3.fields["status"])
+	}
+	filterReason, ok := finding3.fields["filter_reason"].(string)
+	if !ok || filterReason == "" {
+		t.Errorf("expected third finding to have CONFIDENCE_BELOW_THRESHOLD reason, got %v", finding3.fields["filter_reason"])
 	}
 }
 
 func TestLogVerificationDetails_EmptyFindings(t *testing.T) {
-	var buf bytes.Buffer
-	originalOutput := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(originalOutput)
+	logger := &mockLogger{}
 
 	logVerificationDetails(
 		context.Background(),
 		[]domain.VerifiedFinding{},
 		[]domain.VerifiedFinding{},
 		VerificationSettings{},
-		nil,
+		logger,
 	)
 
-	output := buf.String()
+	// Should have exactly 1 call (summary only, no findings)
+	if len(logger.debugCalls) != 1 {
+		t.Errorf("expected 1 debug call (summary only), got %d", len(logger.debugCalls))
+	}
 
-	if !strings.Contains(output, "Total findings: 0") {
-		t.Error("expected total findings to be 0")
+	summaryCall := logger.debugCalls[0]
+	if summaryCall.fields["total_findings"] != 0 {
+		t.Errorf("expected total_findings=0, got %v", summaryCall.fields["total_findings"])
 	}
-	if !strings.Contains(output, "Reportable: 0") {
-		t.Error("expected reportable to be 0")
+	if summaryCall.fields["reportable"] != 0 {
+		t.Errorf("expected reportable=0, got %v", summaryCall.fields["reportable"])
 	}
+}
+
+func TestLogVerificationDetails_NilLogger(t *testing.T) {
+	// When logger is nil, function should return early without panicking
+	logVerificationDetails(
+		context.Background(),
+		[]domain.VerifiedFinding{{Finding: domain.Finding{File: "test.go"}}},
+		[]domain.VerifiedFinding{},
+		VerificationSettings{},
+		nil,
+	)
+	// Success if no panic
 }
 
 func TestTruncateString(t *testing.T) {

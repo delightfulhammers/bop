@@ -316,7 +316,7 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 			resolvedConfMedium := resolveInt(cmd, "confidence-medium", confidenceMedium, defaultVerification.ConfidenceMedium)
 			resolvedConfLow := resolveInt(cmd, "confidence-low", confidenceLow, defaultVerification.ConfidenceLow)
 
-			_, err = branchReviewer.ReviewBranch(ctx, review.BranchRequest{
+			result, err := branchReviewer.ReviewBranch(ctx, review.BranchRequest{
 				BaseRef:                 baseRef,
 				TargetRef:               targetRef,
 				OutputDir:               outputDir,
@@ -354,7 +354,13 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 				Reviewers:         reviewers,
 				RepoAccessChecker: repoAccessChecker,
 			})
-			return err
+			if err != nil {
+				return err
+			}
+
+			// Print artifact paths for user visibility
+			printArtifactPaths(cmd.OutOrStdout(), result)
+			return nil
 		},
 	}
 
@@ -620,4 +626,31 @@ func mergeAlwaysBlockCategories(cliCategories, configCategories []string) []stri
 	}
 
 	return result
+}
+
+// printArtifactPaths prints the paths to generated review artifacts.
+// This helps users find the review output files after a review completes.
+func printArtifactPaths(w io.Writer, result review.Result) {
+	// Check if we have any paths to display
+	hasMerged := result.MarkdownPaths["merged"] != "" ||
+		result.JSONPaths["merged"] != "" ||
+		result.SARIFPaths["merged"] != ""
+
+	if !hasMerged {
+		return
+	}
+
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Review artifacts written to:")
+
+	// Print merged paths (most commonly requested)
+	if path := result.MarkdownPaths["merged"]; path != "" {
+		_, _ = fmt.Fprintf(w, "  Markdown: %s\n", path)
+	}
+	if path := result.JSONPaths["merged"]; path != "" {
+		_, _ = fmt.Fprintf(w, "  JSON:     %s\n", path)
+	}
+	if path := result.SARIFPaths["merged"]; path != "" {
+		_, _ = fmt.Fprintf(w, "  SARIF:    %s\n", path)
+	}
 }
