@@ -16,27 +16,56 @@ type Store struct {
 	db *sql.DB
 }
 
+// buildDSN constructs a proper SQLite DSN with busy timeout.
+// Handles edge cases like trailing '?' and existing query parameters.
+func buildDSN(dbPath string) string {
+	if dbPath == ":memory:" {
+		return dbPath
+	}
+
+	// Already has busy_timeout configured
+	if strings.Contains(dbPath, "_busy_timeout") {
+		return dbPath
+	}
+
+	// Check for existing query string
+	if idx := strings.Index(dbPath, "?"); idx != -1 {
+		// Has query string - check if it's just "?" or has params
+		query := dbPath[idx+1:]
+		if query == "" {
+			// Trailing "?" with no params: file.db?
+			return dbPath + "_busy_timeout=5000"
+		}
+		// Has params: file.db?mode=ro
+		return dbPath + "&_busy_timeout=5000"
+	}
+
+	// No query string: file.db
+	return dbPath + "?_busy_timeout=5000"
+}
+
 // NewStore creates a new SQLite store at the given path.
 // Use ":memory:" for in-memory database (useful for testing).
 func NewStore(dbPath string) (*Store, error) {
 	// Add busy timeout to handle concurrent access gracefully.
 	// The modernc.org/sqlite driver returns errors immediately on lock contention
 	// without a timeout configured.
-	dsn := dbPath
-	if dbPath != ":memory:" && !strings.Contains(dbPath, "?") {
-		dsn = dbPath + "?_busy_timeout=5000"
-	} else if dbPath != ":memory:" && !strings.Contains(dbPath, "_busy_timeout") {
-		dsn = dbPath + "&_busy_timeout=5000"
-	}
+	dsn := buildDSN(dbPath)
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Limit concurrent connections to avoid lock contention.
-	// SQLite doesn't handle concurrent writes well without WAL mode.
-	db.SetMaxOpenConns(1)
+	// Enable WAL mode for concurrent access.
+	// WAL allows multiple concurrent readers and one writer, which is ideal
+	// for the parallel review architecture.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
+	}
 
 	// Enable foreign keys
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {

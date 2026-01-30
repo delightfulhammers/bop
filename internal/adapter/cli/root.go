@@ -631,26 +631,84 @@ func mergeAlwaysBlockCategories(cliCategories, configCategories []string) []stri
 // printArtifactPaths prints the paths to generated review artifacts.
 // This helps users find the review output files after a review completes.
 func printArtifactPaths(w io.Writer, result review.Result) {
-	// Check if we have any paths to display
+	// Check if we have merged paths
 	hasMerged := result.MarkdownPaths["merged"] != "" ||
 		result.JSONPaths["merged"] != "" ||
 		result.SARIFPaths["merged"] != ""
 
-	if !hasMerged {
+	// Check if we have any non-merged (per-reviewer) paths
+	hasReviewer := false
+	for name := range result.MarkdownPaths {
+		if name != "merged" {
+			hasReviewer = true
+			break
+		}
+	}
+	if !hasReviewer {
+		for name := range result.JSONPaths {
+			if name != "merged" {
+				hasReviewer = true
+				break
+			}
+		}
+	}
+	if !hasReviewer {
+		for name := range result.SARIFPaths {
+			if name != "merged" {
+				hasReviewer = true
+				break
+			}
+		}
+	}
+
+	if !hasMerged && !hasReviewer {
 		return
 	}
 
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Review artifacts written to:")
 
-	// Print merged paths (most commonly requested)
-	if path := result.MarkdownPaths["merged"]; path != "" {
-		_, _ = fmt.Fprintf(w, "  Markdown: %s\n", path)
+	if hasMerged {
+		// Print merged paths (most commonly requested)
+		if path := result.MarkdownPaths["merged"]; path != "" {
+			_, _ = fmt.Fprintf(w, "  Markdown: %s\n", path)
+		}
+		if path := result.JSONPaths["merged"]; path != "" {
+			_, _ = fmt.Fprintf(w, "  JSON:     %s\n", path)
+		}
+		if path := result.SARIFPaths["merged"]; path != "" {
+			_, _ = fmt.Fprintf(w, "  SARIF:    %s\n", path)
+		}
+	} else {
+		// No merged output - print first available reviewer's paths
+		printFirstReviewerPaths(w, result)
 	}
-	if path := result.JSONPaths["merged"]; path != "" {
-		_, _ = fmt.Fprintf(w, "  JSON:     %s\n", path)
+}
+
+// printFirstReviewerPaths prints artifact paths for the first non-merged reviewer found.
+// Used when running with a single reviewer (no merged output).
+func printFirstReviewerPaths(w io.Writer, result review.Result) {
+	printed := make(map[string]bool)
+
+	for name, path := range result.MarkdownPaths {
+		if name != "merged" && path != "" && !printed["markdown"] {
+			_, _ = fmt.Fprintf(w, "  Markdown: %s\n", path)
+			printed["markdown"] = true
+			break
+		}
 	}
-	if path := result.SARIFPaths["merged"]; path != "" {
-		_, _ = fmt.Fprintf(w, "  SARIF:    %s\n", path)
+	for name, path := range result.JSONPaths {
+		if name != "merged" && path != "" && !printed["json"] {
+			_, _ = fmt.Fprintf(w, "  JSON:     %s\n", path)
+			printed["json"] = true
+			break
+		}
+	}
+	for name, path := range result.SARIFPaths {
+		if name != "merged" && path != "" && !printed["sarif"] {
+			_, _ = fmt.Fprintf(w, "  SARIF:    %s\n", path)
+			printed["sarif"] = true
+			break
+		}
 	}
 }
