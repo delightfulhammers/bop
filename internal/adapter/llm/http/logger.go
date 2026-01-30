@@ -26,6 +26,9 @@ type Logger interface {
 
 	// LogInfo logs an informational message with structured fields
 	LogInfo(ctx context.Context, message string, fields map[string]interface{})
+
+	// LogDebug logs a debug message with structured fields (only when log level is debug or trace)
+	LogDebug(ctx context.Context, message string, fields map[string]interface{})
 }
 
 // RequestLog contains request information for logging.
@@ -304,6 +307,22 @@ func (l *DefaultLogger) LogInfo(ctx context.Context, message string, fields map[
 	}
 }
 
+// LogDebug logs a debug message with structured fields.
+// Only logs when level is Debug or Trace.
+func (l *DefaultLogger) LogDebug(ctx context.Context, message string, fields map[string]interface{}) {
+	if l.level > LogLevelDebug {
+		return // Skip debug if log level is Info or Error
+	}
+
+	timestamp := time.Now().UTC()
+
+	if l.format == LogFormatJSON {
+		l.logDebugJSON(timestamp, message, fields)
+	} else {
+		l.logDebugHuman(timestamp, message, fields)
+	}
+}
+
 // logWarningJSON logs a warning in JSON format
 func (l *DefaultLogger) logWarningJSON(timestamp time.Time, message string, fields map[string]interface{}) {
 	logEntry := map[string]interface{}{
@@ -369,6 +388,40 @@ func (l *DefaultLogger) logInfoHuman(timestamp time.Time, message string, fields
 		log.Printf("[INFO] %s %s %s", timestamp.Format(time.RFC3339), message, strings.Join(pairs, " "))
 	} else {
 		log.Printf("[INFO] %s %s", timestamp.Format(time.RFC3339), message)
+	}
+}
+
+// logDebugJSON logs a debug message in JSON format
+func (l *DefaultLogger) logDebugJSON(timestamp time.Time, message string, fields map[string]interface{}) {
+	logEntry := map[string]interface{}{
+		"level":     "debug",
+		"timestamp": timestamp.Format(time.RFC3339),
+		"message":   message,
+	}
+
+	// Merge custom fields
+	for k, v := range fields {
+		logEntry[k] = v
+	}
+
+	// Marshal and log
+	if jsonBytes, err := json.Marshal(logEntry); err == nil {
+		log.Println(string(jsonBytes))
+	}
+}
+
+// logDebugHuman logs a debug message in human-readable format
+func (l *DefaultLogger) logDebugHuman(timestamp time.Time, message string, fields map[string]interface{}) {
+	// Build key=value pairs from fields
+	var pairs []string
+	for k, v := range fields {
+		pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+	}
+
+	if len(pairs) > 0 {
+		log.Printf("[DEBUG] %s %s %s", timestamp.Format(time.RFC3339), message, strings.Join(pairs, " "))
+	} else {
+		log.Printf("[DEBUG] %s %s", timestamp.Format(time.RFC3339), message)
 	}
 }
 

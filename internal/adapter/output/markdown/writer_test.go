@@ -51,8 +51,10 @@ func TestWriterProducesDeterministicMarkdown(t *testing.T) {
 		t.Fatalf("writer returned error: %v", err)
 	}
 
-	if filepath.Base(path) != "repo_feature_stub-openai_2025-01-01T00-00-00Z.md" {
-		t.Fatalf("unexpected filename: %s", filepath.Base(path))
+	// Verify path matches new consistent format: out/repo_target/timestamp/review-provider.md
+	expectedPath := filepath.Join(dir, "repo_feature", "2025-01-01T00-00-00Z", "review-stub-openai.md")
+	if path != expectedPath {
+		t.Fatalf("unexpected path: got %s, want %s", path, expectedPath)
 	}
 
 	content, err := os.ReadFile(path)

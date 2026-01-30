@@ -770,14 +770,11 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 		if triageCtx != nil && triageCtx.HasFindings() {
 			projectContext.TriagedFindings = triageCtx
 			if o.deps.Logger != nil {
-				o.deps.Logger.LogInfo(ctx, "loaded prior triage context", map[string]interface{}{
+				o.deps.Logger.LogDebug(ctx, "loaded prior triage context", map[string]interface{}{
 					"prNumber":     req.PRNumber,
 					"acknowledged": len(triageCtx.AcknowledgedFindings()),
 					"disputed":     len(triageCtx.DisputedFindings()),
 				})
-			} else {
-				log.Printf("Loaded prior triage context: %d acknowledged, %d disputed findings\n",
-					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
 			}
 
 			// Extract themes from prior findings to prevent thematic repetition (PR #75, Issue #240)
@@ -796,7 +793,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 				} else if !result.IsEmpty() {
 					projectContext.ThemeContext = &result
 					if o.deps.Logger != nil {
-						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
+						o.deps.Logger.LogDebug(ctx, "extracted themes from prior findings", map[string]interface{}{
 							"strategy":          string(result.Strategy),
 							"themes":            result.Themes,
 							"conclusions_count": len(result.Conclusions),
@@ -805,15 +802,11 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 							"tokens_in":         result.TokensIn,
 							"tokens_out":        result.TokensOut,
 						})
-					} else {
-						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s, tokens: %d/%d)\n",
-							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy,
-							result.TokensIn, result.TokensOut)
 					}
 				} else {
 					// Log when extraction succeeds but returns empty (helps debug missing themes)
 					if o.deps.Logger != nil {
-						o.deps.Logger.LogInfo(ctx, "theme extraction returned empty results", map[string]interface{}{
+						o.deps.Logger.LogDebug(ctx, "theme extraction returned empty results", map[string]interface{}{
 							"finding_count": result.FindingCount,
 						})
 					}
@@ -1127,7 +1120,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 			logVerificationDetails(ctx, verified, reportable, req.VerificationConfig, o.deps.Logger)
 
 			if o.deps.Logger != nil {
-				o.deps.Logger.LogInfo(ctx, "verification complete", map[string]interface{}{
+				o.deps.Logger.LogDebug(ctx, "verification complete", map[string]interface{}{
 					"candidates": len(candidates),
 					"verified":   len(verified),
 					"reportable": len(reportable),
@@ -1317,14 +1310,11 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 		if triageCtx != nil && triageCtx.HasFindings() {
 			projectContext.TriagedFindings = triageCtx
 			if o.deps.Logger != nil {
-				o.deps.Logger.LogInfo(ctx, "loaded prior triage context", map[string]interface{}{
+				o.deps.Logger.LogDebug(ctx, "loaded prior triage context", map[string]interface{}{
 					"prNumber":     req.PRNumber,
 					"acknowledged": len(triageCtx.AcknowledgedFindings()),
 					"disputed":     len(triageCtx.DisputedFindings()),
 				})
-			} else {
-				log.Printf("Loaded prior triage context: %d acknowledged, %d disputed findings\n",
-					len(triageCtx.AcknowledgedFindings()), len(triageCtx.DisputedFindings()))
 			}
 
 			// Extract themes from prior findings to prevent thematic repetition (PR #75, Issue #240)
@@ -1343,7 +1333,7 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 				} else if !result.IsEmpty() {
 					projectContext.ThemeContext = &result
 					if o.deps.Logger != nil {
-						o.deps.Logger.LogInfo(ctx, "extracted themes from prior findings", map[string]interface{}{
+						o.deps.Logger.LogDebug(ctx, "extracted themes from prior findings", map[string]interface{}{
 							"strategy":          string(result.Strategy),
 							"themes":            result.Themes,
 							"conclusions_count": len(result.Conclusions),
@@ -1352,15 +1342,11 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 							"tokens_in":         result.TokensIn,
 							"tokens_out":        result.TokensOut,
 						})
-					} else {
-						log.Printf("Extracted %d themes, %d conclusions, %d disputed patterns (strategy: %s, tokens: %d/%d)\n",
-							len(result.Themes), len(result.Conclusions), len(result.DisputedPatterns), result.Strategy,
-							result.TokensIn, result.TokensOut)
 					}
 				} else {
 					// Log when extraction succeeds but returns empty (helps debug missing themes)
 					if o.deps.Logger != nil {
-						o.deps.Logger.LogInfo(ctx, "theme extraction returned empty results", map[string]interface{}{
+						o.deps.Logger.LogDebug(ctx, "theme extraction returned empty results", map[string]interface{}{
 							"finding_count": result.FindingCount,
 						})
 					}
@@ -1626,7 +1612,7 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 			logVerificationDetails(ctx, verified, reportable, req.VerificationConfig, o.deps.Logger)
 
 			if o.deps.Logger != nil {
-				o.deps.Logger.LogInfo(ctx, "verification complete", map[string]interface{}{
+				o.deps.Logger.LogDebug(ctx, "verification complete", map[string]interface{}{
 					"candidates": len(candidates),
 					"verified":   len(verified),
 					"reportable": len(reportable),

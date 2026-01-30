@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/delightfulhammers/bop/internal/store"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // Pure-Go SQLite driver (no cgo required)
 )
 
 // Store implements the store.Store interface using SQLite.
@@ -15,12 +17,77 @@ type Store struct {
 	db *sql.DB
 }
 
+// buildDSN constructs a proper SQLite DSN with required parameters.
+// Uses url.Parse to properly handle query parameters and prevent encoding bypasses.
+// Adds busy_timeout for concurrent access handling.
+// For :memory: databases, uses shared cache to ensure all connections see the same data.
+func buildDSN(dbPath string) string {
+	// Handle in-memory database specially - use shared cache for connection pool
+	if dbPath == ":memory:" {
+		return "file::memory:?cache=shared&_busy_timeout=5000"
+	}
+
+	// Parse path and query string properly to prevent encoding bypasses
+	var basePath string
+	var params url.Values
+
+	if idx := strings.Index(dbPath, "?"); idx != -1 {
+		basePath = dbPath[:idx]
+		var err error
+		params, err = url.ParseQuery(dbPath[idx+1:])
+		if err != nil {
+			// If parsing fails, start fresh with just the path
+			params = url.Values{}
+		}
+	} else {
+		basePath = dbPath
+		params = url.Values{}
+	}
+
+	// Add busy_timeout if not already set (check the parsed key, not substring)
+	if params.Get("_busy_timeout") == "" {
+		params.Set("_busy_timeout", "5000")
+	}
+
+	// Build final DSN
+	if len(params) == 0 {
+		return basePath
+	}
+	return basePath + "?" + params.Encode()
+}
+
 // NewStore creates a new SQLite store at the given path.
 // Use ":memory:" for in-memory database (useful for testing).
 func NewStore(dbPath string) (*Store, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	// Build DSN with busy timeout and shared cache for :memory:
+	dsn := buildDSN(dbPath)
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Ensure we close db if any subsequent setup fails
+	success := false
+	defer func() {
+		if !success {
+			_ = db.Close()
+		}
+	}()
+
+	// Enable WAL mode for concurrent access.
+	// WAL allows multiple concurrent readers and one writer, which is ideal
+	// for the parallel review architecture.
+	// Note: WAL mode is persistent once set, but we set it each time to ensure
+	// it's enabled even for newly created databases.
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
+	}
+
+	// Set synchronous mode to NORMAL for better performance with WAL.
+	// This is safe because WAL provides durability guarantees.
+	if _, err := db.Exec("PRAGMA synchronous=NORMAL"); err != nil {
+		return nil, fmt.Errorf("failed to set synchronous mode: %w", err)
 	}
 
 	// Enable foreign keys
@@ -33,6 +100,8 @@ func NewStore(dbPath string) (*Store, error) {
 	if err := s.createSchema(); err != nil {
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
+
+	success = true // Prevent deferred close
 
 	return s, nil
 }
