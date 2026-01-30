@@ -1429,7 +1429,7 @@ func createSemanticComparer(cfg config.Config) usecasedeup.SemanticComparer {
 		return nil
 	}
 
-	log.Printf("[INFO] Semantic deduplication enabled (provider=%s)", actualProvider)
+	log.Printf("[DEBUG] Semantic deduplication enabled (provider=%s)", actualProvider)
 
 	// Adapt simple.Client to dedup.Client and create the comparer
 	dedupClient := dedupadapter.NewSimpleClientAdapter(simpleClient)
@@ -1499,7 +1499,7 @@ func createThemeExtractor(cfg config.Config) review.ThemeExtractor {
 		log.Printf("[WARN] Unknown theme extraction strategy %q, using comprehensive", themeCfg.Strategy)
 	}
 
-	log.Printf("[INFO] Theme extraction enabled (provider=%s, strategy=%s)", actualProvider, strategy)
+	log.Printf("[DEBUG] Theme extraction enabled (provider=%s, strategy=%s)", actualProvider, strategy)
 
 	// Create and return the theme extractor
 	extractorConfig := review.ThemeExtractionConfig{

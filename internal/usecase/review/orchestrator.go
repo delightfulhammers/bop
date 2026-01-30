@@ -1120,7 +1120,7 @@ func (o *Orchestrator) ReviewBranch(ctx context.Context, req BranchRequest) (res
 			logVerificationDetails(ctx, verified, reportable, req.VerificationConfig, o.deps.Logger)
 
 			if o.deps.Logger != nil {
-				o.deps.Logger.LogInfo(ctx, "verification complete", map[string]interface{}{
+				o.deps.Logger.LogDebug(ctx, "verification complete", map[string]interface{}{
 					"candidates": len(candidates),
 					"verified":   len(verified),
 					"reportable": len(reportable),
@@ -1612,7 +1612,7 @@ func (o *Orchestrator) ReviewBranchWithDiff(ctx context.Context, req BranchReque
 			logVerificationDetails(ctx, verified, reportable, req.VerificationConfig, o.deps.Logger)
 
 			if o.deps.Logger != nil {
-				o.deps.Logger.LogInfo(ctx, "verification complete", map[string]interface{}{
+				o.deps.Logger.LogDebug(ctx, "verification complete", map[string]interface{}{
 					"candidates": len(candidates),
 					"verified":   len(verified),
 					"reportable": len(reportable),

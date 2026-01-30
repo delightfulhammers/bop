@@ -636,25 +636,25 @@ func printArtifactPaths(w io.Writer, result review.Result) {
 		result.JSONPaths["merged"] != "" ||
 		result.SARIFPaths["merged"] != ""
 
-	// Check if we have any non-merged (per-reviewer) paths
+	// Check if we have any non-merged (per-reviewer) paths with actual values
 	hasReviewer := false
-	for name := range result.MarkdownPaths {
-		if name != "merged" {
+	for name, path := range result.MarkdownPaths {
+		if name != "merged" && path != "" {
 			hasReviewer = true
 			break
 		}
 	}
 	if !hasReviewer {
-		for name := range result.JSONPaths {
-			if name != "merged" {
+		for name, path := range result.JSONPaths {
+			if name != "merged" && path != "" {
 				hasReviewer = true
 				break
 			}
 		}
 	}
 	if !hasReviewer {
-		for name := range result.SARIFPaths {
-			if name != "merged" {
+		for name, path := range result.SARIFPaths {
+			if name != "merged" && path != "" {
 				hasReviewer = true
 				break
 			}

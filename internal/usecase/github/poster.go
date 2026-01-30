@@ -345,10 +345,16 @@ func (p *ReviewPoster) PostReview(ctx context.Context, req PostReviewRequest) (*
 		NewFindings:           len(findings),
 	}
 
-	// Log deduplication breakdown (Issue #127) - always log so users know dedup was checked
-	log.Printf("deduplication: %d findings → %d new (%d dispute-inherited, %d fingerprint, %d semantic duplicates)",
-		dedupStats.TotalFindings, dedupStats.NewFindings,
-		dedupStats.DisputeInherited, dedupStats.FingerprintDuplicates, dedupStats.SemanticDuplicates)
+	// Log deduplication breakdown (Issue #127) - debug level to avoid cluttering INFO output
+	if p.logger != nil {
+		p.logger.LogDebug(ctx, "deduplication summary", map[string]interface{}{
+			"total_findings":         dedupStats.TotalFindings,
+			"new_findings":           dedupStats.NewFindings,
+			"dispute_inherited":      dedupStats.DisputeInherited,
+			"fingerprint_duplicates": dedupStats.FingerprintDuplicates,
+			"semantic_duplicates":    dedupStats.SemanticDuplicates,
+		})
+	}
 
 	// Build cost stats for summary
 	costStats := CostStats{

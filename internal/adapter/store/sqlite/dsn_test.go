@@ -9,9 +9,9 @@ func TestBuildDSN(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "memory database unchanged",
+			name:     "memory database uses shared cache",
 			input:    ":memory:",
-			expected: ":memory:",
+			expected: "file::memory:?cache=shared&_busy_timeout=5000",
 		},
 		{
 			name:     "plain file path",
@@ -31,7 +31,7 @@ func TestBuildDSN(t *testing.T) {
 		{
 			name:     "existing query params",
 			input:    "file.db?mode=ro",
-			expected: "file.db?mode=ro&_busy_timeout=5000",
+			expected: "file.db?_busy_timeout=5000&mode=ro",
 		},
 		{
 			name:     "already has busy_timeout",
@@ -41,12 +41,17 @@ func TestBuildDSN(t *testing.T) {
 		{
 			name:     "busy_timeout with other params",
 			input:    "file.db?mode=ro&_busy_timeout=3000",
-			expected: "file.db?mode=ro&_busy_timeout=3000",
+			expected: "file.db?_busy_timeout=3000&mode=ro",
 		},
 		{
 			name:     "multiple existing params",
 			input:    "file.db?mode=ro&cache=shared",
-			expected: "file.db?mode=ro&cache=shared&_busy_timeout=5000",
+			expected: "file.db?_busy_timeout=5000&cache=shared&mode=ro",
+		},
+		{
+			name:     "url encoded busy_timeout in path (should still add)",
+			input:    "file_busy_timeout.db",
+			expected: "file_busy_timeout.db?_busy_timeout=5000",
 		},
 	}
 
