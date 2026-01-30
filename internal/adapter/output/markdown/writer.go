@@ -235,13 +235,42 @@ func writeFinding(builder *strings.Builder, finding domain.Finding, caser cases.
 	builder.WriteString("\n")
 }
 
+// sanitise removes dangerous characters from path components to prevent path traversal.
+// It handles null bytes, path separators, and parent directory references.
 func sanitise(value string) string {
 	if value == "" {
 		return "unknown"
 	}
+
+	// Remove null bytes which can truncate paths in some systems
+	value = strings.ReplaceAll(value, "\x00", "")
+
+	// Normalize to lowercase
 	value = strings.ToLower(value)
-	value = strings.ReplaceAll(value, string(filepath.Separator), "-")
+
+	// Replace all path separators (both Unix and Windows) with dashes
+	value = strings.ReplaceAll(value, "/", "-")
+	value = strings.ReplaceAll(value, "\\", "-")
+
+	// Remove parent directory references to prevent traversal
+	value = strings.ReplaceAll(value, "..", "")
+
+	// Replace spaces with dashes
 	value = strings.ReplaceAll(value, " ", "-")
+
+	// Clean up any resulting multiple consecutive dashes
+	for strings.Contains(value, "--") {
+		value = strings.ReplaceAll(value, "--", "-")
+	}
+
+	// Trim leading/trailing dashes
+	value = strings.Trim(value, "-")
+
+	// Final safety check - if empty after sanitization, return unknown
+	if value == "" {
+		return "unknown"
+	}
+
 	return value
 }
 

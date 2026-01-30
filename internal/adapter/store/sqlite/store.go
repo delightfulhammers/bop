@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/delightfulhammers/bop/internal/store"
@@ -18,10 +19,24 @@ type Store struct {
 // NewStore creates a new SQLite store at the given path.
 // Use ":memory:" for in-memory database (useful for testing).
 func NewStore(dbPath string) (*Store, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	// Add busy timeout to handle concurrent access gracefully.
+	// The modernc.org/sqlite driver returns errors immediately on lock contention
+	// without a timeout configured.
+	dsn := dbPath
+	if dbPath != ":memory:" && !strings.Contains(dbPath, "?") {
+		dsn = dbPath + "?_busy_timeout=5000"
+	} else if dbPath != ":memory:" && !strings.Contains(dbPath, "_busy_timeout") {
+		dsn = dbPath + "&_busy_timeout=5000"
+	}
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Limit concurrent connections to avoid lock contention.
+	// SQLite doesn't handle concurrent writes well without WAL mode.
+	db.SetMaxOpenConns(1)
 
 	// Enable foreign keys
 	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
