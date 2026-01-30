@@ -135,21 +135,21 @@ jobs:
             exit 1
           fi
 
-          # Find merged markdown file (pattern: {repo}_{branch}_merged_{timestamp}.md)
-          MARKDOWN_FILE=$(find review-output -maxdepth 1 -name "*_merged_*.md" | head -1)
+          # Find merged markdown file (new nested pattern: repo_branch/timestamp/review-merged.md)
+          MARKDOWN_FILE=$(find review-output -name "review-merged.md" | head -1)
 
-          # Find SARIF files (could be in subdirectory or at root)
-          SARIF_FILE=$(find review-output -name "*.sarif" | head -1)
+          # Find merged SARIF file
+          SARIF_FILE=$(find review-output -name "review-merged.sarif" | head -1)
 
           if [ -z "$MARKDOWN_FILE" ]; then
             echo "Error: Could not find merged markdown file"
-            echo "Expected pattern: review-output/*_merged_*.md"
+            echo "Expected pattern: review-output/*/*/review-merged.md"
             exit 1
           fi
 
           if [ -z "$SARIF_FILE" ]; then
-            echo "Error: Could not find SARIF file"
-            echo "Expected: *.sarif somewhere in review-output/"
+            echo "Error: Could not find merged SARIF file"
+            echo "Expected pattern: review-output/*/*/review-merged.sarif"
             exit 1
           fi
 

@@ -10,10 +10,10 @@ import (
 
 // mockLogger captures log calls for testing
 type mockLogger struct {
-	mu          sync.Mutex
-	debugCalls  []mockLogCall
-	infoCalls   []mockLogCall
-	warnCalls   []mockLogCall
+	mu         sync.Mutex
+	debugCalls []mockLogCall
+	infoCalls  []mockLogCall
+	warnCalls  []mockLogCall
 }
 
 type mockLogCall struct {
