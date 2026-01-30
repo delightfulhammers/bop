@@ -71,6 +71,8 @@ brews:
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_GITHUB_TOKEN }}"
+    # Download from public homebrew-tap repo (bop repo is private)
+    url_template: "https://github.com/delightfulhammers/homebrew-tap/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     directory: Formula
     homepage: "https://github.com/delightfulhammers/bop"
     description: "AI-powered code review tool with multi-provider LLM support"
