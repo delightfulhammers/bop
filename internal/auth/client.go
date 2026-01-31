@@ -333,12 +333,33 @@ type OIDCExchangeRequest struct {
 	ProviderType string
 }
 
+// oidcExchangeResponse is an internal type for parsing the OIDC exchange response.
+// The platform returns either tokens or a skip result, both with HTTP 200.
+type oidcExchangeResponse struct {
+	// Token fields (present when not skipped)
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+
+	// Skip fields (present when skipped)
+	Skipped bool   `json:"skipped"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+	Comment string `json:"comment"`
+}
+
 // ExchangeOIDCToken exchanges a GitHub Actions OIDC token for platform credentials.
 // This is used for machine-to-machine authentication from CI/CD pipelines.
-func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest) (*TokenResponse, error) {
+//
+// Returns:
+// - (*TokenResponse, nil, nil): successful authentication with tokens
+// - (nil, *SkipInfo, nil): authorization passed but review should be skipped (e.g., solo namespace violation)
+// - (nil, nil, error): authentication or network failure
+func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest) (*TokenResponse, *SkipInfo, error) {
 	// Validate required inputs
 	if req.IDToken == "" {
-		return nil, fmt.Errorf("id_token is required")
+		return nil, nil, fmt.Errorf("id_token is required")
 	}
 
 	providerType := req.ProviderType
@@ -357,31 +378,50 @@ func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest)
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
+		return nil, nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL("/auth/actions-oidc"), bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, nil, fmt.Errorf("create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("OIDC exchange request: %w", err)
+		return nil, nil, fmt.Errorf("OIDC exchange request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, c.parseError(resp)
+		return nil, nil, c.parseError(resp)
 	}
 
-	var result TokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
+	// Limit response body to prevent memory exhaustion
+	const maxResponseSize = 64 * 1024 // 64KB
+	limitedReader := io.LimitReader(resp.Body, maxResponseSize)
+
+	var result oidcExchangeResponse
+	if err := json.NewDecoder(limitedReader).Decode(&result); err != nil {
+		return nil, nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	return &result, nil
+	// Check if this is a skip response
+	if result.Skipped {
+		return nil, &SkipInfo{
+			Reason:  SkipReason(result.Reason),
+			Message: result.Message,
+			Comment: result.Comment,
+		}, nil
+	}
+
+	// Normal token response
+	return &TokenResponse{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		TokenType:    result.TokenType,
+		ExpiresIn:    result.ExpiresIn,
+	}, nil, nil
 }
 
 // ProductConfigResponse is the response from the config API.
