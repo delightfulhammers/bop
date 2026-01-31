@@ -435,7 +435,7 @@ func TestAPIError_ErrorsAs(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, exchangeErr := client.ExchangeOIDCToken(context.Background(), OIDCExchangeRequest{
+			_, _, exchangeErr := client.ExchangeOIDCToken(context.Background(), OIDCExchangeRequest{
 				IDToken:      "test-token",
 				TenantID:     "tenant-123",
 				ProviderType: "github",
@@ -516,5 +516,172 @@ func TestIsTenantNotConfigured(t *testing.T) {
 				t.Errorf("IsTenantNotConfigured() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestExchangeOIDCToken_SkipResponse(t *testing.T) {
+	// Test that ExchangeOIDCToken correctly detects and returns skip responses.
+	// The platform returns HTTP 200 with {"skipped": true, ...} instead of tokens.
+	tests := []struct {
+		name       string
+		response   string
+		wantReason SkipReason
+		wantMsg    string
+	}{
+		{
+			name: "actor_not_member skip",
+			response: `{
+				"skipped": true,
+				"reason": "actor_not_member",
+				"message": "actor testuser is not a bop member",
+				"comment": "## Code review skipped\n\nActor @testuser is not a bop member."
+			}`,
+			wantReason: SkipReasonActorNotMember,
+			wantMsg:    "actor testuser is not a bop member",
+		},
+		{
+			name: "no_active_entitlement skip",
+			response: `{
+				"skipped": true,
+				"reason": "no_active_entitlement",
+				"message": "actor testuser has no active entitlement",
+				"comment": "## Code review skipped\n\nActor @testuser does not have an active subscription."
+			}`,
+			wantReason: SkipReasonNoActiveEntitlement,
+			wantMsg:    "actor testuser has no active entitlement",
+		},
+		{
+			name: "solo_namespace_violation skip",
+			response: `{
+				"skipped": true,
+				"reason": "solo_namespace_violation",
+				"message": "actor testuser has solo plan but repo owner is orgname",
+				"comment": "## Code review skipped\n\nActor @testuser has a Solo plan."
+			}`,
+			wantReason: SkipReasonSoloNamespaceViolation,
+			wantMsg:    "actor testuser has solo plan but repo owner is orgname",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(tt.response))
+			}))
+			defer server.Close()
+
+			client, err := NewClient(ClientConfig{BaseURL: server.URL, ProductID: "bop"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			result, skipInfo, err := client.ExchangeOIDCToken(context.Background(), OIDCExchangeRequest{
+				IDToken:      "test-token",
+				ProviderType: "github",
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result != nil {
+				t.Errorf("expected nil TokenResponse for skip, got %+v", result)
+			}
+			if skipInfo == nil {
+				t.Fatal("expected non-nil SkipInfo")
+			}
+			if skipInfo.Reason != tt.wantReason {
+				t.Errorf("Reason = %q, want %q", skipInfo.Reason, tt.wantReason)
+			}
+			if skipInfo.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", skipInfo.Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestExchangeOIDCToken_TokenResponse(t *testing.T) {
+	// Verify that normal token responses still work after skip handling is added.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "test-access-token",
+			"refresh_token": "test-refresh-token",
+			"token_type":    "Bearer",
+			"expires_in":    3600,
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(ClientConfig{BaseURL: server.URL, ProductID: "bop"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, skipInfo, err := client.ExchangeOIDCToken(context.Background(), OIDCExchangeRequest{
+		IDToken:      "test-token",
+		ProviderType: "github",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if skipInfo != nil {
+		t.Errorf("expected nil SkipInfo for token response, got %+v", skipInfo)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil TokenResponse")
+	}
+	if result.AccessToken != "test-access-token" {
+		t.Errorf("AccessToken = %q, want %q", result.AccessToken, "test-access-token")
+	}
+}
+
+func TestGitHubActionsOIDC_Authenticate_Skip(t *testing.T) {
+	// Test that the OIDC Authenticate flow correctly handles skip responses.
+	expectedToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": expectedToken})
+	}))
+	defer oidcServer.Close()
+
+	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Return a skip response instead of tokens
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"skipped": true,
+			"reason":  "solo_namespace_violation",
+			"message": "actor testuser has solo plan but repo owner is orgname",
+			"comment": "## Code review skipped\n\nActor @testuser has a Solo plan.",
+		})
+	}))
+	defer platformServer.Close()
+
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", oidcServer.URL+"?param=value")
+	t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "test-request-token")
+
+	client, err := NewClient(ClientConfig{
+		BaseURL:   platformServer.URL,
+		ProductID: "bop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oidc := NewGitHubActionsOIDC(client, "https://api.example.com")
+	result, authErr := oidc.Authenticate(context.Background(), "")
+	if authErr != nil {
+		t.Fatalf("Authenticate() error: %v", authErr)
+	}
+
+	// Skip should be returned without error
+	if result.StoredAuth != nil {
+		t.Errorf("expected nil StoredAuth for skip, got %+v", result.StoredAuth)
+	}
+	if result.Skip == nil {
+		t.Fatal("expected non-nil Skip")
+	}
+	if result.Skip.Reason != SkipReasonSoloNamespaceViolation {
+		t.Errorf("Skip.Reason = %q, want %q", result.Skip.Reason, SkipReasonSoloNamespaceViolation)
 	}
 }

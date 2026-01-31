@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -138,6 +139,14 @@ func runGitHubAction(ctx context.Context, deps GitHubActionDeps) error {
 		if oidcErr != nil {
 			return fmt.Errorf("OIDC authentication: %w", oidcErr)
 		}
+
+		// Handle skip - the platform determined auth succeeded but
+		// the actor doesn't have the right entitlements for this operation.
+		// Write summary, post PR comment if configured, and exit cleanly.
+		if oidcResult.Skip != nil {
+			return handleOIDCSkip(ghCtx, cfg, oidcResult.Skip)
+		}
+
 		if !oidcResult.Entitlements.CanReviewCode() {
 			return errors.New("code review not available on your plan")
 		}
@@ -393,7 +402,8 @@ func writeGitHubOutputs(result review.Result, reviewErr error) error {
 }
 
 // authenticateOIDC performs OIDC authentication for GitHub Actions.
-// Returns the authentication result containing entitlements for access checking.
+// Returns the authentication result containing either entitlements (success) or skip info.
+// When Skip is set, the caller should handle it gracefully (write summary, exit cleanly).
 func authenticateOIDC(ctx context.Context, deps GitHubActionDeps) (*auth.OIDCAuthResult, error) {
 	tenantID := os.Getenv("BOP_TENANT_ID")
 	if tenantID == "" {
@@ -413,6 +423,14 @@ func authenticateOIDC(ctx context.Context, deps GitHubActionDeps) (*auth.OIDCAut
 	result, err := oidc.Authenticate(ctx, tenantID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Handle skip result - the platform determined auth succeeded but
+	// the actor doesn't have the right entitlements for this operation.
+	// Return the skip info to the caller for graceful handling.
+	if result.Skip != nil {
+		fmt.Fprintf(os.Stderr, "::notice::Review skipped: %s\n", result.Skip.UserMessage())
+		return result, nil
 	}
 
 	fmt.Fprintf(os.Stderr, "::notice::Authenticated via OIDC as %s (tenant: %s)\n",
@@ -531,6 +549,142 @@ func truncateUTF8Safe(s string, maxBytes int) string {
 		maxBytes--
 	}
 	return s[:maxBytes]
+}
+
+// handleOIDCSkip handles the case where OIDC authentication succeeded but the
+// actor doesn't have the right entitlements for this operation. It writes a
+// summary, optionally posts a PR comment, and returns nil to exit cleanly.
+func handleOIDCSkip(ghCtx *gitHubContext, cfg actionConfig, skip *auth.SkipInfo) error {
+	// Write skip info to GITHUB_OUTPUT
+	outputFile := os.Getenv("GITHUB_OUTPUT")
+	if outputFile != "" {
+		if err := writeSkipOutput(outputFile, skip); err != nil {
+			fmt.Fprintf(os.Stderr, "::warning::Failed to write skip output: %v\n", err)
+		}
+	}
+
+	// Write skip summary to GITHUB_STEP_SUMMARY
+	summaryFile := os.Getenv("GITHUB_STEP_SUMMARY")
+	if summaryFile != "" {
+		if err := writeSkipSummary(summaryFile, skip); err != nil {
+			fmt.Fprintf(os.Stderr, "::warning::Failed to write skip summary: %v\n", err)
+		}
+	}
+
+	// Post PR comment if configured and we have the necessary context
+	if cfg.PostFindings && ghCtx != nil && ghCtx.PRNumber > 0 {
+		if err := postSkipComment(ghCtx, skip); err != nil {
+			fmt.Fprintf(os.Stderr, "::warning::Failed to post skip comment: %v\n", err)
+		}
+	}
+
+	// Log the skip for visibility
+	fmt.Printf("::notice::bop review skipped: %s\n", skip.UserMessage())
+
+	// Return nil to exit cleanly (don't fail the workflow)
+	return nil
+}
+
+// writeSkipOutput writes skip information to the GITHUB_OUTPUT file.
+func writeSkipOutput(path string, skip *auth.SkipInfo) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open GITHUB_OUTPUT: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	lines := []string{
+		"skipped=true",
+		fmt.Sprintf("skip-reason=%s", skip.Reason),
+		"findings-count=0",
+		"critical-count=0",
+		"high-count=0",
+		"medium-count=0",
+		"low-count=0",
+	}
+
+	// Write findings as empty JSON array
+	delimiter, err := generateDelimiter()
+	if err != nil {
+		return fmt.Errorf("generate delimiter: %w", err)
+	}
+	lines = append(lines, fmt.Sprintf("findings<<%s\n[]\n%s", delimiter, delimiter))
+
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(f, line); err != nil {
+			return fmt.Errorf("write to GITHUB_OUTPUT: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// writeSkipSummary writes a skip summary to the GITHUB_STEP_SUMMARY file.
+func writeSkipSummary(path string, skip *auth.SkipInfo) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open GITHUB_STEP_SUMMARY: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Use the pre-rendered markdown comment as the summary
+	content := skip.PRComment()
+	if content == "" {
+		content = fmt.Sprintf("## bop Code Review\n\n> [!NOTE]\n> Review skipped: %s\n", skip.UserMessage())
+	}
+
+	if _, err := f.WriteString(content + "\n"); err != nil {
+		return fmt.Errorf("write to GITHUB_STEP_SUMMARY: %w", err)
+	}
+
+	return nil
+}
+
+// postSkipComment posts a PR comment explaining why the review was skipped.
+// Uses the gh CLI which is available in GitHub Actions runners.
+func postSkipComment(ghCtx *gitHubContext, skip *auth.SkipInfo) error {
+	comment := skip.PRComment()
+	if comment == "" {
+		return nil // No comment to post
+	}
+
+	// Use gh CLI to post the comment - it's pre-installed in GitHub Actions
+	// and already authenticated via GITHUB_TOKEN.
+	// We shell out rather than using the GitHub API directly to avoid
+	// adding a dependency on go-github.
+	ghToken := os.Getenv("GITHUB_TOKEN")
+	if ghToken == "" {
+		return errors.New("GITHUB_TOKEN not set, cannot post PR comment")
+	}
+
+	// Set GITHUB_TOKEN for gh CLI
+	if err := os.Setenv("GITHUB_TOKEN", ghToken); err != nil {
+		return fmt.Errorf("set GITHUB_TOKEN: %w", err)
+	}
+
+	// Use gh pr comment to post
+	// Format: gh pr comment <number> --body "..." --repo owner/repo
+	output, err := execCommand("gh",
+		"pr", "comment",
+		strconv.Itoa(ghCtx.PRNumber),
+		"--body", comment,
+		"--repo", ghCtx.Repository,
+	)
+	if err != nil {
+		return fmt.Errorf("gh pr comment failed: %w\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
+// execCommandFunc is a function type for running external commands.
+// It's a variable to allow mocking in tests.
+type execCommandFunc func(name string, args ...string) ([]byte, error)
+
+// execCommand runs an external command. Can be replaced in tests.
+var execCommand execCommandFunc = func(name string, args ...string) ([]byte, error) {
+	cmd := exec.Command(name, args...)
+	return cmd.CombinedOutput()
 }
 
 // writeSummaryFile writes a markdown summary to the GITHUB_STEP_SUMMARY file.

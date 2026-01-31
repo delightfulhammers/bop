@@ -42,12 +42,20 @@ func IsAvailable() bool {
 }
 
 // OIDCAuthResult contains the result of an OIDC authentication.
+// Either (StoredAuth, Entitlements) is populated for success, or Skip is populated for skipped reviews.
 type OIDCAuthResult struct {
 	// StoredAuth contains the authentication state (tokens, entitlements, etc.)
+	// Nil when Skip is set.
 	StoredAuth *StoredAuth
 
-	// Entitlements provides access to entitlement checking
+	// Entitlements provides access to entitlement checking.
+	// Nil when Skip is set.
 	Entitlements *BopEntitlements
+
+	// Skip contains information when the review should be skipped.
+	// Set when the platform returns a skip result instead of tokens.
+	// Nil when authentication succeeds with tokens.
+	Skip *SkipInfo
 }
 
 // Authenticate requests an OIDC token from GitHub Actions and exchanges it
@@ -69,13 +77,22 @@ func (g *GitHubActionsOIDC) Authenticate(ctx context.Context, tenantID string) (
 	}
 
 	// Exchange OIDC token for platform credentials
-	tokenResp, err := g.client.ExchangeOIDCToken(ctx, OIDCExchangeRequest{
+	tokenResp, skipInfo, err := g.client.ExchangeOIDCToken(ctx, OIDCExchangeRequest{
 		TenantID:     tenantID,
 		IDToken:      idToken,
 		ProviderType: "github",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("exchange OIDC token: %w", err)
+	}
+
+	// Handle skip response - the platform returns this when auth succeeds but
+	// the actor doesn't have the right entitlements for this operation.
+	// Return it as a successful result with Skip set, not an error.
+	if skipInfo != nil {
+		return &OIDCAuthResult{
+			Skip: skipInfo,
+		}, nil
 	}
 
 	// Get user info to populate StoredAuth
