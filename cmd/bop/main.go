@@ -379,7 +379,16 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 		return nil, fmt.Errorf("OIDC authentication failed: %w", err)
 	}
 
-	// Validate we got valid auth data
+	// Handle skip response - the platform returns this when auth succeeds but
+	// the actor doesn't have the right entitlements for this operation.
+	// Return nil to fall back to stored auth (which will also fail entitlement checks).
+	if result.Skip != nil {
+		log.Printf("[INFO] Platform returned skip: %s", result.Skip.Reason)
+		// Fall back to stored auth - the skip will be handled downstream
+		return nil, nil
+	}
+
+	// At this point we should have valid auth data
 	if result.StoredAuth == nil {
 		return nil, fmt.Errorf("OIDC authentication returned empty credentials")
 	}
