@@ -379,6 +379,11 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 		return nil, fmt.Errorf("OIDC authentication failed: %w", err)
 	}
 
+	// Validate we got valid auth data
+	if result.StoredAuth == nil {
+		return nil, fmt.Errorf("OIDC authentication returned empty credentials")
+	}
+
 	// Save to token store so RequireAuth() and other commands can find it
 	if err := tokenStore.Save(result.StoredAuth); err != nil {
 		log.Printf("[WARN] Failed to cache OIDC credentials: %v", err)
