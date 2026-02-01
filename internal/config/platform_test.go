@@ -1,8 +1,11 @@
 package config
 
 import (
+	"context"
+	"errors"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestGetPlatformURL(t *testing.T) {
@@ -168,4 +171,255 @@ func TestIsConfigEnvVar(t *testing.T) {
 			}
 		})
 	}
+}
+
+// mockConfigFetcher is a test double for ConfigFetcher.
+type mockConfigFetcher struct {
+	response *ProductConfigResponse
+	err      error
+	calls    int
+}
+
+func (m *mockConfigFetcher) FetchProductConfig(_ context.Context, _ string) (*ProductConfigResponse, error) {
+	m.calls++
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.response, nil
+}
+
+func TestPlatformConfigClient_FetchConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		response   *ProductConfigResponse
+		fetchErr   error
+		wantErr    bool
+		wantErrMsg string
+		wantTier   string
+	}{
+		{
+			name: "success returns config and tier",
+			response: &ProductConfigResponse{
+				Config: map[string]any{
+					// Platform config format: reviewers is a list of active reviewer names
+					"reviewers": []any{"security", "performance"},
+					// weights maps reviewer name to weight
+					"weights": map[string]any{"security": 1.5, "performance": 1.0},
+					// model sets the default model
+					"model": "claude-sonnet-4-5",
+				},
+				Tier:       "pro",
+				IsReadOnly: false,
+			},
+			wantTier: "pro",
+		},
+		{
+			name:       "fetch error propagates",
+			fetchErr:   errors.New("network error"),
+			wantErr:    true,
+			wantErrMsg: "fetch platform config",
+		},
+		{
+			name: "invalid config returns validation error",
+			response: &ProductConfigResponse{
+				Config: map[string]any{
+					// Missing "reviewers" field entirely - validation fails
+					"weights": map[string]any{"security": 1.5},
+				},
+				Tier: "solo",
+			},
+			wantErr:    true,
+			wantErrMsg: "invalid platform config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &mockConfigFetcher{
+				response: tt.response,
+				err:      tt.fetchErr,
+			}
+
+			client := NewPlatformConfigClient(PlatformConfigClientConfig{
+				Fetcher:  fetcher,
+				CacheTTL: time.Minute,
+			})
+
+			cfg, tier, err := client.FetchConfig(context.Background(), "test-token")
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if tt.wantErrMsg != "" && !contains(err.Error(), tt.wantErrMsg) {
+					t.Errorf("error = %q, want to contain %q", err.Error(), tt.wantErrMsg)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tier != tt.wantTier {
+				t.Errorf("tier = %q, want %q", tier, tt.wantTier)
+			}
+			if cfg == nil {
+				t.Error("config should not be nil")
+			}
+		})
+	}
+}
+
+func TestPlatformConfigClient_Caching(t *testing.T) {
+	response := &ProductConfigResponse{
+		Config: map[string]any{
+			"reviewers": []any{"security"},
+		},
+		Tier: "pro",
+	}
+
+	fetcher := &mockConfigFetcher{response: response}
+	client := NewPlatformConfigClient(PlatformConfigClientConfig{
+		Fetcher:  fetcher,
+		CacheTTL: time.Hour, // Long TTL so it won't expire during test
+	})
+
+	// First call should fetch
+	_, _, err := client.FetchConfig(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("first fetch failed: %v", err)
+	}
+	if fetcher.calls != 1 {
+		t.Errorf("expected 1 call, got %d", fetcher.calls)
+	}
+
+	// Second call should use cache
+	_, _, err = client.FetchConfig(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("second fetch failed: %v", err)
+	}
+	if fetcher.calls != 1 {
+		t.Errorf("expected still 1 call (cached), got %d", fetcher.calls)
+	}
+
+	// Verify cache is valid
+	if !client.IsCacheValid() {
+		t.Error("cache should be valid")
+	}
+
+	// Invalidate cache
+	client.InvalidateCache()
+	if client.IsCacheValid() {
+		t.Error("cache should be invalid after InvalidateCache")
+	}
+
+	// Third call should fetch again
+	_, _, err = client.FetchConfig(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("third fetch failed: %v", err)
+	}
+	if fetcher.calls != 2 {
+		t.Errorf("expected 2 calls after invalidation, got %d", fetcher.calls)
+	}
+}
+
+func TestPlatformConfigClient_CacheExpiry(t *testing.T) {
+	response := &ProductConfigResponse{
+		Config: map[string]any{
+			"reviewers": []any{"security"},
+		},
+		Tier: "solo",
+	}
+
+	fetcher := &mockConfigFetcher{response: response}
+	client := NewPlatformConfigClient(PlatformConfigClientConfig{
+		Fetcher:  fetcher,
+		CacheTTL: 10 * time.Millisecond, // Very short TTL
+	})
+
+	// First call fetches
+	_, _, _ = client.FetchConfig(context.Background(), "token")
+	if fetcher.calls != 1 {
+		t.Errorf("expected 1 call, got %d", fetcher.calls)
+	}
+
+	// Wait for cache to expire
+	time.Sleep(20 * time.Millisecond)
+
+	// Cache should be expired
+	if client.IsCacheValid() {
+		t.Error("cache should be expired")
+	}
+
+	// Next call should fetch again
+	_, _, _ = client.FetchConfig(context.Background(), "token")
+	if fetcher.calls != 2 {
+		t.Errorf("expected 2 calls after expiry, got %d", fetcher.calls)
+	}
+}
+
+func TestPlatformConfigClient_FetchAndMerge(t *testing.T) {
+	platformResponse := &ProductConfigResponse{
+		Config: map[string]any{
+			"reviewers": []any{"security", "performance"},
+			"weights":   map[string]any{"security": 1.5, "performance": 1.0},
+			"model":     "claude-sonnet-4-5",
+		},
+		Tier: "pro",
+	}
+
+	fetcher := &mockConfigFetcher{response: platformResponse}
+	client := NewPlatformConfigClient(PlatformConfigClientConfig{
+		Fetcher:  fetcher,
+		CacheTTL: time.Minute,
+	})
+
+	// Local config with additional settings
+	localConfig := Config{
+		Reviewers: map[string]ReviewerConfig{
+			"security": {
+				Weight:  1.0,                         // Will be overridden by platform weight
+				Persona: "You are a security expert", // Local persona preserved
+			},
+		},
+	}
+
+	merged, tier, err := client.FetchAndMerge(context.Background(), "token", localConfig)
+	if err != nil {
+		t.Fatalf("FetchAndMerge failed: %v", err)
+	}
+
+	if tier != "pro" {
+		t.Errorf("tier = %q, want %q", tier, "pro")
+	}
+	if merged == nil {
+		t.Fatal("merged config should not be nil")
+	}
+}
+
+func TestPlatformConfigClient_DefaultCacheTTL(t *testing.T) {
+	client := NewPlatformConfigClient(PlatformConfigClientConfig{
+		Fetcher: &mockConfigFetcher{},
+		// No CacheTTL specified - should default to 5 minutes
+	})
+
+	// The default TTL is 5 minutes, which we can verify via the struct
+	if client.cacheTTL != 5*time.Minute {
+		t.Errorf("default cacheTTL = %v, want 5m", client.cacheTTL)
+	}
+}
+
+// contains checks if s contains substr.
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
