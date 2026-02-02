@@ -342,6 +342,13 @@ type oidcExchangeResponse struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 
+	// User info fields (present in OIDC flow to avoid /auth/me call)
+	UserID       string   `json:"user_id"`
+	Username     string   `json:"username"`
+	TenantID     string   `json:"tenant_id"`
+	PlanID       string   `json:"plan_id"`
+	Entitlements []string `json:"entitlements"`
+
 	// Skip fields (present when skipped)
 	Skipped bool   `json:"skipped"`
 	Reason  string `json:"reason"`
@@ -415,12 +422,17 @@ func (c *Client) ExchangeOIDCToken(ctx context.Context, req OIDCExchangeRequest)
 		}, nil
 	}
 
-	// Normal token response
+	// Normal token response (includes user info for OIDC flow)
 	return &TokenResponse{
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
 		TokenType:    result.TokenType,
 		ExpiresIn:    result.ExpiresIn,
+		UserID:       result.UserID,
+		Username:     result.Username,
+		TenantID:     result.TenantID,
+		PlanID:       result.PlanID,
+		Entitlements: result.Entitlements,
 	}, nil, nil
 }
 

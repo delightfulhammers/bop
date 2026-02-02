@@ -60,20 +60,21 @@ func (s *StoredAuth) NeedsRefresh() bool {
 	return time.Now().Add(5 * time.Minute).After(s.ExpiresAt)
 }
 
+// IsOIDCFlow returns true if this auth state is from OIDC flow.
+// OIDC flow is stateless (no refresh token) and tenant-less (actor-based).
+func (s *StoredAuth) IsOIDCFlow() bool {
+	return s.RefreshToken == ""
+}
+
 // Validate checks that required fields are present and valid.
 // Returns an error if the auth state is incomplete or corrupt.
+// This is the common validation that applies to all auth flows.
 func (s *StoredAuth) Validate() error {
 	if s.AccessToken == "" {
 		return errors.New("missing access_token")
 	}
-	if s.RefreshToken == "" {
-		return errors.New("missing refresh_token")
-	}
 	if s.ExpiresAt.IsZero() {
 		return errors.New("missing expires_at")
-	}
-	if s.TenantID == "" {
-		return errors.New("missing tenant_id")
 	}
 	// Validate user identity fields
 	if s.User.ID == "" {
@@ -81,6 +82,21 @@ func (s *StoredAuth) Validate() error {
 	}
 	if s.User.GitHubLogin == "" {
 		return errors.New("missing user.github_login")
+	}
+	return nil
+}
+
+// ValidateForDeviceFlow checks that all fields required for device flow are present.
+// Device flow requires RefreshToken and TenantID for token refresh operations.
+func (s *StoredAuth) ValidateForDeviceFlow() error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	if s.RefreshToken == "" {
+		return errors.New("missing refresh_token (required for device flow)")
+	}
+	if s.TenantID == "" {
+		return errors.New("missing tenant_id (required for device flow)")
 	}
 	return nil
 }
@@ -109,6 +125,13 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
+
+	// User info fields (populated in OIDC flow so client doesn't need to call /auth/me)
+	UserID       string   `json:"user_id,omitempty"`
+	Username     string   `json:"username,omitempty"`
+	TenantID     string   `json:"tenant_id,omitempty"`
+	PlanID       string   `json:"plan_id,omitempty"`
+	Entitlements []string `json:"entitlements,omitempty"`
 }
 
 // DeviceFlowError represents an error during device flow polling.

@@ -79,17 +79,14 @@ func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
 				return
 			}
 			bodyCh <- b
+			// Include user info in token response (OIDC flow doesn't call /auth/me)
 			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "access-token-derived",
 				RefreshToken: "refresh-token-derived",
 				TokenType:    "Bearer",
 				ExpiresIn:    3600,
-			})
-		case "/auth/me":
-			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
 				UserID:       "user-derived",
 				Username:     "deriveduser",
-				Email:        "derived@example.com",
 				TenantID:     "tenant-derived-from-token",
 				PlanID:       "beta",
 				Entitlements: []string{"public-repos", "private-repos"},
@@ -175,25 +172,19 @@ func TestGitHubActionsOIDC_RequestOIDCToken(t *testing.T) {
 				t.Errorf("unexpected tenant_id: %s", body["tenant_id"])
 			}
 
+			// Include user info in token response (OIDC flow doesn't call /auth/me)
 			if err := json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "access-token-123",
 				RefreshToken: "refresh-token-123",
 				TokenType:    "Bearer",
 				ExpiresIn:    3600,
-			}); err != nil {
-				t.Errorf("encode token response: %v", err)
-			}
-
-		case "/auth/me":
-			if err := json.NewEncoder(w).Encode(CurrentUserResponse{
 				UserID:       "user-123",
 				Username:     "testuser",
-				Email:        "test@example.com",
 				TenantID:     "tenant-123",
 				PlanID:       "beta",
 				Entitlements: []string{"public-repos", "private-repos", "any-org"},
 			}); err != nil {
-				t.Errorf("encode user response: %v", err)
+				t.Errorf("encode token response: %v", err)
 			}
 
 		default:
@@ -262,11 +253,9 @@ func TestGitHubActionsOIDC_RequestOIDCToken_AudienceEncoding(t *testing.T) {
 	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/auth/actions-oidc":
+			// Include user info in token response (OIDC flow doesn't call /auth/me)
 			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken: "a", RefreshToken: "r", TokenType: "Bearer", ExpiresIn: 3600,
-			})
-		case "/auth/me":
-			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
 				UserID: "u", Username: "u", TenantID: "t", PlanID: "beta",
 			})
 		default:
@@ -634,6 +623,73 @@ func TestExchangeOIDCToken_TokenResponse(t *testing.T) {
 	if result.AccessToken != "test-access-token" {
 		t.Errorf("AccessToken = %q, want %q", result.AccessToken, "test-access-token")
 	}
+}
+
+func TestGitHubActionsOIDC_Authenticate_InvalidExpiresIn(t *testing.T) {
+	// Test that Authenticate fails if ExpiresIn is zero or negative
+	expectedToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": expectedToken})
+	}))
+	defer oidcServer.Close()
+
+	tests := []struct {
+		name      string
+		expiresIn int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(TokenResponse{
+					AccessToken:  "access-token",
+					RefreshToken: "refresh-token",
+					TokenType:    "Bearer",
+					ExpiresIn:    tt.expiresIn, // Invalid
+					UserID:       "user-123",
+					Username:     "testuser",
+					TenantID:     "tenant-123",
+					PlanID:       "beta",
+					Entitlements: []string{"public-repos"},
+				})
+			}))
+			defer platformServer.Close()
+
+			t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", oidcServer.URL+"?param=value")
+			t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "test-request-token")
+
+			client, err := NewClient(ClientConfig{
+				BaseURL:   platformServer.URL,
+				ProductID: "bop",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			oidc := NewGitHubActionsOIDC(client, "https://api.example.com")
+			_, authErr := oidc.Authenticate(context.Background(), "tenant-123")
+			if authErr == nil {
+				t.Fatal("expected error for invalid expires_in")
+			}
+			// Check error message contains expected text
+			if !findInString(authErr.Error(), "invalid expires_in") {
+				t.Errorf("error should mention invalid expires_in, got: %v", authErr)
+			}
+		})
+	}
+}
+
+func findInString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func TestGitHubActionsOIDC_Authenticate_Skip(t *testing.T) {
