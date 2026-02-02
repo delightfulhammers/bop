@@ -146,7 +146,12 @@ type PlatformConfigClientConfig struct {
 }
 
 // NewPlatformConfigClient creates a new platform config client.
+// Panics if Fetcher is nil (programmer error).
 func NewPlatformConfigClient(cfg PlatformConfigClientConfig) *PlatformConfigClient {
+	if cfg.Fetcher == nil {
+		panic("PlatformConfigClient: Fetcher is required")
+	}
+
 	ttl := cfg.CacheTTL
 	if ttl == 0 {
 		ttl = 5 * time.Minute

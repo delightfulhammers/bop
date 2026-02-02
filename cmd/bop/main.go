@@ -381,11 +381,10 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 
 	// Handle skip response - the platform returns this when auth succeeds but
 	// the actor doesn't have the right entitlements for this operation.
-	// Return nil to fall back to stored auth (which will also fail entitlement checks).
+	// Return a typed error so callers can handle it appropriately (e.g., post PR comment).
 	if result.Skip != nil {
 		log.Printf("[INFO] Platform returned skip: %s", result.Skip.Reason)
-		// Fall back to stored auth - the skip will be handled downstream
-		return nil, nil
+		return nil, &auth.ErrAuthSkipped{Info: result.Skip}
 	}
 
 	// At this point we should have valid auth data

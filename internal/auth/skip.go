@@ -1,6 +1,8 @@
 // Package auth provides platform authentication for bop CLI and MCP server.
 package auth
 
+import "errors"
+
 // SkipReason represents the reason why a code review was skipped.
 // These values match the platform's domain.SkipReason constants.
 type SkipReason string
@@ -69,4 +71,34 @@ func (s *SkipInfo) PRComment() string {
 		return ""
 	}
 	return s.Comment
+}
+
+// ErrAuthSkipped is returned when authentication succeeds but the operation
+// should be skipped due to entitlement restrictions (e.g., solo tier on org repo).
+// Callers can check for this error and handle it gracefully (e.g., post PR comment).
+type ErrAuthSkipped struct {
+	Info *SkipInfo
+}
+
+func (e *ErrAuthSkipped) Error() string {
+	if e.Info == nil {
+		return "authentication skipped"
+	}
+	return "authentication skipped: " + e.Info.Message
+}
+
+// IsAuthSkipped returns true if the error is an ErrAuthSkipped.
+func IsAuthSkipped(err error) bool {
+	var skipErr *ErrAuthSkipped
+	return errors.As(err, &skipErr)
+}
+
+// GetSkipInfo extracts SkipInfo from an ErrAuthSkipped error.
+// Returns nil if the error is not an ErrAuthSkipped.
+func GetSkipInfo(err error) *SkipInfo {
+	var skipErr *ErrAuthSkipped
+	if errors.As(err, &skipErr) {
+		return skipErr.Info
+	}
+	return nil
 }

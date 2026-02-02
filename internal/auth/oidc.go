@@ -95,6 +95,18 @@ func (g *GitHubActionsOIDC) Authenticate(ctx context.Context, tenantID string) (
 		}, nil
 	}
 
+	// Validate required fields from token response before building StoredAuth.
+	// OIDC flow requires user info to be included in the token response.
+	if tokenResp.AccessToken == "" {
+		return nil, fmt.Errorf("OIDC token response missing access_token")
+	}
+	if tokenResp.UserID == "" {
+		return nil, fmt.Errorf("OIDC token response missing user_id")
+	}
+	if tokenResp.Username == "" {
+		return nil, fmt.Errorf("OIDC token response missing username")
+	}
+
 	// Build StoredAuth from OIDC response (includes user info, no need to call /auth/me)
 	stored := &StoredAuth{
 		Version:      1,

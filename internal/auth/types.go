@@ -60,18 +60,19 @@ func (s *StoredAuth) NeedsRefresh() bool {
 	return time.Now().Add(5 * time.Minute).After(s.ExpiresAt)
 }
 
+// IsOIDCFlow returns true if this auth state is from OIDC flow.
+// OIDC flow is stateless (no refresh token) and tenant-less (actor-based).
+func (s *StoredAuth) IsOIDCFlow() bool {
+	return s.RefreshToken == ""
+}
+
 // Validate checks that required fields are present and valid.
 // Returns an error if the auth state is incomplete or corrupt.
-//
-// Required fields vary by auth flow:
-// - Device flow: All fields required (RefreshToken, TenantID for token refresh)
-// - OIDC flow: RefreshToken and TenantID are optional (actor-based auth is stateless/tenant-less)
+// This is the common validation that applies to all auth flows.
 func (s *StoredAuth) Validate() error {
 	if s.AccessToken == "" {
 		return errors.New("missing access_token")
 	}
-	// RefreshToken is optional - OIDC flow doesn't have refresh tokens (stateless)
-	// TenantID is optional - OIDC flow is tenant-less (actor-based auth)
 	if s.ExpiresAt.IsZero() {
 		return errors.New("missing expires_at")
 	}
@@ -81,6 +82,21 @@ func (s *StoredAuth) Validate() error {
 	}
 	if s.User.GitHubLogin == "" {
 		return errors.New("missing user.github_login")
+	}
+	return nil
+}
+
+// ValidateForDeviceFlow checks that all fields required for device flow are present.
+// Device flow requires RefreshToken and TenantID for token refresh operations.
+func (s *StoredAuth) ValidateForDeviceFlow() error {
+	if err := s.Validate(); err != nil {
+		return err
+	}
+	if s.RefreshToken == "" {
+		return errors.New("missing refresh_token (required for device flow)")
+	}
+	if s.TenantID == "" {
+		return errors.New("missing tenant_id (required for device flow)")
 	}
 	return nil
 }

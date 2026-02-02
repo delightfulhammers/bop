@@ -73,9 +73,15 @@ func (t *TokenStore) Save(auth *StoredAuth) error {
 		return errors.New("auth is nil")
 	}
 
-	// Validate before saving to prevent persisting invalid auth
-	if err := auth.Validate(); err != nil {
-		return fmt.Errorf("invalid auth: %w", err)
+	// Use flow-aware validation: device flow requires more fields than OIDC
+	if auth.IsOIDCFlow() {
+		if err := auth.Validate(); err != nil {
+			return fmt.Errorf("invalid auth: %w", err)
+		}
+	} else {
+		if err := auth.ValidateForDeviceFlow(); err != nil {
+			return fmt.Errorf("invalid auth: %w", err)
+		}
 	}
 
 	// Ensure version is set
