@@ -106,6 +106,9 @@ func (g *GitHubActionsOIDC) Authenticate(ctx context.Context, tenantID string) (
 	if tokenResp.Username == "" {
 		return nil, fmt.Errorf("OIDC token response missing username")
 	}
+	if tokenResp.ExpiresIn <= 0 {
+		return nil, fmt.Errorf("OIDC token response has invalid expires_in: %d", tokenResp.ExpiresIn)
+	}
 
 	// Build StoredAuth from OIDC response (includes user info, no need to call /auth/me)
 	stored := &StoredAuth{

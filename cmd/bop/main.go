@@ -383,7 +383,8 @@ func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.Token
 	// the actor doesn't have the right entitlements for this operation.
 	// Return a typed error so callers can handle it appropriately (e.g., post PR comment).
 	if result.Skip != nil {
-		log.Printf("[INFO] Platform returned skip: %s", result.Skip.Reason)
+		// Use %q to escape control characters and prevent log injection
+		log.Printf("[INFO] Platform returned skip: %q", result.Skip.Reason)
 		return nil, &auth.ErrAuthSkipped{Info: result.Skip}
 	}
 

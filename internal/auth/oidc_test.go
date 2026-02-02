@@ -625,6 +625,73 @@ func TestExchangeOIDCToken_TokenResponse(t *testing.T) {
 	}
 }
 
+func TestGitHubActionsOIDC_Authenticate_InvalidExpiresIn(t *testing.T) {
+	// Test that Authenticate fails if ExpiresIn is zero or negative
+	expectedToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
+	oidcServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"value": expectedToken})
+	}))
+	defer oidcServer.Close()
+
+	tests := []struct {
+		name      string
+		expiresIn int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(TokenResponse{
+					AccessToken:  "access-token",
+					RefreshToken: "refresh-token",
+					TokenType:    "Bearer",
+					ExpiresIn:    tt.expiresIn, // Invalid
+					UserID:       "user-123",
+					Username:     "testuser",
+					TenantID:     "tenant-123",
+					PlanID:       "beta",
+					Entitlements: []string{"public-repos"},
+				})
+			}))
+			defer platformServer.Close()
+
+			t.Setenv("ACTIONS_ID_TOKEN_REQUEST_URL", oidcServer.URL+"?param=value")
+			t.Setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "test-request-token")
+
+			client, err := NewClient(ClientConfig{
+				BaseURL:   platformServer.URL,
+				ProductID: "bop",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			oidc := NewGitHubActionsOIDC(client, "https://api.example.com")
+			_, authErr := oidc.Authenticate(context.Background(), "tenant-123")
+			if authErr == nil {
+				t.Fatal("expected error for invalid expires_in")
+			}
+			// Check error message contains expected text
+			if !findInString(authErr.Error(), "invalid expires_in") {
+				t.Errorf("error should mention invalid expires_in, got: %v", authErr)
+			}
+		})
+	}
+}
+
+func findInString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
 func TestGitHubActionsOIDC_Authenticate_Skip(t *testing.T) {
 	// Test that the OIDC Authenticate flow correctly handles skip responses.
 	expectedToken := "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.test"
