@@ -62,6 +62,10 @@ func (s *StoredAuth) NeedsRefresh() bool {
 
 // Validate checks that required fields are present and valid.
 // Returns an error if the auth state is incomplete or corrupt.
+//
+// This validation is used by TokenStore for persisting device flow auth to disk.
+// OIDC flow uses StoredAuth in-memory without going through TokenStore, so these
+// validations don't apply to actor-based auth (which lacks RefreshToken and TenantID).
 func (s *StoredAuth) Validate() error {
 	if s.AccessToken == "" {
 		return errors.New("missing access_token")
@@ -109,6 +113,13 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
+
+	// User info fields (populated in OIDC flow so client doesn't need to call /auth/me)
+	UserID       string   `json:"user_id,omitempty"`
+	Username     string   `json:"username,omitempty"`
+	TenantID     string   `json:"tenant_id,omitempty"`
+	PlanID       string   `json:"plan_id,omitempty"`
+	Entitlements []string `json:"entitlements,omitempty"`
 }
 
 // DeviceFlowError represents an error during device flow polling.

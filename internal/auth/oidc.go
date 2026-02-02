@@ -95,25 +95,18 @@ func (g *GitHubActionsOIDC) Authenticate(ctx context.Context, tenantID string) (
 		}, nil
 	}
 
-	// Get user info to populate StoredAuth
-	userResp, err := g.client.GetCurrentUser(ctx, tokenResp.AccessToken)
-	if err != nil {
-		return nil, fmt.Errorf("get current user: %w", err)
-	}
-
-	// Build StoredAuth from response
+	// Build StoredAuth from OIDC response (includes user info, no need to call /auth/me)
 	stored := &StoredAuth{
 		Version:      1,
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second),
-		TenantID:     userResp.TenantID,
-		Entitlements: userResp.Entitlements,
-		Plan:         userResp.PlanID,
+		TenantID:     tokenResp.TenantID,
+		Entitlements: tokenResp.Entitlements,
+		Plan:         tokenResp.PlanID,
 		User: UserInfo{
-			ID:          userResp.UserID,
-			GitHubLogin: userResp.Username,
-			Email:       userResp.Email,
+			ID:          tokenResp.UserID,
+			GitHubLogin: tokenResp.Username,
 		},
 	}
 
