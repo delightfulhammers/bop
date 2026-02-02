@@ -79,17 +79,14 @@ func TestGitHubActionsOIDC_Authenticate_WithoutTenantID(t *testing.T) {
 				return
 			}
 			bodyCh <- b
+			// Include user info in token response (OIDC flow doesn't call /auth/me)
 			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "access-token-derived",
 				RefreshToken: "refresh-token-derived",
 				TokenType:    "Bearer",
 				ExpiresIn:    3600,
-			})
-		case "/auth/me":
-			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
 				UserID:       "user-derived",
 				Username:     "deriveduser",
-				Email:        "derived@example.com",
 				TenantID:     "tenant-derived-from-token",
 				PlanID:       "beta",
 				Entitlements: []string{"public-repos", "private-repos"},
@@ -175,25 +172,19 @@ func TestGitHubActionsOIDC_RequestOIDCToken(t *testing.T) {
 				t.Errorf("unexpected tenant_id: %s", body["tenant_id"])
 			}
 
+			// Include user info in token response (OIDC flow doesn't call /auth/me)
 			if err := json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken:  "access-token-123",
 				RefreshToken: "refresh-token-123",
 				TokenType:    "Bearer",
 				ExpiresIn:    3600,
-			}); err != nil {
-				t.Errorf("encode token response: %v", err)
-			}
-
-		case "/auth/me":
-			if err := json.NewEncoder(w).Encode(CurrentUserResponse{
 				UserID:       "user-123",
 				Username:     "testuser",
-				Email:        "test@example.com",
 				TenantID:     "tenant-123",
 				PlanID:       "beta",
 				Entitlements: []string{"public-repos", "private-repos", "any-org"},
 			}); err != nil {
-				t.Errorf("encode user response: %v", err)
+				t.Errorf("encode token response: %v", err)
 			}
 
 		default:
@@ -262,11 +253,9 @@ func TestGitHubActionsOIDC_RequestOIDCToken_AudienceEncoding(t *testing.T) {
 	platformServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/auth/actions-oidc":
+			// Include user info in token response (OIDC flow doesn't call /auth/me)
 			_ = json.NewEncoder(w).Encode(TokenResponse{
 				AccessToken: "a", RefreshToken: "r", TokenType: "Bearer", ExpiresIn: 3600,
-			})
-		case "/auth/me":
-			_ = json.NewEncoder(w).Encode(CurrentUserResponse{
 				UserID: "u", Username: "u", TenantID: "t", PlanID: "beta",
 			})
 		default:

@@ -63,21 +63,17 @@ func (s *StoredAuth) NeedsRefresh() bool {
 // Validate checks that required fields are present and valid.
 // Returns an error if the auth state is incomplete or corrupt.
 //
-// This validation is used by TokenStore for persisting device flow auth to disk.
-// OIDC flow uses StoredAuth in-memory without going through TokenStore, so these
-// validations don't apply to actor-based auth (which lacks RefreshToken and TenantID).
+// Required fields vary by auth flow:
+// - Device flow: All fields required (RefreshToken, TenantID for token refresh)
+// - OIDC flow: RefreshToken and TenantID are optional (actor-based auth is stateless/tenant-less)
 func (s *StoredAuth) Validate() error {
 	if s.AccessToken == "" {
 		return errors.New("missing access_token")
 	}
-	if s.RefreshToken == "" {
-		return errors.New("missing refresh_token")
-	}
+	// RefreshToken is optional - OIDC flow doesn't have refresh tokens (stateless)
+	// TenantID is optional - OIDC flow is tenant-less (actor-based auth)
 	if s.ExpiresAt.IsZero() {
 		return errors.New("missing expires_at")
-	}
-	if s.TenantID == "" {
-		return errors.New("missing tenant_id")
 	}
 	// Validate user identity fields
 	if s.User.ID == "" {
