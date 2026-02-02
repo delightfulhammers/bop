@@ -234,17 +234,20 @@ func (c *PlatformConfigClient) FetchConfig(ctx context.Context, accessToken stri
 }
 
 // FetchAndMerge fetches platform config and merges it with local config.
-// Platform config takes precedence for user-configurable fields.
-// Local config provides full reviewer/provider definitions.
+// Uses standard overlay semantics: local config wins for overlapping fields.
+//
+// Intended usage pattern:
+//   - Platform config sets: DefaultReviewers (which reviewers), Merge.Weights, model
+//   - Local config provides: Reviewers map (personas/definitions), provider settings
+//
+// For overlapping keys, local config takes precedence (overlay semantics).
 func (c *PlatformConfigClient) FetchAndMerge(ctx context.Context, accessToken string, localConfig Config) (*Config, string, error) {
 	platformCfg, tier, err := c.FetchConfig(ctx, accessToken)
 	if err != nil {
 		return nil, "", err
 	}
 
-	// Merge: platform config is base, local config overlays
-	// This means local config wins for detailed settings (personas, etc.)
-	// but platform config sets which reviewers are active and their weights
+	// Merge with overlay semantics: platform is base, local overlays (local wins on conflicts)
 	merged, err := MergePlatformConfig(*platformCfg, localConfig)
 	if err != nil {
 		return nil, "", fmt.Errorf("merge platform config: %w", err)
