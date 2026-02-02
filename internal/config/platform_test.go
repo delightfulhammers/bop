@@ -231,6 +231,32 @@ func TestPlatformConfigClient_FetchConfig(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "invalid platform config",
 		},
+		{
+			name:       "nil response returns error",
+			response:   nil,
+			wantErr:    true,
+			wantErrMsg: "platform returned nil config response",
+		},
+		{
+			name: "nil config field returns error",
+			response: &ProductConfigResponse{
+				Config: nil,
+				Tier:   "pro",
+			},
+			wantErr:    true,
+			wantErrMsg: "platform config response missing config field",
+		},
+		{
+			name: "empty tier field returns error",
+			response: &ProductConfigResponse{
+				Config: map[string]any{
+					"reviewers": []any{"security"},
+				},
+				Tier: "",
+			},
+			wantErr:    true,
+			wantErrMsg: "platform config response missing tier field",
+		},
 	}
 
 	for _, tt := range tests {
@@ -406,6 +432,53 @@ func TestPlatformConfigClient_DefaultCacheTTL(t *testing.T) {
 	// The default TTL is 5 minutes, which we can verify via the struct
 	if client.cacheTTL != 5*time.Minute {
 		t.Errorf("default cacheTTL = %v, want 5m", client.cacheTTL)
+	}
+}
+
+func TestPlatformConfigClient_CacheMutationPrevention(t *testing.T) {
+	response := &ProductConfigResponse{
+		Config: map[string]any{
+			"reviewers": []any{"security", "performance"},
+			"weights":   map[string]any{"security": 1.5, "performance": 1.0},
+		},
+		Tier: "pro",
+	}
+
+	fetcher := &mockConfigFetcher{response: response}
+	client := NewPlatformConfigClient(PlatformConfigClientConfig{
+		Fetcher:  fetcher,
+		CacheTTL: time.Hour,
+	})
+
+	// First fetch
+	cfg1, _, err := client.FetchConfig(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("first fetch failed: %v", err)
+	}
+
+	// Mutate the returned config
+	cfg1.Merge.Weights["security"] = 999.0
+	cfg1.Reviewers = map[string]ReviewerConfig{
+		"mutated": {Weight: 100.0},
+	}
+
+	// Second fetch should return cached config unaffected by mutation
+	cfg2, _, err := client.FetchConfig(context.Background(), "token")
+	if err != nil {
+		t.Fatalf("second fetch failed: %v", err)
+	}
+
+	// Verify the cached config was not mutated
+	if cfg2.Merge.Weights["security"] != 1.5 {
+		t.Errorf("cache was mutated: security weight = %v, want 1.5", cfg2.Merge.Weights["security"])
+	}
+	if _, exists := cfg2.Reviewers["mutated"]; exists {
+		t.Error("cache was mutated: 'mutated' reviewer should not exist")
+	}
+
+	// Verify only one fetch occurred (both calls used cache)
+	if fetcher.calls != 1 {
+		t.Errorf("expected 1 fetch call, got %d", fetcher.calls)
 	}
 }
 

@@ -176,12 +176,14 @@ func (c *PlatformConfigClient) FetchConfig(ctx context.Context, accessToken stri
 	// Check cache first
 	c.mu.RLock()
 	if c.cachedCfg != nil && time.Now().Before(c.cacheExpiry) {
-		cfg := c.cachedCfg
+		// Return a copy to prevent callers from mutating the cached config
+		cfg := copyConfig(c.cachedCfg)
 		tier := c.cachedTier
+		cacheAge := time.Since(c.cachedAt)
 		c.mu.RUnlock()
 		c.logger.Debug("using cached platform config",
 			slog.String("tier", tier),
-			slog.Duration("cache_age", time.Since(c.cachedAt)),
+			slog.Duration("cache_age", cacheAge),
 		)
 		return cfg, tier, nil
 	}
@@ -194,7 +196,18 @@ func (c *PlatformConfigClient) FetchConfig(ctx context.Context, accessToken stri
 		return nil, "", fmt.Errorf("fetch platform config: %w", err)
 	}
 
-	// Validate platform config
+	// Validate response structure before accessing fields
+	if resp == nil {
+		return nil, "", fmt.Errorf("platform returned nil config response")
+	}
+	if resp.Config == nil {
+		return nil, "", fmt.Errorf("platform config response missing config field")
+	}
+	if resp.Tier == "" {
+		return nil, "", fmt.Errorf("platform config response missing tier field")
+	}
+
+	// Validate platform config contents
 	if err := ValidatePlatformConfig(resp.Config); err != nil {
 		return nil, "", fmt.Errorf("invalid platform config: %w", err)
 	}
@@ -216,7 +229,8 @@ func (c *PlatformConfigClient) FetchConfig(ctx context.Context, accessToken stri
 		slog.Int("editable_fields", len(resp.EditableFields)),
 	)
 
-	return &cfg, resp.Tier, nil
+	// Return a copy to prevent callers from mutating the cached config
+	return copyConfig(&cfg), resp.Tier, nil
 }
 
 // FetchAndMerge fetches platform config and merges it with local config.
@@ -254,4 +268,49 @@ func (c *PlatformConfigClient) IsCacheValid() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.cachedCfg != nil && time.Now().Before(c.cacheExpiry)
+}
+
+// copyConfig creates a deep copy of a Config to prevent cache mutation.
+// This copies all map fields to ensure callers cannot corrupt the cached config.
+func copyConfig(src *Config) *Config {
+	if src == nil {
+		return nil
+	}
+
+	// Start with a shallow copy of the struct
+	dst := *src
+
+	// Deep copy Providers map
+	if src.Providers != nil {
+		dst.Providers = make(map[string]ProviderConfig, len(src.Providers))
+		for k, v := range src.Providers {
+			dst.Providers[k] = v
+		}
+	}
+
+	// Deep copy Reviewers map
+	if src.Reviewers != nil {
+		dst.Reviewers = make(map[string]ReviewerConfig, len(src.Reviewers))
+		for k, v := range src.Reviewers {
+			dst.Reviewers[k] = v
+		}
+	}
+
+	// Deep copy Merge.Weights map
+	if src.Merge.Weights != nil {
+		dst.Merge.Weights = make(map[string]float64, len(src.Merge.Weights))
+		for k, v := range src.Merge.Weights {
+			dst.Merge.Weights[k] = v
+		}
+	}
+
+	// Deep copy SizeGuards.Providers map
+	if src.SizeGuards.Providers != nil {
+		dst.SizeGuards.Providers = make(map[string]ProviderSizeConfig, len(src.SizeGuards.Providers))
+		for k, v := range src.SizeGuards.Providers {
+			dst.SizeGuards.Providers[k] = v
+		}
+	}
+
+	return &dst
 }
