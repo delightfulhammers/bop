@@ -66,6 +66,103 @@ func TestGetPlatformURL(t *testing.T) {
 	}
 }
 
+func TestGetConfigServiceURL(t *testing.T) {
+	tests := []struct {
+		name                string
+		platformURL         string
+		platformURLSet      bool
+		configServiceURL    string
+		configServiceURLSet bool
+		want                string
+	}{
+		{
+			name: "no env vars returns default",
+			want: DefaultConfigServiceURL,
+		},
+		{
+			name:                "explicit config service URL wins",
+			configServiceURL:    "https://custom-config.example.com",
+			configServiceURLSet: true,
+			want:                "https://custom-config.example.com",
+		},
+		{
+			name:           "legacy mode returns empty",
+			platformURL:    "",
+			platformURLSet: true,
+			want:           "",
+		},
+		{
+			name:           "legacy mode with whitespace returns empty",
+			platformURL:    "   ",
+			platformURLSet: true,
+			want:           "",
+		},
+		{
+			name:           "custom platform URL without config service URL returns empty (security)",
+			platformURL:    "https://enterprise.example.com",
+			platformURLSet: true,
+			want:           "",
+		},
+		{
+			name:                "custom platform URL with config service URL works",
+			platformURL:         "https://enterprise.example.com",
+			platformURLSet:      true,
+			configServiceURL:    "https://enterprise-config.example.com",
+			configServiceURLSet: true,
+			want:                "https://enterprise-config.example.com",
+		},
+		{
+			name:           "default platform URL without config service URL returns default",
+			platformURL:    DefaultPlatformURL,
+			platformURLSet: true,
+			want:           DefaultConfigServiceURL,
+		},
+		{
+			name:                "config service URL trimmed",
+			configServiceURL:    "  https://config.example.com  ",
+			configServiceURLSet: true,
+			want:                "https://config.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore env vars
+			oldPlatformVal, oldPlatformExists := os.LookupEnv(PlatformURLEnvVar)
+			oldConfigVal, oldConfigExists := os.LookupEnv(ConfigServiceURLEnvVar)
+			defer func() {
+				if oldPlatformExists {
+					_ = os.Setenv(PlatformURLEnvVar, oldPlatformVal)
+				} else {
+					_ = os.Unsetenv(PlatformURLEnvVar)
+				}
+				if oldConfigExists {
+					_ = os.Setenv(ConfigServiceURLEnvVar, oldConfigVal)
+				} else {
+					_ = os.Unsetenv(ConfigServiceURLEnvVar)
+				}
+			}()
+
+			// Set up test environment
+			if tt.platformURLSet {
+				_ = os.Setenv(PlatformURLEnvVar, tt.platformURL)
+			} else {
+				_ = os.Unsetenv(PlatformURLEnvVar)
+			}
+			if tt.configServiceURLSet {
+				_ = os.Setenv(ConfigServiceURLEnvVar, tt.configServiceURL)
+			} else {
+				_ = os.Unsetenv(ConfigServiceURLEnvVar)
+			}
+
+			got := GetConfigServiceURL()
+			if got != tt.want {
+				t.Errorf("GetConfigServiceURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsLegacyEscapeHatch(t *testing.T) {
 	tests := []struct {
 		name     string

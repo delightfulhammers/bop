@@ -321,7 +321,12 @@ func fetchPlatformConfigWithCache(ctx context.Context, stored *auth.StoredAuth) 
 	// Get config service URL (separate from auth-service)
 	configServiceURL := config.GetConfigServiceURL()
 	if configServiceURL == "" {
-		return nil, fmt.Errorf("config service URL not configured (legacy mode?)")
+		// Empty URL can mean: (1) legacy mode, or (2) custom platform URL without
+		// explicit config service URL (security protection against token leakage)
+		if config.IsLegacyEscapeHatch() {
+			return nil, fmt.Errorf("config service disabled (legacy mode)")
+		}
+		return nil, fmt.Errorf("config service URL required when using custom platform URL (set %s)", config.ConfigServiceURLEnvVar)
 	}
 
 	// Fetch from config-service
