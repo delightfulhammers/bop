@@ -16,9 +16,17 @@ import (
 // this unless they're running a private platform instance (Enterprise).
 const DefaultPlatformURL = "https://api.delightfulhammers.com"
 
+// DefaultConfigServiceURL is the hardcoded URL for the config service.
+// This is separate from the auth service (platform URL) because config
+// is hosted on its own service for clean architecture separation.
+const DefaultConfigServiceURL = "https://config.delightfulhammers.com"
+
 // PlatformURLEnvVar is the environment variable for overriding the platform URL.
 // Set to empty string ("") to use legacy mode (no platform).
 const PlatformURLEnvVar = "BOP_PLATFORM_URL"
+
+// ConfigServiceURLEnvVar is the environment variable for overriding the config service URL.
+const ConfigServiceURLEnvVar = "BOP_CONFIG_SERVICE_URL"
 
 // GetPlatformURL returns the effective platform URL.
 // Priority: 1. BOP_PLATFORM_URL env var, 2. DefaultPlatformURL constant.
@@ -29,6 +37,38 @@ func GetPlatformURL() string {
 		return strings.TrimSpace(val)
 	}
 	return DefaultPlatformURL
+}
+
+// GetConfigServiceURL returns the effective config service URL.
+// Priority: 1. BOP_CONFIG_SERVICE_URL env var, 2. DefaultConfigServiceURL constant.
+// Returns empty string if legacy mode is active (BOP_PLATFORM_URL set to empty).
+//
+// Security: If a custom platform URL is configured (not the default), the config
+// service URL must be explicitly configured to prevent accidentally sending tokens
+// to the public service when using a private/enterprise platform instance.
+func GetConfigServiceURL() string {
+	// Legacy mode disables all platform services
+	if IsLegacyEscapeHatch() {
+		return ""
+	}
+
+	// Explicit config service URL always wins
+	if val, exists := os.LookupEnv(ConfigServiceURLEnvVar); exists {
+		return strings.TrimSpace(val)
+	}
+
+	// Security check: if custom platform URL is set, require explicit config service URL
+	// to prevent token leakage to public service when using private platform
+	if val, exists := os.LookupEnv(PlatformURLEnvVar); exists {
+		platformURL := strings.TrimRight(strings.TrimSpace(val), "/")
+		if platformURL != "" && platformURL != DefaultPlatformURL {
+			// Custom platform URL without explicit config service URL - return empty
+			// to force the caller to handle this case (error or skip config fetch)
+			return ""
+		}
+	}
+
+	return DefaultConfigServiceURL
 }
 
 // IsLegacyEscapeHatch returns true if BOP_PLATFORM_URL is explicitly set to empty.

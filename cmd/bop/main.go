@@ -167,7 +167,7 @@ func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.Op
 		entitlements = auth.NewBopEntitlements(storedAuth, os.Stderr)
 
 		// Try to fetch platform config (with cache fallback)
-		platformConfig, err = fetchPlatformConfigWithCache(ctx, opConfig.PlatformURL, storedAuth)
+		platformConfig, err = fetchPlatformConfigWithCache(ctx, storedAuth)
 		if err != nil {
 			log.Printf("[WARN] Failed to fetch platform config: %v (using local config)", err)
 		}
@@ -308,7 +308,8 @@ func loadBaselineConfig() (config.Config, error) {
 }
 
 // fetchPlatformConfigWithCache fetches platform config, using cache if available.
-func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, stored *auth.StoredAuth) (map[string]any, error) {
+// Config is fetched from config-service (not auth-service) per clean architecture.
+func fetchPlatformConfigWithCache(ctx context.Context, stored *auth.StoredAuth) (map[string]any, error) {
 	// Try cache first (must match both tenant and tier to prevent stale config)
 	cache, err := config.NewConfigCache()
 	if err == nil {
@@ -317,9 +318,20 @@ func fetchPlatformConfigWithCache(ctx context.Context, platformURL string, store
 		}
 	}
 
-	// Fetch from platform
+	// Get config service URL (separate from auth-service)
+	configServiceURL := config.GetConfigServiceURL()
+	if configServiceURL == "" {
+		// Empty URL can mean: (1) legacy mode, or (2) custom platform URL without
+		// explicit config service URL (security protection against token leakage)
+		if config.IsLegacyEscapeHatch() {
+			return nil, fmt.Errorf("config service disabled (legacy mode)")
+		}
+		return nil, fmt.Errorf("config service URL required when using custom platform URL (set %s)", config.ConfigServiceURLEnvVar)
+	}
+
+	// Fetch from config-service
 	client, err := auth.NewClient(auth.ClientConfig{
-		BaseURL:   platformURL,
+		BaseURL:   configServiceURL,
 		ProductID: "bop",
 	})
 	if err != nil {
