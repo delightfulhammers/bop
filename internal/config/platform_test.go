@@ -123,6 +123,12 @@ func TestGetConfigServiceURL(t *testing.T) {
 			configServiceURLSet: true,
 			want:                "https://config.example.com",
 		},
+		{
+			name:           "default platform URL with trailing slash returns default config URL",
+			platformURL:    DefaultPlatformURL + "/",
+			platformURLSet: true,
+			want:           DefaultConfigServiceURL,
+		},
 	}
 
 	for _, tt := range tests {

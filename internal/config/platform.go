@@ -60,7 +60,7 @@ func GetConfigServiceURL() string {
 	// Security check: if custom platform URL is set, require explicit config service URL
 	// to prevent token leakage to public service when using private platform
 	if val, exists := os.LookupEnv(PlatformURLEnvVar); exists {
-		platformURL := strings.TrimSpace(val)
+		platformURL := strings.TrimRight(strings.TrimSpace(val), "/")
 		if platformURL != "" && platformURL != DefaultPlatformURL {
 			// Custom platform URL without explicit config service URL - return empty
 			// to force the caller to handle this case (error or skip config fetch)
