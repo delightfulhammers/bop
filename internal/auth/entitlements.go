@@ -140,7 +140,7 @@ func (e *BopEntitlements) CanAccessRepo(isPrivate bool, ownerType string) error 
 		return &EntitlementError{
 			Entitlement: EntitlementPrivateRepos,
 			Message:     "Private repository access requires Solo plan or higher",
-			UpgradeURL:  "https://bop.dev/upgrade?feature=private-repos",
+			UpgradeURL:  "https://app.delightfulhammers.com/upgrade?feature=private-repos",
 		}
 	}
 
@@ -149,7 +149,7 @@ func (e *BopEntitlements) CanAccessRepo(isPrivate bool, ownerType string) error 
 		return &EntitlementError{
 			Entitlement: EntitlementAnyOrg,
 			Message:     "Using bop in organization repositories requires Pro plan",
-			UpgradeURL:  "https://bop.dev/upgrade?feature=any-org",
+			UpgradeURL:  "https://app.delightfulhammers.com/upgrade?feature=any-org",
 		}
 	}
 
@@ -239,8 +239,8 @@ func (e *BopEntitlements) RequireBYOK(hasConfiguredKeys bool) error {
 	if e.IsBetaUser() && !hasConfiguredKeys {
 		return &EntitlementError{
 			Entitlement: EntitlementBYOProviderKeys,
-			Message:     "Beta tier requires you to configure your own API keys. Visit bop.dev/settings to add your OpenAI, Anthropic, or other provider keys.",
-			UpgradeURL:  "https://bop.dev/settings",
+			Message:     "Beta tier requires you to configure your own API keys. Visit app.delightfulhammers.com/settings to add your OpenAI, Anthropic, or other provider keys.",
+			UpgradeURL:  "https://app.delightfulhammers.com/settings",
 		}
 	}
 	return nil
@@ -253,7 +253,7 @@ func (e *BopEntitlements) CanUseLocalConfig() error {
 		return &EntitlementError{
 			Entitlement: EntitlementLocalBopConfig,
 			Message:     "Local configuration requires Enterprise plan",
-			UpgradeURL:  "https://bop.dev/contact-sales",
+			UpgradeURL:  "https://app.delightfulhammers.com/contact-sales",
 		}
 	}
 	return nil
