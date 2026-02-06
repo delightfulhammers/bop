@@ -1618,7 +1618,7 @@ func TestMergeProviders_FieldLevelMerge(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"openai": {
 				DefaultModel: "gpt-4o",
-				APIKey:       "sk-real-key",
+				APIKey:       "test-openai-key",
 			},
 		},
 	}
@@ -1639,8 +1639,8 @@ func TestMergeProviders_FieldLevelMerge(t *testing.T) {
 	if provider.DefaultModel != "gpt-5.2" {
 		t.Errorf("expected DefaultModel 'gpt-5.2' from overlay, got %s", provider.DefaultModel)
 	}
-	if provider.APIKey != "sk-real-key" {
-		t.Errorf("expected APIKey 'sk-real-key' from base, got %s", provider.APIKey)
+	if provider.APIKey != "test-openai-key" {
+		t.Errorf("expected APIKey 'test-openai-key' from base, got %s", provider.APIKey)
 	}
 }
 
@@ -1650,14 +1650,14 @@ func TestMergeProviders_OverlayAPIKeyWins(t *testing.T) {
 		Providers: map[string]config.ProviderConfig{
 			"openai": {
 				DefaultModel: "gpt-4o",
-				APIKey:       "sk-old-key",
+				APIKey:       "test-old-key",
 			},
 		},
 	}
 	overlay := config.Config{
 		Providers: map[string]config.ProviderConfig{
 			"openai": {
-				APIKey: "sk-new-key",
+				APIKey: "test-new-key",
 			},
 		},
 	}
@@ -1668,8 +1668,8 @@ func TestMergeProviders_OverlayAPIKeyWins(t *testing.T) {
 	}
 
 	provider := merged.Providers["openai"]
-	if provider.APIKey != "sk-new-key" {
-		t.Errorf("expected APIKey 'sk-new-key' from overlay, got %s", provider.APIKey)
+	if provider.APIKey != "test-new-key" {
+		t.Errorf("expected APIKey 'test-new-key' from overlay, got %s", provider.APIKey)
 	}
 	if provider.DefaultModel != "gpt-4o" {
 		t.Errorf("expected DefaultModel 'gpt-4o' from base, got %s", provider.DefaultModel)
@@ -1680,12 +1680,12 @@ func TestMergeProviders_CombinesDistinctProviders(t *testing.T) {
 	// Non-overlapping keys from both maps should be preserved
 	base := config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"openai": {DefaultModel: "gpt-4o", APIKey: "sk-openai"},
+			"openai": {DefaultModel: "gpt-4o", APIKey: "test-openai-key"},
 		},
 	}
 	overlay := config.Config{
 		Providers: map[string]config.ProviderConfig{
-			"anthropic": {DefaultModel: "claude-sonnet-4-5", APIKey: "sk-anthropic"},
+			"anthropic": {DefaultModel: "claude-sonnet-4-5", APIKey: "test-anthropic-key"},
 		},
 	}
 
@@ -1697,10 +1697,10 @@ func TestMergeProviders_CombinesDistinctProviders(t *testing.T) {
 	if len(merged.Providers) != 2 {
 		t.Fatalf("expected 2 providers, got %d", len(merged.Providers))
 	}
-	if merged.Providers["openai"].APIKey != "sk-openai" {
+	if merged.Providers["openai"].APIKey != "test-openai-key" {
 		t.Errorf("expected openai APIKey from base, got %s", merged.Providers["openai"].APIKey)
 	}
-	if merged.Providers["anthropic"].APIKey != "sk-anthropic" {
+	if merged.Providers["anthropic"].APIKey != "test-anthropic-key" {
 		t.Errorf("expected anthropic APIKey from overlay, got %s", merged.Providers["anthropic"].APIKey)
 	}
 }
@@ -1733,14 +1733,14 @@ func TestMergeProviders_EmptyOverlayPreservesBase(t *testing.T) {
 			"openai": {
 				Enabled:         &enabled,
 				DefaultModel:    "gpt-5.2",
-				APIKey:          "sk-real-openai-key",
+				APIKey:          "test-real-openai-key",
 				MaxOutputTokens: &maxTokens,
 				Timeout:         &timeout,
 			},
 			"anthropic": {
 				Enabled:      &enabled,
 				DefaultModel: "claude-sonnet-4-5",
-				APIKey:       "sk-real-anthropic-key",
+				APIKey:       "test-real-anthropic-key",
 			},
 		},
 	}
@@ -1761,12 +1761,20 @@ func TestMergeProviders_EmptyOverlayPreservesBase(t *testing.T) {
 		t.Fatalf("Merge returned error: %v", err)
 	}
 
-	// API keys must be preserved from base
-	if merged.Providers["openai"].APIKey != "sk-real-openai-key" {
-		t.Errorf("expected openai APIKey 'sk-real-openai-key' from base, got %q", merged.Providers["openai"].APIKey)
+	// DefaultModel from overlay must be applied
+	if merged.Providers["openai"].DefaultModel != "gpt-5.2" {
+		t.Errorf("expected openai DefaultModel 'gpt-5.2' from overlay, got %q", merged.Providers["openai"].DefaultModel)
 	}
-	if merged.Providers["anthropic"].APIKey != "sk-real-anthropic-key" {
-		t.Errorf("expected anthropic APIKey 'sk-real-anthropic-key' from base, got %q", merged.Providers["anthropic"].APIKey)
+	if merged.Providers["anthropic"].DefaultModel != "claude-sonnet-4-5" {
+		t.Errorf("expected anthropic DefaultModel 'claude-sonnet-4-5' from overlay, got %q", merged.Providers["anthropic"].DefaultModel)
+	}
+
+	// API keys must be preserved from base
+	if merged.Providers["openai"].APIKey != "test-real-openai-key" {
+		t.Errorf("expected openai APIKey 'test-real-openai-key' from base, got %q", merged.Providers["openai"].APIKey)
+	}
+	if merged.Providers["anthropic"].APIKey != "test-real-anthropic-key" {
+		t.Errorf("expected anthropic APIKey 'test-real-anthropic-key' from base, got %q", merged.Providers["anthropic"].APIKey)
 	}
 
 	// Enabled, MaxOutputTokens, Timeout should also be preserved from base
@@ -1778,5 +1786,200 @@ func TestMergeProviders_EmptyOverlayPreservesBase(t *testing.T) {
 	}
 	if merged.Providers["openai"].Timeout == nil || *merged.Providers["openai"].Timeout != "60s" {
 		t.Error("expected openai Timeout '60s' to be preserved from base")
+	}
+}
+
+func TestMergeProviders_AllFieldsMerge(t *testing.T) {
+	// Table-driven test exercising every field in mergeProvider individually.
+	// Each case sets one field in the overlay and verifies it overrides base
+	// while all other base fields are preserved.
+	enabled := true
+	disabled := false
+	maxTokens42 := 42000
+	maxTokens64 := 64000
+	timeout30 := "30s"
+	timeout60 := "60s"
+	retries3 := 3
+	retries5 := 5
+	backoff1 := "1s"
+	backoff2 := "2s"
+	maxBack10 := "10s"
+	maxBack30 := "30s"
+
+	allFieldsBase := config.ProviderConfig{
+		Enabled:         &enabled,
+		DefaultModel:    "base-model",
+		Model:           "base-legacy-model",
+		APIKey:          "test-base-key",
+		MaxOutputTokens: &maxTokens42,
+		Timeout:         &timeout30,
+		MaxRetries:      &retries3,
+		InitialBackoff:  &backoff1,
+		MaxBackoff:      &maxBack10,
+	}
+
+	tests := []struct {
+		name    string
+		overlay config.ProviderConfig
+		check   func(t *testing.T, result config.ProviderConfig)
+	}{
+		{
+			name:    "overlay_Enabled_overrides",
+			overlay: config.ProviderConfig{Enabled: &disabled},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.Enabled == nil || *r.Enabled != false {
+					t.Error("expected Enabled=false from overlay")
+				}
+				if r.APIKey != "test-base-key" {
+					t.Errorf("expected APIKey preserved, got %s", r.APIKey)
+				}
+			},
+		},
+		{
+			name:    "overlay_DefaultModel_overrides",
+			overlay: config.ProviderConfig{DefaultModel: "overlay-model"},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.DefaultModel != "overlay-model" {
+					t.Errorf("expected DefaultModel 'overlay-model', got %s", r.DefaultModel)
+				}
+				if r.APIKey != "test-base-key" {
+					t.Errorf("expected APIKey preserved, got %s", r.APIKey)
+				}
+			},
+		},
+		{
+			name:    "overlay_Model_overrides",
+			overlay: config.ProviderConfig{Model: "overlay-legacy"},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.Model != "overlay-legacy" {
+					t.Errorf("expected Model 'overlay-legacy', got %s", r.Model)
+				}
+				if r.DefaultModel != "base-model" {
+					t.Errorf("expected DefaultModel preserved, got %s", r.DefaultModel)
+				}
+			},
+		},
+		{
+			name:    "overlay_APIKey_overrides",
+			overlay: config.ProviderConfig{APIKey: "test-overlay-key"},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.APIKey != "test-overlay-key" {
+					t.Errorf("expected APIKey 'test-overlay-key', got %s", r.APIKey)
+				}
+				if r.DefaultModel != "base-model" {
+					t.Errorf("expected DefaultModel preserved, got %s", r.DefaultModel)
+				}
+			},
+		},
+		{
+			name:    "overlay_MaxOutputTokens_overrides",
+			overlay: config.ProviderConfig{MaxOutputTokens: &maxTokens64},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.MaxOutputTokens == nil || *r.MaxOutputTokens != 64000 {
+					t.Error("expected MaxOutputTokens 64000 from overlay")
+				}
+				if r.APIKey != "test-base-key" {
+					t.Errorf("expected APIKey preserved, got %s", r.APIKey)
+				}
+			},
+		},
+		{
+			name:    "overlay_Timeout_overrides",
+			overlay: config.ProviderConfig{Timeout: &timeout60},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.Timeout == nil || *r.Timeout != "60s" {
+					t.Error("expected Timeout '60s' from overlay")
+				}
+				if *r.MaxRetries != 3 {
+					t.Errorf("expected MaxRetries preserved, got %d", *r.MaxRetries)
+				}
+			},
+		},
+		{
+			name:    "overlay_MaxRetries_overrides",
+			overlay: config.ProviderConfig{MaxRetries: &retries5},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.MaxRetries == nil || *r.MaxRetries != 5 {
+					t.Error("expected MaxRetries 5 from overlay")
+				}
+				if *r.Timeout != "30s" {
+					t.Errorf("expected Timeout preserved, got %s", *r.Timeout)
+				}
+			},
+		},
+		{
+			name:    "overlay_InitialBackoff_overrides",
+			overlay: config.ProviderConfig{InitialBackoff: &backoff2},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.InitialBackoff == nil || *r.InitialBackoff != "2s" {
+					t.Error("expected InitialBackoff '2s' from overlay")
+				}
+				if *r.MaxBackoff != "10s" {
+					t.Errorf("expected MaxBackoff preserved, got %s", *r.MaxBackoff)
+				}
+			},
+		},
+		{
+			name:    "overlay_MaxBackoff_overrides",
+			overlay: config.ProviderConfig{MaxBackoff: &maxBack30},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.MaxBackoff == nil || *r.MaxBackoff != "30s" {
+					t.Error("expected MaxBackoff '30s' from overlay")
+				}
+				if *r.InitialBackoff != "1s" {
+					t.Errorf("expected InitialBackoff preserved, got %s", *r.InitialBackoff)
+				}
+			},
+		},
+		{
+			name:    "empty_overlay_preserves_all_base_fields",
+			overlay: config.ProviderConfig{},
+			check: func(t *testing.T, r config.ProviderConfig) {
+				if r.Enabled == nil || *r.Enabled != true {
+					t.Error("expected Enabled preserved")
+				}
+				if r.DefaultModel != "base-model" {
+					t.Errorf("expected DefaultModel preserved, got %s", r.DefaultModel)
+				}
+				if r.Model != "base-legacy-model" {
+					t.Errorf("expected Model preserved, got %s", r.Model)
+				}
+				if r.APIKey != "test-base-key" {
+					t.Errorf("expected APIKey preserved, got %s", r.APIKey)
+				}
+				if r.MaxOutputTokens == nil || *r.MaxOutputTokens != 42000 {
+					t.Error("expected MaxOutputTokens preserved")
+				}
+				if r.Timeout == nil || *r.Timeout != "30s" {
+					t.Error("expected Timeout preserved")
+				}
+				if r.MaxRetries == nil || *r.MaxRetries != 3 {
+					t.Error("expected MaxRetries preserved")
+				}
+				if r.InitialBackoff == nil || *r.InitialBackoff != "1s" {
+					t.Error("expected InitialBackoff preserved")
+				}
+				if r.MaxBackoff == nil || *r.MaxBackoff != "10s" {
+					t.Error("expected MaxBackoff preserved")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merged, err := config.Merge(
+				config.Config{
+					Providers: map[string]config.ProviderConfig{"test": allFieldsBase},
+				},
+				config.Config{
+					Providers: map[string]config.ProviderConfig{"test": tt.overlay},
+				},
+			)
+			if err != nil {
+				t.Fatalf("Merge returned error: %v", err)
+			}
+			tt.check(t, merged.Providers["test"])
+		})
 	}
 }
