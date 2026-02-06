@@ -1609,3 +1609,174 @@ func TestPostOutOfDiffAsComments_MergePreservesBase(t *testing.T) {
 		t.Error("expected ShouldPostOutOfDiff() to return false (preserved from base)")
 	}
 }
+
+// Provider field-level merge tests
+
+func TestMergeProviders_FieldLevelMerge(t *testing.T) {
+	// Overlay with only DefaultModel set should preserve base APIKey
+	base := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {
+				DefaultModel: "gpt-4o",
+				APIKey:       "sk-real-key",
+			},
+		},
+	}
+	overlay := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {
+				DefaultModel: "gpt-5.2",
+			},
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	provider := merged.Providers["openai"]
+	if provider.DefaultModel != "gpt-5.2" {
+		t.Errorf("expected DefaultModel 'gpt-5.2' from overlay, got %s", provider.DefaultModel)
+	}
+	if provider.APIKey != "sk-real-key" {
+		t.Errorf("expected APIKey 'sk-real-key' from base, got %s", provider.APIKey)
+	}
+}
+
+func TestMergeProviders_OverlayAPIKeyWins(t *testing.T) {
+	// When overlay provides an APIKey, it should override base
+	base := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {
+				DefaultModel: "gpt-4o",
+				APIKey:       "sk-old-key",
+			},
+		},
+	}
+	overlay := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {
+				APIKey: "sk-new-key",
+			},
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	provider := merged.Providers["openai"]
+	if provider.APIKey != "sk-new-key" {
+		t.Errorf("expected APIKey 'sk-new-key' from overlay, got %s", provider.APIKey)
+	}
+	if provider.DefaultModel != "gpt-4o" {
+		t.Errorf("expected DefaultModel 'gpt-4o' from base, got %s", provider.DefaultModel)
+	}
+}
+
+func TestMergeProviders_CombinesDistinctProviders(t *testing.T) {
+	// Non-overlapping keys from both maps should be preserved
+	base := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {DefaultModel: "gpt-4o", APIKey: "sk-openai"},
+		},
+	}
+	overlay := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"anthropic": {DefaultModel: "claude-sonnet-4-5", APIKey: "sk-anthropic"},
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if len(merged.Providers) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(merged.Providers))
+	}
+	if merged.Providers["openai"].APIKey != "sk-openai" {
+		t.Errorf("expected openai APIKey from base, got %s", merged.Providers["openai"].APIKey)
+	}
+	if merged.Providers["anthropic"].APIKey != "sk-anthropic" {
+		t.Errorf("expected anthropic APIKey from overlay, got %s", merged.Providers["anthropic"].APIKey)
+	}
+}
+
+func TestMergeProviders_NilMaps(t *testing.T) {
+	// Merging two configs with nil provider maps should produce nil
+	base := config.Config{}
+	overlay := config.Config{}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if merged.Providers != nil {
+		t.Error("expected nil Providers when both are nil")
+	}
+}
+
+func TestMergeProviders_EmptyOverlayPreservesBase(t *testing.T) {
+	// This is the actual bug scenario: Viper defaults create providers with
+	// only DefaultModel set (no APIKey). These get merged with the embedded
+	// config (which has real API keys). The merge must preserve base keys.
+	enabled := true
+	maxTokens := 128000
+	timeout := "60s"
+
+	base := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {
+				Enabled:         &enabled,
+				DefaultModel:    "gpt-5.2",
+				APIKey:          "sk-real-openai-key",
+				MaxOutputTokens: &maxTokens,
+				Timeout:         &timeout,
+			},
+			"anthropic": {
+				Enabled:      &enabled,
+				DefaultModel: "claude-sonnet-4-5",
+				APIKey:       "sk-real-anthropic-key",
+			},
+		},
+	}
+	// Overlay simulates Viper defaults: only model is set, everything else is zero
+	overlay := config.Config{
+		Providers: map[string]config.ProviderConfig{
+			"openai": {
+				DefaultModel: "gpt-5.2",
+			},
+			"anthropic": {
+				DefaultModel: "claude-sonnet-4-5",
+			},
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	// API keys must be preserved from base
+	if merged.Providers["openai"].APIKey != "sk-real-openai-key" {
+		t.Errorf("expected openai APIKey 'sk-real-openai-key' from base, got %q", merged.Providers["openai"].APIKey)
+	}
+	if merged.Providers["anthropic"].APIKey != "sk-real-anthropic-key" {
+		t.Errorf("expected anthropic APIKey 'sk-real-anthropic-key' from base, got %q", merged.Providers["anthropic"].APIKey)
+	}
+
+	// Enabled, MaxOutputTokens, Timeout should also be preserved from base
+	if merged.Providers["openai"].Enabled == nil || !*merged.Providers["openai"].Enabled {
+		t.Error("expected openai Enabled to be preserved from base")
+	}
+	if merged.Providers["openai"].MaxOutputTokens == nil || *merged.Providers["openai"].MaxOutputTokens != 128000 {
+		t.Error("expected openai MaxOutputTokens 128000 to be preserved from base")
+	}
+	if merged.Providers["openai"].Timeout == nil || *merged.Providers["openai"].Timeout != "60s" {
+		t.Error("expected openai Timeout '60s' to be preserved from base")
+	}
+}
