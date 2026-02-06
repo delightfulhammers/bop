@@ -507,7 +507,45 @@ func mergeProviders(base, overlay map[string]ProviderConfig) map[string]Provider
 		result[key] = value
 	}
 	for key, value := range overlay {
-		result[key] = value
+		if existing, ok := result[key]; ok {
+			result[key] = mergeProvider(existing, value)
+		} else {
+			result[key] = value
+		}
+	}
+	return result
+}
+
+// mergeProvider performs field-level merge of two ProviderConfigs.
+// Only non-zero fields from the overlay override the base.
+func mergeProvider(base, overlay ProviderConfig) ProviderConfig {
+	result := base
+	if overlay.Enabled != nil {
+		result.Enabled = overlay.Enabled
+	}
+	if overlay.DefaultModel != "" {
+		result.DefaultModel = overlay.DefaultModel
+	}
+	if overlay.Model != "" {
+		result.Model = overlay.Model
+	}
+	if overlay.APIKey != "" {
+		result.APIKey = overlay.APIKey
+	}
+	if overlay.MaxOutputTokens != nil {
+		result.MaxOutputTokens = overlay.MaxOutputTokens
+	}
+	if overlay.Timeout != nil {
+		result.Timeout = overlay.Timeout
+	}
+	if overlay.MaxRetries != nil {
+		result.MaxRetries = overlay.MaxRetries
+	}
+	if overlay.InitialBackoff != nil {
+		result.InitialBackoff = overlay.InitialBackoff
+	}
+	if overlay.MaxBackoff != nil {
+		result.MaxBackoff = overlay.MaxBackoff
 	}
 	return result
 }
