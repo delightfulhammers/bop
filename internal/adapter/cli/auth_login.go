@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/delightfulhammers/bop/internal/auth"
+	"github.com/delightfulhammers/bop/internal/browser"
 )
 
 func newLoginCommand(deps AuthDependencies) *cobra.Command {
@@ -56,6 +57,15 @@ func runLogin(cmd *cobra.Command, deps AuthDependencies, force bool) error {
 			_, _ = fmt.Fprintf(out, "\nTo authenticate, visit:\n")
 			_, _ = fmt.Fprintf(out, "  %s\n\n", verificationURI)
 			_, _ = fmt.Fprintf(out, "And enter code: %s\n\n", userCode)
+
+			switch err := browser.OpenURL(verificationURI); {
+			case err == nil:
+				_, _ = fmt.Fprintf(out, "Attempting to open the URL in your browser...\n\n")
+			case errors.Is(err, browser.ErrSSHSession):
+				_, _ = fmt.Fprintf(out, "(SSH session detected - please open the URL manually)\n\n")
+			default:
+				_, _ = fmt.Fprintf(out, "(Could not open browser automatically - please open the URL manually)\n\n")
+			}
 		},
 		OnPolling: func(attempt int) {
 			if !pollingStarted {
