@@ -65,7 +65,7 @@ func runLogin(cmd *cobra.Command, deps AuthDependencies, force bool) error {
 				// Silently ignore other browser errors (e.g., no display server) -
 				// the URL is already printed for manual use.
 			} else {
-				_, _ = fmt.Fprintf(out, "A browser window has been opened for you.\n\n")
+				_, _ = fmt.Fprintf(out, "Attempting to open the URL in your browser...\n\n")
 			}
 		},
 		OnPolling: func(attempt int) {

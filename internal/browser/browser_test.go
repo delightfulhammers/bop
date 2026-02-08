@@ -62,17 +62,28 @@ func TestIsSSHSessionWith(t *testing.T) {
 }
 
 func TestOpenURLWith(t *testing.T) {
-	t.Run("returns ErrSSHSession when in SSH session", func(t *testing.T) {
-		isSSH := func() bool { return true }
-		run := func(name string, args ...string) error { return nil }
+	noSSH := func() bool { return false }
+	inSSH := func() bool { return true }
+	noopRunner := func(name string, args ...string) error { return nil }
 
-		err := OpenURLWith("https://github.com/login/device", isSSH, run)
+	t.Run("returns ErrSSHSession when in SSH session", func(t *testing.T) {
+		err := OpenURLWith("https://github.com/login/device", "darwin", inSSH, noopRunner)
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, ErrSSHSession))
 	})
 
-	t.Run("calls command runner when not in SSH session", func(t *testing.T) {
-		isSSH := func() bool { return false }
+	t.Run("does not call runner when in SSH session", func(t *testing.T) {
+		called := false
+		run := func(name string, args ...string) error {
+			called = true
+			return nil
+		}
+
+		_ = OpenURLWith("https://github.com/login/device", "darwin", inSSH, run)
+		assert.False(t, called, "command runner should not be called in SSH session")
+	})
+
+	t.Run("calls command runner with correct args on darwin", func(t *testing.T) {
 		var calledName string
 		var calledArgs []string
 		run := func(name string, args ...string) error {
@@ -81,39 +92,131 @@ func TestOpenURLWith(t *testing.T) {
 			return nil
 		}
 
-		err := OpenURLWith("https://github.com/login/device", isSSH, run)
+		err := OpenURLWith("https://github.com/login/device", "darwin", noSSH, run)
 		require.NoError(t, err)
-		assert.NotEmpty(t, calledName, "expected a command to be called")
-		assert.Contains(t, calledArgs, "https://github.com/login/device")
+		assert.Equal(t, "open", calledName)
+		assert.Equal(t, []string{"https://github.com/login/device"}, calledArgs)
+	})
+
+	t.Run("calls command runner with correct args on linux", func(t *testing.T) {
+		var calledName string
+		var calledArgs []string
+		run := func(name string, args ...string) error {
+			calledName = name
+			calledArgs = args
+			return nil
+		}
+
+		err := OpenURLWith("https://github.com/login/device", "linux", noSSH, run)
+		require.NoError(t, err)
+		assert.Equal(t, "xdg-open", calledName)
+		assert.Equal(t, []string{"https://github.com/login/device"}, calledArgs)
+	})
+
+	t.Run("calls rundll32 on windows to avoid cmd shell injection", func(t *testing.T) {
+		var calledName string
+		var calledArgs []string
+		run := func(name string, args ...string) error {
+			calledName = name
+			calledArgs = args
+			return nil
+		}
+
+		err := OpenURLWith("https://github.com/login/device?code=ABC", "windows", noSSH, run)
+		require.NoError(t, err)
+		assert.Equal(t, "rundll32", calledName)
+		assert.Equal(t, []string{"url.dll,FileProtocolHandler", "https://github.com/login/device?code=ABC"}, calledArgs)
+	})
+
+	t.Run("returns error for unsupported platform", func(t *testing.T) {
+		err := OpenURLWith("https://example.com", "plan9", noSSH, noopRunner)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrUnsupportedOS))
+		assert.Contains(t, err.Error(), "plan9")
 	})
 
 	t.Run("propagates command runner errors", func(t *testing.T) {
-		isSSH := func() bool { return false }
 		expectedErr := errors.New("command not found")
 		run := func(name string, args ...string) error { return expectedErr }
 
-		err := OpenURLWith("https://github.com/login/device", isSSH, run)
+		err := OpenURLWith("https://github.com/login/device", "darwin", noSSH, run)
 		require.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 	})
 
-	t.Run("does not call runner when in SSH session", func(t *testing.T) {
-		isSSH := func() bool { return true }
-		called := false
-		run := func(name string, args ...string) error {
-			called = true
-			return nil
-		}
+	t.Run("rejects non-http/https URLs", func(t *testing.T) {
+		err := OpenURLWith("file:///etc/passwd", "darwin", noSSH, noopRunner)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidURL))
+	})
 
-		_ = OpenURLWith("https://github.com/login/device", isSSH, run)
-		assert.False(t, called, "command runner should not be called in SSH session")
+	t.Run("rejects javascript scheme", func(t *testing.T) {
+		err := OpenURLWith("javascript:alert(1)", "darwin", noSSH, noopRunner)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidURL))
+	})
+
+	t.Run("rejects empty scheme", func(t *testing.T) {
+		err := OpenURLWith("not-a-url", "darwin", noSSH, noopRunner)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidURL))
+	})
+
+	t.Run("accepts http URL", func(t *testing.T) {
+		err := OpenURLWith("http://localhost:8080/callback", "darwin", noSSH, noopRunner)
+		require.NoError(t, err)
+	})
+
+	t.Run("accepts https URL", func(t *testing.T) {
+		err := OpenURLWith("https://github.com/login/device", "darwin", noSSH, noopRunner)
+		require.NoError(t, err)
 	})
 }
 
-func TestBrowserCommand(t *testing.T) {
-	// browserCommand is platform-dependent, so we just verify it returns something
-	// on the current platform (which must be darwin, linux, or windows for CI)
-	name, args := browserCommand("https://example.com")
-	assert.NotEmpty(t, name, "expected a browser command on supported platform")
-	assert.NotEmpty(t, args, "expected browser command args")
+func TestBrowserCommandFor(t *testing.T) {
+	t.Run("darwin uses open", func(t *testing.T) {
+		name, args := browserCommandFor("darwin", "https://example.com")
+		assert.Equal(t, "open", name)
+		assert.Equal(t, []string{"https://example.com"}, args)
+	})
+
+	t.Run("linux uses xdg-open", func(t *testing.T) {
+		name, args := browserCommandFor("linux", "https://example.com")
+		assert.Equal(t, "xdg-open", name)
+		assert.Equal(t, []string{"https://example.com"}, args)
+	})
+
+	t.Run("windows uses rundll32 to avoid shell injection", func(t *testing.T) {
+		name, args := browserCommandFor("windows", "https://example.com?a=1&b=2")
+		assert.Equal(t, "rundll32", name)
+		assert.Equal(t, []string{"url.dll,FileProtocolHandler", "https://example.com?a=1&b=2"}, args)
+	})
+
+	t.Run("unsupported OS returns empty", func(t *testing.T) {
+		name, args := browserCommandFor("plan9", "https://example.com")
+		assert.Empty(t, name)
+		assert.Nil(t, args)
+	})
+}
+
+func TestValidateURL(t *testing.T) {
+	t.Run("accepts https", func(t *testing.T) {
+		assert.NoError(t, validateURL("https://github.com/login/device"))
+	})
+
+	t.Run("accepts http", func(t *testing.T) {
+		assert.NoError(t, validateURL("http://localhost:8080"))
+	})
+
+	t.Run("rejects file scheme", func(t *testing.T) {
+		err := validateURL("file:///etc/passwd")
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidURL))
+	})
+
+	t.Run("rejects empty scheme", func(t *testing.T) {
+		err := validateURL("no-scheme")
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidURL))
+	})
 }
