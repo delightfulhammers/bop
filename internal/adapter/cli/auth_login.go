@@ -58,14 +58,13 @@ func runLogin(cmd *cobra.Command, deps AuthDependencies, force bool) error {
 			_, _ = fmt.Fprintf(out, "  %s\n\n", verificationURI)
 			_, _ = fmt.Fprintf(out, "And enter code: %s\n\n", userCode)
 
-			if err := browser.OpenURL(verificationURI); err != nil {
-				if errors.Is(err, browser.ErrSSHSession) {
-					_, _ = fmt.Fprintf(out, "(SSH session detected - please open the URL manually)\n\n")
-				}
-				// Silently ignore other browser errors (e.g., no display server) -
-				// the URL is already printed for manual use.
-			} else {
+			switch err := browser.OpenURL(verificationURI); {
+			case err == nil:
 				_, _ = fmt.Fprintf(out, "Attempting to open the URL in your browser...\n\n")
+			case errors.Is(err, browser.ErrSSHSession):
+				_, _ = fmt.Fprintf(out, "(SSH session detected - please open the URL manually)\n\n")
+			default:
+				_, _ = fmt.Fprintf(out, "(Could not open browser automatically - please open the URL manually)\n\n")
 			}
 		},
 		OnPolling: func(attempt int) {
