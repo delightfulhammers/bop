@@ -82,13 +82,6 @@ func run() error {
 		ReviewManager:      reviewManager,
 	})
 
-	// Create legacy session-based service (for M3 write tools, currently unused).
-	triageService := triage.NewService(triage.ServiceDeps{
-		ReviewRepo:   nil,
-		GitHubClient: nil,
-		SessionStore: nil,
-	})
-
 	// Load embedded config as baseline (provides sensible defaults).
 	cfg, err := config.LoadEmbedded()
 	if err != nil {
@@ -134,9 +127,6 @@ func run() error {
 	basePromptBuilder := review.NewEnhancedPromptBuilder()
 	personaPromptBuilder := review.NewPersonaPromptBuilder(basePromptBuilder)
 
-	// No-op analytics emitter (platform telemetry removed).
-	var analyticsEmitter nopAnalyticsEmitter
-
 	// Create branch/PR reviewer if direct providers are available.
 	// If not available, the server will fall back to per-request creation using
 	// the factory (which may use sampling if the client supports it).
@@ -150,7 +140,6 @@ func run() error {
 			ReviewerRegistry:     reviewerRegistry,
 			PersonaPromptBuilder: personaPromptBuilder,
 			SeedGenerator:        determinism.GenerateSeed,
-			Analytics:            analyticsEmitter,
 		})
 		branchReviewer = orchestrator
 		prReviewer = orchestrator
@@ -159,7 +148,6 @@ func run() error {
 	// Create and configure the MCP server.
 	server := mcpadapter.NewServer(mcpadapter.ServerDeps{
 		PRService:            prService,
-		TriageService:        triageService,
 		BranchReviewer:       branchReviewer,
 		PRReviewer:           prReviewer,
 		ProviderFactory:      providerFactory,
@@ -168,7 +156,6 @@ func run() error {
 		ReviewerRegistry:     reviewerRegistry,
 		PersonaPromptBuilder: personaPromptBuilder,
 		SeedGenerator:        determinism.GenerateSeed,
-		Analytics:            analyticsEmitter,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).
@@ -180,16 +167,3 @@ func defaultConfigPaths() []string {
 	home, _ := os.UserHomeDir()
 	return []string{".", home + "/.config/bop"}
 }
-
-// nopAnalyticsEmitter is a no-op implementation of review.AnalyticsEmitter.
-type nopAnalyticsEmitter struct{}
-
-func (nopAnalyticsEmitter) EmitReviewStarted(_ context.Context, _ review.AnalyticsEventData) {}
-func (nopAnalyticsEmitter) EmitReviewCompleted(_ context.Context, _ review.AnalyticsEventData, _ review.AnalyticsResult) {
-}
-func (nopAnalyticsEmitter) EmitReviewFailed(_ context.Context, _ review.AnalyticsEventData, _ string) {
-}
-func (nopAnalyticsEmitter) EmitFindingsPosted(_ context.Context, _ review.AnalyticsEventData, _ int) {
-}
-
-var _ review.AnalyticsEmitter = nopAnalyticsEmitter{}

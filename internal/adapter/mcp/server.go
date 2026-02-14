@@ -59,9 +59,6 @@ type ServerDeps struct {
 	// PRService is the PR-based triage service (M2 scope).
 	PRService *triage.PRService
 
-	// TriageService is the session-based service (deprecated, for M3 write ops).
-	TriageService triage.TriageService
-
 	// PRReviewer invokes code reviews on GitHub PRs.
 	// Optional: only required for review_pr tool.
 	PRReviewer PRReviewer
@@ -101,10 +98,6 @@ type ServerDeps struct {
 	// SeedGenerator generates deterministic seeds for reproducible reviews.
 	// Required for per-request orchestrators.
 	SeedGenerator review.SeedFunc
-
-	// Analytics emits usage telemetry for product analytics.
-	// Optional: when nil, no analytics are emitted.
-	Analytics review.AnalyticsEmitter
 }
 
 // Server wraps the MCP server and provides triage tools.

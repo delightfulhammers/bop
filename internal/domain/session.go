@@ -7,8 +7,7 @@ import (
 )
 
 // LocalSession represents a branch-based review session for local development.
-// Unlike TriageSession (which is PR-centric), LocalSession tracks reviews
-// across a repository/branch pair for deduplication and history.
+// It tracks reviews across a repository/branch pair for deduplication and history.
 type LocalSession struct {
 	ID           string            `json:"id"`
 	Repository   string            `json:"repository"`   // Normalized remote URL (e.g., "github.com/owner/repo")

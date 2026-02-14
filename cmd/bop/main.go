@@ -312,8 +312,7 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		ThemeExtractor:         themeExtractor,
 		ProviderMaxTokens:      providerMaxTokens,
 		MaxConcurrentReviewers: cfg.Review.MaxConcurrentReviewers,
-		RemoteGitHubClient:     remoteGitHubClient,    // Phase 3.5: Remote PR review
-		Analytics:              nopAnalyticsEmitter{}, // No-op: platform analytics removed
+		RemoteGitHubClient:     remoteGitHubClient, // Phase 3.5: Remote PR review
 	})
 
 	// Phase 3.5b: Create session manager for local session storage
@@ -1198,18 +1197,3 @@ func (a *geminiLLMAdapter) Call(ctx context.Context, systemPrompt, userPrompt st
 	}
 	return resp.Text, resp.TokensIn, resp.TokensOut, resp.Cost, nil
 }
-
-// nopAnalyticsEmitter is a no-op implementation of review.AnalyticsEmitter.
-// Used when platform analytics has been removed.
-type nopAnalyticsEmitter struct{}
-
-func (nopAnalyticsEmitter) EmitReviewStarted(_ context.Context, _ review.AnalyticsEventData) {}
-func (nopAnalyticsEmitter) EmitReviewCompleted(_ context.Context, _ review.AnalyticsEventData, _ review.AnalyticsResult) {
-}
-func (nopAnalyticsEmitter) EmitReviewFailed(_ context.Context, _ review.AnalyticsEventData, _ string) {
-}
-func (nopAnalyticsEmitter) EmitFindingsPosted(_ context.Context, _ review.AnalyticsEventData, _ int) {
-}
-
-// Compile-time interface check for analytics no-op
-var _ review.AnalyticsEmitter = nopAnalyticsEmitter{}

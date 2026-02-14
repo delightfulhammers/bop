@@ -858,7 +858,6 @@ func (s *Server) createPerRequestReviewer(req *mcp.CallToolRequest) (Reviewer, e
 		ReviewerRegistry:     s.deps.ReviewerRegistry,
 		PersonaPromptBuilder: s.deps.PersonaPromptBuilder,
 		SeedGenerator:        s.deps.SeedGenerator,
-		Analytics:            s.deps.Analytics,
 	})
 
 	return orchestrator, nil
@@ -906,7 +905,6 @@ func (s *Server) createPerRequestReviewerWithGit(req *mcp.CallToolRequest, gitEn
 		PersonaPromptBuilder: s.deps.PersonaPromptBuilder,
 		SeedGenerator:        s.deps.SeedGenerator,
 		RepoDir:              repoDir, // Set the repo dir for context gathering
-		Analytics:            s.deps.Analytics,
 	})
 
 	return orchestrator, nil
