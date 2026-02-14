@@ -12,7 +12,7 @@ import (
 
 // prCommand creates the 'review pr' subcommand for reviewing GitHub PRs remotely.
 // This allows reviewing any PR without needing a local clone.
-func prCommand(prReviewer PRReviewer, gitRemoteResolver GitRemoteResolver, authDeps AuthDependencies, defaultOutput, defaultInstructions string, defaultActions DefaultReviewActions, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
+func prCommand(prReviewer PRReviewer, gitRemoteResolver GitRemoteResolver, defaultOutput, defaultInstructions string, defaultActions DefaultReviewActions, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
 	var outputDir string
 	var customInstructions string
 	var noArchitecture bool
@@ -66,15 +66,6 @@ Examples:
   bop review pr owner/repo#1 --post --output ./review-output`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Auth check for platform mode
-			checker, err := authDeps.RequireAuth()
-			if err != nil {
-				return err
-			}
-			if checker != nil && !checker.CanReviewCode() {
-				return fmt.Errorf("code review not available on your plan")
-			}
-
 			identifier := args[0]
 			ctx := cmd.Context()
 
@@ -106,12 +97,6 @@ Examples:
 				if err != nil {
 					return err
 				}
-			}
-
-			// Build RepoAccessChecker from entitlements (nil in legacy mode)
-			var repoAccessChecker review.RepoAccessChecker
-			if checker != nil {
-				repoAccessChecker = checker
 			}
 
 			// Use config instructions as fallback if --instructions flag not provided
@@ -179,8 +164,7 @@ Examples:
 					ConfidenceLow:      resolvedConfLow,
 				},
 
-				Reviewers:         reviewers,
-				RepoAccessChecker: repoAccessChecker,
+				Reviewers: reviewers,
 			})
 			if err != nil {
 				return err

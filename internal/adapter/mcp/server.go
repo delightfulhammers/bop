@@ -2,25 +2,12 @@ package mcp
 
 import (
 	"context"
-	"errors"
-	"log"
-	"time"
 
 	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
-	"github.com/delightfulhammers/bop/internal/auth"
 	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-)
-
-// Auth-related errors for platform mode.
-var (
-	// ErrNotAuthenticated indicates the user hasn't logged in with the platform.
-	ErrNotAuthenticated = errors.New("not authenticated - run 'bop auth login' first")
-
-	// ErrAuthExpired indicates the authentication token has expired.
-	ErrAuthExpired = errors.New("authentication expired - run 'bop auth login' to re-authenticate")
 )
 
 // PRReviewer defines the interface for invoking code reviews on GitHub PRs.
@@ -115,41 +102,15 @@ type ServerDeps struct {
 	// Required for per-request orchestrators.
 	SeedGenerator review.SeedFunc
 
-	// === Platform Authentication (Week 14) ===
-
-	// AuthClient is the platform auth-service client (for token refresh).
-	// Optional: only needed if tokens need refreshing.
-	AuthClient *auth.Client
-
-	// TokenStore loads and stores auth tokens.
-	// Optional: only needed for platform authentication.
-	TokenStore *auth.TokenStore
-
-	// PlatformMode indicates if platform authentication is enabled.
-	// When true and auth is invalid, tools may return auth errors.
-	PlatformMode bool
-
-	// === Analytics (Week 15) ===
-
 	// Analytics emits usage telemetry for product analytics.
 	// Optional: when nil, no analytics are emitted.
 	Analytics review.AnalyticsEmitter
-
-	// === Feedback (Week 15) ===
-
-	// FeedbackClient submits user feedback to the platform.
-	// Optional: when nil, submit_feedback tool is not available.
-	FeedbackClient FeedbackClient
 }
 
 // Server wraps the MCP server and provides triage tools.
 type Server struct {
 	mcpServer *mcp.Server
 	deps      ServerDeps
-
-	// auth is the loaded platform authentication context.
-	// May be nil if not in platform mode or user is not logged in.
-	auth *auth.StoredAuth
 }
 
 // NewServer creates a new MCP server with triage tools registered.
@@ -167,150 +128,9 @@ func NewServer(deps ServerDeps) *Server {
 		deps:      deps,
 	}
 
-	// Load platform auth if available (Week 14)
-	s.loadAuth()
-
 	s.registerTools()
 
 	return s
-}
-
-// loadAuth loads the platform authentication context if configured.
-// Called once at server startup. Logs warnings but doesn't fail startup.
-func (s *Server) loadAuth() {
-	if s.deps.TokenStore == nil {
-		return // Not in platform mode
-	}
-
-	stored, err := s.deps.TokenStore.Load()
-	if err != nil {
-		if errors.Is(err, auth.ErrNotLoggedIn) {
-			// Not logged in - this is OK, user will get errors if they try
-			// operations that require auth in platform mode
-			return
-		}
-		// Other errors (corruption, parse failure) - warn user
-		log.Printf("[WARN] Failed to load auth file (corrupt?): %v - try 'bop auth logout' to reset", err)
-		return
-	}
-
-	// Check if token needs refresh
-	if stored.NeedsRefresh() && s.deps.AuthClient != nil {
-		// Validate required fields before attempting refresh
-		if stored.RefreshToken == "" || stored.TenantID == "" {
-			log.Printf("[WARN] Cannot refresh token: missing refresh_token or tenant_id - try 'bop auth logout' then 'bop auth login'")
-		} else {
-			// Try to refresh - best effort, don't fail if it doesn't work
-			ctx := context.Background()
-			newTokens, err := s.deps.AuthClient.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
-			if err != nil {
-				// Log refresh failure for debugging (without exposing tokens)
-				log.Printf("[WARN] Token refresh failed: %v - auth may expire soon", err)
-			} else if newTokens != nil {
-				// Validate ExpiresIn before accepting tokens to avoid zombie tokens
-				// (new access token with old/invalid expiry)
-				if newTokens.ExpiresIn <= 0 {
-					log.Printf("[WARN] Token refresh returned invalid ExpiresIn=%d, treating as refresh failure", newTokens.ExpiresIn)
-				} else {
-					// Capture previous state for rollback on save failure
-					prevAccessToken := stored.AccessToken
-					prevRefreshToken := stored.RefreshToken
-					prevExpiresAt := stored.ExpiresAt
-
-					// Update stored auth with new tokens
-					stored.AccessToken = newTokens.AccessToken
-					// Only update refresh token if provided (some OAuth implementations don't rotate)
-					if newTokens.RefreshToken != "" {
-						stored.RefreshToken = newTokens.RefreshToken
-					}
-					stored.ExpiresAt = time.Now().Add(time.Duration(newTokens.ExpiresIn) * time.Second)
-
-					// Save the refreshed tokens
-					if saveErr := s.deps.TokenStore.Save(stored); saveErr != nil {
-						log.Printf("[ERROR] Failed to save refreshed tokens: %v - reverting to previous state", saveErr)
-						// Revert in-memory state to avoid inconsistency with disk
-						stored.AccessToken = prevAccessToken
-						stored.RefreshToken = prevRefreshToken
-						stored.ExpiresAt = prevExpiresAt
-					}
-				}
-			}
-		}
-	}
-
-	if !stored.IsExpired() {
-		s.auth = stored
-	}
-}
-
-// Auth returns the loaded platform authentication context.
-// Returns nil if not authenticated or not in platform mode.
-func (s *Server) Auth() *auth.StoredAuth {
-	return s.auth
-}
-
-// RequireAuth checks if authentication is required and available.
-// In platform mode, returns an error if user is not authenticated.
-// In legacy mode (non-platform), always returns nil.
-func (s *Server) RequireAuth() error {
-	if !s.deps.PlatformMode {
-		return nil // Legacy mode doesn't require platform auth
-	}
-	if s.auth == nil {
-		return ErrNotAuthenticated
-	}
-	if s.auth.IsExpired() {
-		return ErrAuthExpired
-	}
-	return nil
-}
-
-// UserID returns the authenticated user's ID, or empty string if not authenticated.
-func (s *Server) UserID() string {
-	if s.auth == nil {
-		return ""
-	}
-	return s.auth.User.ID
-}
-
-// TenantID returns the authenticated user's tenant ID, or empty string if not authenticated.
-func (s *Server) TenantID() string {
-	if s.auth == nil {
-		return ""
-	}
-	return s.auth.TenantID
-}
-
-// Entitlements returns an EntitlementChecker for the current auth context.
-// Returns a checker with nil auth if not authenticated (all checks will fail gracefully).
-func (s *Server) Entitlements() *auth.EntitlementChecker {
-	return auth.NewEntitlementChecker(s.auth)
-}
-
-// RequireEntitlement checks authentication and a specific entitlement.
-// Returns nil if the entitlement is granted, error otherwise.
-// In legacy mode (non-platform), always returns nil.
-func (s *Server) RequireEntitlement(entitlement string) error {
-	// In legacy mode, skip all auth and entitlement checks
-	if !s.deps.PlatformMode {
-		return nil
-	}
-	if err := s.RequireAuth(); err != nil {
-		return err
-	}
-	if !s.Entitlements().HasEntitlement(entitlement) {
-		return &EntitlementError{Entitlement: entitlement}
-	}
-	return nil
-}
-
-// EntitlementError indicates a missing entitlement.
-type EntitlementError struct {
-	Entitlement string
-}
-
-func (e *EntitlementError) Error() string {
-	return "feature \"" + e.Entitlement + "\" not available on your plan"
 }
 
 // Run starts the MCP server on stdio transport.
@@ -343,11 +163,6 @@ func (s *Server) registerTools() {
 	s.registerPostFindingsTool()
 	s.registerReviewBranchTool()
 	s.registerReviewFilesTool()
-
-	// Week 15: Feedback tool
-	if s.deps.FeedbackClient != nil {
-		s.registerSubmitFeedbackTool()
-	}
 }
 
 // Tool input/output types for M2 PR-based tools.
