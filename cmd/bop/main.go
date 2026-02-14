@@ -12,10 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/delightfulhammers/bop/internal/adapter/analytics"
 	"github.com/delightfulhammers/bop/internal/adapter/cli"
 	dedupadapter "github.com/delightfulhammers/bop/internal/adapter/dedup"
-	"github.com/delightfulhammers/bop/internal/adapter/feedback"
 	"github.com/delightfulhammers/bop/internal/adapter/git"
 	githubadapter "github.com/delightfulhammers/bop/internal/adapter/github"
 	"github.com/delightfulhammers/bop/internal/adapter/llm/anthropic"
@@ -34,7 +32,6 @@ import (
 	"github.com/delightfulhammers/bop/internal/adapter/store/sqlite"
 	themeadapter "github.com/delightfulhammers/bop/internal/adapter/theme"
 	verifyadapter "github.com/delightfulhammers/bop/internal/adapter/verify"
-	"github.com/delightfulhammers/bop/internal/auth"
 	"github.com/delightfulhammers/bop/internal/config"
 	"github.com/delightfulhammers/bop/internal/determinism"
 	"github.com/delightfulhammers/bop/internal/domain"
@@ -49,10 +46,6 @@ import (
 	"github.com/delightfulhammers/bop/internal/version"
 
 	sessionstore "github.com/delightfulhammers/bop/internal/adapter/session"
-	platformcontracts "github.com/delightfulhammers/platform/contracts/analytics"
-	platformanalytics "github.com/delightfulhammers/platform/pkg/analytics"
-
-	"github.com/google/uuid"
 )
 
 func main() {
@@ -71,30 +64,26 @@ func run() error {
 	// Parse --log-level flag early, before config loading and observability setup.
 	cliLogLevel := parseLogLevelFlag()
 
-	// Load operational config (always works, no auth needed)
-	opConfig := config.LoadOperational()
-
-	// Determine run mode based on platform URL
-	if opConfig.IsLegacyMode {
-		log.Println("[WARN] Legacy mode enabled via BOP_PLATFORM_URL=\"\". " +
-			"This is deprecated and will be removed. Run 'bop auth login' to migrate to platform mode.")
-		return runLegacyMode(ctx, cliLogLevel)
+	// Load embedded config as base (provides sensible defaults for zero-config operation)
+	cfg, err := config.LoadEmbedded()
+	if err != nil {
+		return fmt.Errorf("embedded config load failed: %w", err)
 	}
 
-	// Platform mode is the default
-	return runPlatformMode(ctx, cliLogLevel, opConfig)
-}
-
-// runLegacyMode runs bop with full local config (deprecated escape hatch).
-// This mode loads all configuration from local files and environment variables.
-func runLegacyMode(ctx context.Context, cliLogLevel string) error {
-	cfg, err := config.Load(config.LoaderOptions{
+	// Load local config files as overlay (project-specific overrides)
+	localCfg, err := config.Load(config.LoaderOptions{
 		ConfigPaths: defaultConfigPaths(),
 		FileName:    "bop",
 		EnvPrefix:   "BOP",
 	})
 	if err != nil {
 		return fmt.Errorf("config load failed: %w", err)
+	}
+
+	// Merge: embedded is base, local overlays (local wins on conflicts)
+	cfg, err = config.Merge(cfg, localCfg)
+	if err != nil {
+		return fmt.Errorf("config merge failed: %w", err)
 	}
 
 	// Apply log level overrides
@@ -110,375 +99,7 @@ func runLegacyMode(ctx context.Context, cliLogLevel string) error {
 	return runWithConfig(ctx, cfg)
 }
 
-// runPlatformMode runs bop with platform authentication and config.
-// This is the default mode where config comes from the platform.
-func runPlatformMode(ctx context.Context, cliLogLevel string, opConfig config.OperationalConfig) error {
-	// Load baseline config with defaults (but no local files yet)
-	cfg, err := loadBaselineConfig()
-	if err != nil {
-		return fmt.Errorf("baseline config failed: %w", err)
-	}
-
-	// Apply log level overrides
-	if cliLogLevel != "" {
-		cfg.Observability.Logging.Level = cliLogLevel
-	} else if opConfig.LogLevel != "" {
-		cfg.Observability.Logging.Level = opConfig.LogLevel
-	}
-
-	// Set up auth service URL from operational config
-	cfg.Auth.ServiceURL = opConfig.PlatformURL
-	cfg.Auth.Mode = "platform"
-
-	// Try to load cached auth (don't require login yet - commands may not need it)
-	tokenStore, err := auth.NewTokenStore()
-	if err != nil {
-		log.Printf("[WARN] Failed to initialize token store: %v", err)
-	}
-
-	var storedAuth *auth.StoredAuth
-	var platformConfig map[string]any
-	var entitlements *auth.BopEntitlements
-	var tokenWasExpired bool // Track if token refresh was attempted
-
-	// Try OIDC authentication if running in GitHub Actions.
-	// This must happen before loading stored auth so that OIDC-acquired credentials
-	// are available to all downstream commands (review branch, github-action, etc.).
-	if tokenStore != nil && auth.IsAvailable() {
-		var oidcErr error
-		storedAuth, oidcErr = tryOIDCAuth(ctx, opConfig.PlatformURL, tokenStore)
-		if oidcErr != nil {
-			return oidcErr
-		}
-	}
-
-	// Attempt to load stored auth if not already acquired via OIDC
-	if storedAuth == nil && tokenStore != nil {
-		storedAuth, _ = tokenStore.Load()
-	}
-
-	// Handle token refresh if expired
-	if storedAuth != nil && storedAuth.IsExpired() {
-		tokenWasExpired = true
-		storedAuth = tryRefreshToken(ctx, opConfig.PlatformURL, storedAuth, tokenStore)
-	}
-
-	if storedAuth != nil && !storedAuth.IsExpired() {
-		entitlements = auth.NewBopEntitlements(storedAuth, os.Stderr)
-
-		// Try to fetch platform config (with cache fallback)
-		platformConfig, err = fetchPlatformConfigWithCache(ctx, storedAuth)
-		if err != nil {
-			log.Printf("[WARN] Failed to fetch platform config: %v (using local config)", err)
-		}
-	}
-
-	// Convert platform config to internal config structure
-	if platformConfig != nil {
-		if err := config.ValidatePlatformConfig(platformConfig); err != nil {
-			log.Printf("[WARN] Platform config validation failed: %v (using baseline config)", err)
-		} else {
-			baseCfg := config.ConvertPlatformConfig(platformConfig, storedAuth.Plan)
-			cfg, err = config.MergePlatformConfig(baseCfg, cfg)
-			if err != nil {
-				log.Printf("[WARN] Failed to merge platform config: %v (using baseline config)", err)
-			}
-		}
-	}
-
-	// Determine if user has local-bop-config entitlement
-	hasLocalConfigEntitlement := entitlements != nil && entitlements.CanUseLocalConfig() == nil
-
-	// Load local config and/or env vars if user has entitlement
-	if hasLocalConfigEntitlement {
-		// User has entitlement - load local files and env vars
-		if config.HasLocalConfig() || config.HasConfigEnvVars() {
-			localCfg, err := config.Load(config.LoaderOptions{
-				ConfigPaths: defaultConfigPaths(),
-				FileName:    "bop",
-				EnvPrefix:   "BOP",
-			})
-			if err != nil {
-				log.Printf("[WARN] Failed to load local config: %v", err)
-			} else {
-				merged, mergeErr := config.MergePlatformConfig(cfg, localCfg)
-				if mergeErr != nil {
-					log.Printf("[WARN] Failed to merge local config: %v (using platform config)", mergeErr)
-				} else {
-					cfg = merged
-				}
-			}
-		}
-	} else {
-		// No entitlement - warn about local config or env vars if present
-		if config.HasLocalConfig() {
-			if tokenWasExpired {
-				// Already warned about token expiration in tryRefreshToken
-				log.Printf("[WARN] Local config file (bop.yaml) found but ignored due to expired token.")
-			} else if entitlements == nil {
-				log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
-					"Run 'bop auth login' to authenticate.")
-			} else {
-				log.Printf("[WARN] Local config file (bop.yaml) found but ignored. " +
-					"Local configuration requires Enterprise plan.")
-			}
-		}
-		if config.HasConfigEnvVars() {
-			if tokenWasExpired {
-				// Already warned about token expiration in tryRefreshToken
-				log.Printf("[WARN] Config environment variables ignored due to expired token.")
-			} else if entitlements == nil {
-				// User not logged in - can't verify entitlement
-				log.Printf("[WARN] Config environment variables detected but cannot verify entitlement. " +
-					"Run 'bop auth login' to authenticate. Proceeding with platform defaults.")
-			} else {
-				// User logged in but lacks entitlement
-				log.Printf("[WARN] Config environment variables detected but ignored. " +
-					"Environment-based configuration requires Enterprise plan.")
-			}
-		}
-	}
-
-	// BYOK enforcement for beta users
-	// Beta tier requires users to configure their own API keys
-	if entitlements != nil {
-		hasConfiguredKeys := hasProviderAPIKeys(cfg)
-		if err := entitlements.RequireBYOK(hasConfiguredKeys); err != nil {
-			return err
-		}
-	}
-
-	return runWithConfig(ctx, cfg)
-}
-
-// hasProviderAPIKeys returns true if any LLM provider has an API key configured.
-// This is used for BYOK (bring your own keys) enforcement for beta tier users.
-//
-// This function checks both config values AND environment variables directly,
-// matching the behavior of getAPIKey() which providers use at construction time.
-// Environment variables are allowed for BYOK even without the local-bop-config
-// entitlement because beta users need a way to supply their API keys.
-func hasProviderAPIKeys(cfg config.Config) bool {
-	// Check each known provider using the same logic as getAPIKey():
-	// config value first, then environment variable fallback
-	providerEnvVars := map[string]string{
-		"anthropic": "ANTHROPIC_API_KEY",
-		"openai":    "OPENAI_API_KEY",
-		"gemini":    "GEMINI_API_KEY",
-	}
-
-	for provider, envVar := range providerEnvVars {
-		// Check config first
-		if providerCfg, ok := cfg.Providers[provider]; ok && providerCfg.APIKey != "" {
-			return true
-		}
-		// Fall back to env var (same as getAPIKey does)
-		if os.Getenv(envVar) != "" {
-			return true
-		}
-	}
-
-	// Ollama doesn't need API key but does need explicit enablement or OLLAMA_HOST
-	if ollama, ok := cfg.Providers["ollama"]; ok && ollama.Enabled != nil && *ollama.Enabled {
-		return true
-	}
-	if os.Getenv("OLLAMA_HOST") != "" {
-		return true
-	}
-
-	return false
-}
-
-// loadBaselineConfig loads the embedded default configuration.
-// This is the starting point for platform mode before merging platform config.
-//
-// The embedded config provides sensible defaults (reviewers, providers, thresholds)
-// that enable bop to work out of the box without any configuration files.
-// This is NOT gated by entitlements since it's controlled by bop maintainers.
-//
-// Note on environment variable handling:
-//   - ${VAR} placeholders in embedded config ARE expanded (e.g., ${ANTHROPIC_API_KEY}).
-//     This enables zero-config operation where users just set API key env vars.
-//   - Operational env vars (BOP_LOG_LEVEL, BOP_PLATFORM_URL) are handled separately
-//     by LoadOperational() before this function is called.
-//   - Reviewer/model overrides from local config files require the local-bop-config
-//     entitlement (enterprise tier, for air-gapped environments).
-func loadBaselineConfig() (config.Config, error) {
-	return config.LoadEmbedded()
-}
-
-// fetchPlatformConfigWithCache fetches platform config, using cache if available.
-// Config is fetched from config-service (not auth-service) per clean architecture.
-func fetchPlatformConfigWithCache(ctx context.Context, stored *auth.StoredAuth) (map[string]any, error) {
-	// Try cache first (must match both tenant and tier to prevent stale config)
-	cache, err := config.NewConfigCache()
-	if err == nil {
-		if cached, err := cache.Load(stored.TenantID, stored.Plan); err == nil && cached != nil {
-			return cached.Config, nil
-		}
-	}
-
-	// Get config service URL (separate from auth-service)
-	configServiceURL := config.GetConfigServiceURL()
-	if configServiceURL == "" {
-		// Empty URL can mean: (1) legacy mode, or (2) custom platform URL without
-		// explicit config service URL (security protection against token leakage)
-		if config.IsLegacyEscapeHatch() {
-			return nil, fmt.Errorf("config service disabled (legacy mode)")
-		}
-		return nil, fmt.Errorf("config service URL required when using custom platform URL (set %s)", config.ConfigServiceURLEnvVar)
-	}
-
-	// Fetch from config-service
-	client, err := auth.NewClient(auth.ClientConfig{
-		BaseURL:   configServiceURL,
-		ProductID: "bop",
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.FetchProductConfig(ctx, stored.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-
-	// Validate before caching to prevent caching invalid config
-	if err := config.ValidatePlatformConfig(resp.Config); err != nil {
-		return nil, fmt.Errorf("platform config validation failed: %w", err)
-	}
-
-	// Cache the validated response using stored.Plan for consistent keying
-	// (Load uses stored.Plan, so Save must too for cache hits)
-	if cache != nil {
-		_ = cache.Save(resp.Config, stored.Plan, stored.TenantID)
-	}
-
-	return resp.Config, nil
-}
-
-// tryOIDCAuth attempts GitHub Actions OIDC authentication.
-// Returns (nil, nil) only when BOP_TENANT_ID is empty AND the platform returns 401
-// (tenant not configured for this repository owner). This allows fallback to stored auth.
-// Returns (nil, error) for all other failures (network, server errors, explicit tenant mismatch).
-// Returns (auth, nil) on success. The token is saved to the token store so downstream
-// commands can use it via RequireAuth().
-//
-// When BOP_TENANT_ID is set, it is passed to the platform for explicit tenant selection.
-// When BOP_TENANT_ID is omitted, the platform derives the tenant from the OIDC token's
-// repository_owner claim. The platform enforces a unique mapping from (product, provider,
-// repository_owner) to tenant, so derivation is unambiguous.
-func tryOIDCAuth(ctx context.Context, platformURL string, tokenStore *auth.TokenStore) (*auth.StoredAuth, error) {
-	tenantID := os.Getenv("BOP_TENANT_ID")
-
-	client, err := auth.NewClient(auth.ClientConfig{
-		BaseURL:   platformURL,
-		ProductID: "bop",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("OIDC auth: failed to create client: %w", err)
-	}
-
-	oidc := auth.NewGitHubActionsOIDC(client, platformURL)
-	result, err := oidc.Authenticate(ctx, tenantID)
-	if err != nil {
-		if tenantID == "" && auth.IsTenantNotConfigured(err) {
-			// No explicit tenant_id and platform says no tenant is configured
-			// for this repository owner. Fall back to stored auth.
-			log.Printf("[WARN] GitHub Actions OIDC: %v (set BOP_TENANT_ID or configure OIDC trust)", err)
-			return nil, nil
-		}
-		return nil, fmt.Errorf("OIDC authentication failed: %w", err)
-	}
-
-	// Handle skip response - the platform returns this when auth succeeds but
-	// the actor doesn't have the right entitlements for this operation.
-	// Return a typed error so callers can handle it appropriately (e.g., post PR comment).
-	if result.Skip != nil {
-		// Use %q to escape control characters and prevent log injection
-		log.Printf("[INFO] Platform returned skip: %q", result.Skip.Reason)
-		return nil, &auth.ErrAuthSkipped{Info: result.Skip}
-	}
-
-	// At this point we should have valid auth data
-	if result.StoredAuth == nil {
-		return nil, fmt.Errorf("OIDC authentication returned empty credentials")
-	}
-
-	// Save to token store so RequireAuth() and other commands can find it
-	if err := tokenStore.Save(result.StoredAuth); err != nil {
-		log.Printf("[WARN] Failed to cache OIDC credentials: %v", err)
-		// Continue anyway - we have valid auth in memory
-	}
-
-	log.Printf("[INFO] Authenticated via GitHub Actions OIDC (tenant: %s, user: %s)",
-		result.StoredAuth.TenantID, result.StoredAuth.User.GitHubLogin)
-
-	return result.StoredAuth, nil
-}
-
-// tryRefreshToken attempts to refresh an expired access token.
-// Returns the refreshed auth on success, or nil if refresh fails.
-// On success, the new token is saved to the token store.
-func tryRefreshToken(ctx context.Context, platformURL string, stored *auth.StoredAuth, tokenStore *auth.TokenStore) *auth.StoredAuth {
-	if stored.RefreshToken == "" {
-		log.Printf("[WARN] Access token expired and no refresh token available. Run 'bop auth login' to re-authenticate.")
-		return nil
-	}
-
-	client, err := auth.NewClient(auth.ClientConfig{
-		BaseURL:   platformURL,
-		ProductID: "bop",
-	})
-	if err != nil {
-		log.Printf("[WARN] Access token expired and refresh failed: %v. Run 'bop auth login' to re-authenticate.", err)
-		return nil
-	}
-
-	resp, err := client.RefreshToken(ctx, stored.TenantID, stored.RefreshToken)
-	if err != nil {
-		log.Printf("[WARN] Access token expired and refresh failed: %v. Run 'bop auth login' to re-authenticate.", err)
-		return nil
-	}
-
-	// Calculate expiry time from ExpiresIn (seconds)
-	expiresAt := time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
-
-	// Fetch updated user info to get current entitlements
-	// (entitlements may have changed since original login)
-	// This is a hard requirement - we can't use stale entitlements for security reasons
-	userResp, err := client.GetCurrentUser(ctx, resp.AccessToken)
-	if err != nil {
-		log.Printf("[WARN] Token refreshed but failed to verify entitlements: %v. Run 'bop auth login' to re-authenticate.", err)
-		return nil
-	}
-
-	// Build new stored auth from refresh response
-	newAuth := &auth.StoredAuth{
-		Version:      stored.Version,
-		AccessToken:  resp.AccessToken,
-		RefreshToken: resp.RefreshToken,
-		ExpiresAt:    expiresAt,
-		User:         stored.User, // Preserve user display info
-		TenantID:     stored.TenantID,
-		Plan:         userResp.PlanID,
-		Entitlements: userResp.Entitlements,
-	}
-
-	// Save refreshed token
-	if tokenStore != nil {
-		if err := tokenStore.Save(newAuth); err != nil {
-			log.Printf("[WARN] Failed to save refreshed token: %v", err)
-			// Continue anyway - we have a valid token in memory
-		}
-	}
-
-	log.Printf("[INFO] Access token refreshed successfully")
-	return newAuth
-}
-
 // runWithConfig runs the CLI with the given configuration.
-// This is the common path for both legacy and platform modes.
 func runWithConfig(ctx context.Context, cfg config.Config) error {
 
 	repoDir := cfg.Git.RepositoryDir
@@ -670,9 +291,6 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		remoteGitHubClient = githubadapter.NewClient(githubToken)
 	}
 
-	// Build analytics emitter for usage telemetry (Week 15)
-	analyticsEmitter := buildAnalyticsEmitter(cfg.Analytics)
-
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git:                    gitEngine,
 		Providers:              providers,
@@ -694,8 +312,8 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		ThemeExtractor:         themeExtractor,
 		ProviderMaxTokens:      providerMaxTokens,
 		MaxConcurrentReviewers: cfg.Review.MaxConcurrentReviewers,
-		RemoteGitHubClient:     remoteGitHubClient,                 // Phase 3.5: Remote PR review
-		Analytics:              analyticsAdapter{analyticsEmitter}, // Week 15: Analytics
+		RemoteGitHubClient:     remoteGitHubClient,    // Phase 3.5: Remote PR review
+		Analytics:              nopAnalyticsEmitter{}, // No-op: platform analytics removed
 	})
 
 	// Phase 3.5b: Create session manager for local session storage
@@ -713,20 +331,12 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		findingsPoster = post.NewService(remoteGitHubClient, githubPoster)
 	}
 
-	// Initialize auth components for platform authentication (Week 14)
-	authDeps := buildAuthDependencies(cfg.Auth)
-
-	// Initialize feedback client for platform feedback (Week 15)
-	feedbackClient := buildFeedbackClient(cfg.Auth, authDeps, version.Value())
-
 	root := cli.NewRootCommand(cli.Dependencies{
 		BranchReviewer:      orchestrator,
 		PRReviewer:          orchestrator, // Phase 3.5: Remote PR review
 		GitRemoteResolver:   gitEngine,    // Enables "bop review pr 123" shorthand
 		FindingsPoster:      findingsPoster,
 		SessionManager:      sessionManager,
-		AuthDeps:            authDeps,       // Week 14: Platform authentication
-		FeedbackClient:      feedbackClient, // Week 15: Feedback
 		DefaultOutput:       cfg.Output.Directory,
 		DefaultRepo:         repoName,
 		DefaultInstructions: cfg.Review.Instructions,
@@ -751,8 +361,7 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 			ConfidenceMedium:   cfg.Verification.Confidence.Medium,
 			ConfidenceLow:      cfg.Verification.Confidence.Low,
 		},
-		Version:     version.Value(),
-		PlatformURL: config.GetPlatformURL(),
+		Version: version.Value(),
 	})
 
 	if err := root.ExecuteContext(ctx); err != nil {
@@ -835,108 +444,6 @@ type observabilityComponents struct {
 	logger  llmhttp.Logger
 	metrics llmhttp.Metrics
 	pricing llmhttp.Pricing
-}
-
-// buildAnalyticsEmitter creates an analytics emitter based on configuration.
-// Returns a NopEmitter if analytics is disabled or configuration is incomplete.
-// This enables graceful degradation: analytics won't be emitted if not configured.
-func buildAnalyticsEmitter(cfg config.AnalyticsConfig) analytics.Emitter {
-	// Skip analytics setup if disabled (nil or explicit false)
-	if cfg.Enabled == nil || !*cfg.Enabled {
-		return analytics.NopEmitter{}
-	}
-
-	// Analytics requires a service URL
-	if cfg.ServiceURL == "" {
-		log.Println("[WARN] Analytics enabled but analytics.serviceUrl not configured - analytics disabled")
-		return analytics.NopEmitter{}
-	}
-
-	// Create platform HTTP emitter
-	var opts []platformanalytics.EmitterOption
-
-	// Use service key if configured for service-to-service auth
-	if cfg.ServiceKey != "" {
-		opts = append(opts, platformanalytics.WithServiceAuth("bop", cfg.ServiceKey))
-	}
-
-	platformEmitter := platformanalytics.NewHTTPEmitter(cfg.ServiceURL, opts...)
-
-	// Wrap in bop-specific emitter with version info
-	return analytics.NewEmitter(platformEmitter,
-		analytics.WithClientVersion(version.Value()),
-	)
-}
-
-// buildAuthDependencies creates auth components based on configuration.
-// Returns empty AuthDependencies if auth mode is "legacy" or configuration is incomplete.
-// This enables graceful degradation: auth commands won't be available in legacy mode.
-func buildAuthDependencies(cfg config.AuthConfig) cli.AuthDependencies {
-	// Skip auth setup in legacy mode (escape hatch via BOP_PLATFORM_URL="")
-	if cfg.IsLegacyMode() {
-		if config.IsLegacyEscapeHatch() {
-			log.Println("[WARN] Legacy mode enabled via BOP_PLATFORM_URL=\"\". " +
-				"This is deprecated and will be removed. Run 'bop auth login' to migrate.")
-		}
-		return cli.AuthDependencies{}
-	}
-
-	// Get service URL (derived from platform URL if not explicitly set)
-	serviceURL := cfg.GetServiceURL()
-	if serviceURL == "" {
-		log.Println("[WARN] Platform auth mode enabled but no service URL available - auth commands unavailable")
-		return cli.AuthDependencies{}
-	}
-
-	// Create token store (always needed for auth commands)
-	tokenStore, err := auth.NewTokenStore()
-	if err != nil {
-		log.Printf("[WARN] Failed to initialize token store: %v - auth commands unavailable", err)
-		return cli.AuthDependencies{}
-	}
-
-	// Create auth client for platform authentication
-	productID := cfg.ProductID
-	if productID == "" {
-		productID = "bop"
-	}
-	authClient, err := auth.NewClient(auth.ClientConfig{
-		BaseURL:   serviceURL,
-		ProductID: productID,
-	})
-	if err != nil {
-		log.Printf("[WARN] %v - auth commands unavailable", err)
-		return cli.AuthDependencies{}
-	}
-
-	return cli.AuthDependencies{
-		Client:       authClient,
-		TokenStore:   tokenStore,
-		PlatformMode: true,
-	}
-}
-
-// buildFeedbackClient creates a feedback client based on auth configuration.
-// Returns nil if auth mode is "legacy" or auth dependencies are not fully configured.
-// This requires platform auth to be enabled since feedback requires authentication.
-func buildFeedbackClient(cfg config.AuthConfig, authDeps cli.AuthDependencies, version string) cli.FeedbackClient {
-	// Feedback requires platform auth mode
-	if !authDeps.PlatformMode || authDeps.TokenStore == nil {
-		return nil
-	}
-
-	// Feedback service URL defaults to platform URL
-	serviceURL := cfg.GetServiceURL()
-	if serviceURL == "" {
-		return nil
-	}
-
-	// Create the feedback client
-	return feedback.NewClient(
-		serviceURL,
-		authDeps.TokenStore,
-		feedback.WithVersion(version),
-	)
 }
 
 // buildObservability creates observability components based on configuration
@@ -1692,96 +1199,17 @@ func (a *geminiLLMAdapter) Call(ctx context.Context, systemPrompt, userPrompt st
 	return resp.Text, resp.TokensIn, resp.TokensOut, resp.Cost, nil
 }
 
-// analyticsAdapter bridges analytics.Emitter to review.AnalyticsEmitter.
-// This adapts the adapter package interface to the usecase interface,
-// handling string-to-UUID conversion for TenantID and UserID.
-type analyticsAdapter struct {
-	emitter analytics.Emitter
+// nopAnalyticsEmitter is a no-op implementation of review.AnalyticsEmitter.
+// Used when platform analytics has been removed.
+type nopAnalyticsEmitter struct{}
+
+func (nopAnalyticsEmitter) EmitReviewStarted(_ context.Context, _ review.AnalyticsEventData) {}
+func (nopAnalyticsEmitter) EmitReviewCompleted(_ context.Context, _ review.AnalyticsEventData, _ review.AnalyticsResult) {
+}
+func (nopAnalyticsEmitter) EmitReviewFailed(_ context.Context, _ review.AnalyticsEventData, _ string) {
+}
+func (nopAnalyticsEmitter) EmitFindingsPosted(_ context.Context, _ review.AnalyticsEventData, _ int) {
 }
 
-// toAnalyticsEventData converts review.AnalyticsEventData to analytics.ReviewEventData.
-// Returns the converted data and whether the conversion was successful.
-// If TenantID is invalid, returns empty data (analytics will be skipped).
-func toAnalyticsEventData(data review.AnalyticsEventData) (analytics.ReviewEventData, bool) {
-	// Parse TenantID (required)
-	tenantID, err := uuid.Parse(data.TenantID)
-	if err != nil || tenantID == uuid.Nil {
-		// Invalid or missing TenantID - skip analytics
-		return analytics.ReviewEventData{}, false
-	}
-
-	// Parse UserID (optional)
-	var userID *uuid.UUID
-	if data.UserID != "" {
-		parsed, err := uuid.Parse(data.UserID)
-		if err != nil {
-			log.Printf("[WARN] Invalid UserID format for analytics: %s", data.UserID)
-		} else if parsed != uuid.Nil {
-			userID = &parsed
-		}
-	}
-
-	// Map client type string to platform enum
-	var clientType platformcontracts.ClientType
-	switch data.ClientType {
-	case "cli":
-		clientType = platformcontracts.ClientTypeCLI
-	case "mcp":
-		clientType = platformcontracts.ClientTypeMCP
-	case "action":
-		clientType = platformcontracts.ClientTypeAction
-	default:
-		clientType = platformcontracts.ClientTypeCLI
-	}
-
-	return analytics.ReviewEventData{
-		TenantID:   tenantID,
-		UserID:     userID,
-		SessionID:  data.SessionID,
-		ClientType: clientType,
-		Reviewers:  data.Reviewers,
-		Provider:   data.Provider,
-		Repository: data.Repository,
-	}, true
-}
-
-func (a analyticsAdapter) EmitReviewStarted(ctx context.Context, data review.AnalyticsEventData) {
-	converted, ok := toAnalyticsEventData(data)
-	if !ok {
-		return // Skip analytics if TenantID is invalid
-	}
-	a.emitter.EmitReviewStarted(ctx, converted)
-}
-
-func (a analyticsAdapter) EmitReviewCompleted(ctx context.Context, data review.AnalyticsEventData, result review.AnalyticsResult) {
-	converted, ok := toAnalyticsEventData(data)
-	if !ok {
-		return
-	}
-	a.emitter.EmitReviewCompleted(ctx, converted, analytics.ReviewResult{
-		DiffLines:     result.DiffLines,
-		FilesReviewed: result.FilesReviewed,
-		FindingsCount: result.FindingsCount,
-		DurationMs:    result.DurationMs,
-		PostedToGH:    result.PostedToGH,
-	})
-}
-
-func (a analyticsAdapter) EmitReviewFailed(ctx context.Context, data review.AnalyticsEventData, errCode string) {
-	converted, ok := toAnalyticsEventData(data)
-	if !ok {
-		return
-	}
-	a.emitter.EmitReviewFailed(ctx, converted, errCode)
-}
-
-func (a analyticsAdapter) EmitFindingsPosted(ctx context.Context, data review.AnalyticsEventData, findingsCount int) {
-	converted, ok := toAnalyticsEventData(data)
-	if !ok {
-		return
-	}
-	a.emitter.EmitFindingsPosted(ctx, converted, findingsCount)
-}
-
-// Compile-time interface checks for analytics adapter
-var _ review.AnalyticsEmitter = analyticsAdapter{}
+// Compile-time interface check for analytics no-op
+var _ review.AnalyticsEmitter = nopAnalyticsEmitter{}

@@ -78,8 +78,6 @@ type Dependencies struct {
 	GitRemoteResolver    GitRemoteResolver // Optional: enables "bop review pr 123" shorthand
 	FindingsPoster       FindingsPoster    // Optional: only required for cr post
 	SessionManager       SessionManager    // Optional: only required for cr sessions
-	AuthDeps             AuthDependencies  // Optional: only required for bop auth commands
-	FeedbackClient       FeedbackClient    // Optional: only required for bop feedback commands
 	Args                 Arguments
 	DefaultOutput        string
 	DefaultRepo          string
@@ -89,7 +87,6 @@ type Dependencies struct {
 	DefaultVerification  DefaultVerification
 	DefaultPostOutOfDiff bool // Post out-of-diff findings as issue comments (default: true)
 	Version              string
-	PlatformURL          string // Platform URL for OIDC audience in GitHub Actions
 }
 
 // NewRootCommand constructs the root Cobra command.
@@ -121,9 +118,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 		Use:   "review",
 		Short: "Run a code review",
 	}
-	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.AuthDeps, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
+	reviewCmd.AddCommand(branchCommand(deps.BranchReviewer, deps.DefaultOutput, deps.DefaultRepo, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultBotUsername, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	if deps.PRReviewer != nil {
-		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.GitRemoteResolver, deps.AuthDeps, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
+		reviewCmd.AddCommand(prCommand(deps.PRReviewer, deps.GitRemoteResolver, deps.DefaultOutput, deps.DefaultInstructions, deps.DefaultReviewActions, deps.DefaultVerification, deps.DefaultPostOutOfDiff))
 	}
 	root.AddCommand(reviewCmd)
 	root.AddCommand(checkSkipCommand())
@@ -137,17 +134,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	if deps.BranchReviewer != nil {
 		root.AddCommand(NewGitHubActionCommand(GitHubActionDeps{
 			BranchReviewer: deps.BranchReviewer,
-			AuthDeps:       deps.AuthDeps,
-			PlatformURL:    deps.PlatformURL,
 		}))
-	}
-	// Add auth commands if auth is configured (platform mode)
-	if deps.AuthDeps.TokenStore != nil {
-		root.AddCommand(NewAuthCommand(deps.AuthDeps))
-	}
-	// Add feedback commands if feedback client is configured
-	if deps.FeedbackClient != nil {
-		root.AddCommand(NewFeedbackCommand(deps.FeedbackClient, deps.AuthDeps))
 	}
 
 	var showVersion bool
@@ -177,7 +164,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	return root
 }
 
-func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, defaultOutput, defaultRepo, defaultInstructions string, defaultActions DefaultReviewActions, defaultBotUsername string, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
+func branchCommand(branchReviewer BranchReviewer, defaultOutput, defaultRepo, defaultInstructions string, defaultActions DefaultReviewActions, defaultBotUsername string, defaultVerification DefaultVerification, defaultPostOutOfDiff bool) *cobra.Command {
 	var baseRef string
 	var targetRef string
 	var outputDir string
@@ -228,21 +215,6 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 		Short: "Review a branch against a base reference",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Auth check for platform mode
-			checker, err := authDeps.RequireAuth()
-			if err != nil {
-				return err
-			}
-			if checker != nil && !checker.CanReviewCode() {
-				return fmt.Errorf("code review not available on your plan")
-			}
-
-			// Build RepoAccessChecker from entitlements (nil in legacy mode)
-			var repoAccessChecker review.RepoAccessChecker
-			if checker != nil {
-				repoAccessChecker = checker
-			}
-
 			if len(args) > 0 {
 				targetRef = args[0]
 			}
@@ -351,8 +323,7 @@ func branchCommand(branchReviewer BranchReviewer, authDeps AuthDependencies, def
 					ConfidenceMedium:   resolvedConfMedium,
 					ConfidenceLow:      resolvedConfLow,
 				},
-				Reviewers:         reviewers,
-				RepoAccessChecker: repoAccessChecker,
+				Reviewers: reviewers,
 			})
 			if err != nil {
 				return err

@@ -24,14 +24,6 @@ type Config struct {
 	ThemeExtraction ThemeExtractionConfig     `yaml:"themeExtraction"`
 	SizeGuards      SizeGuardsConfig          `yaml:"sizeGuards"`
 
-	// Week 14: Platform Authentication
-	// Auth configures authentication with the Delightful Hammers platform.
-	Auth AuthConfig `yaml:"auth"`
-
-	// Week 15: Platform Analytics
-	// Analytics configures usage telemetry emission to the platform analytics service.
-	Analytics AnalyticsConfig `yaml:"analytics"`
-
 	// Phase 3.2: Reviewer Personas
 	// Reviewers configures the reviewer personas for code review.
 	// Each reviewer represents a specialized perspective (e.g., security expert, maintainability focused).
@@ -234,69 +226,6 @@ type StoreConfig struct {
 	Path    string `yaml:"path"`
 }
 
-// AuthConfig configures platform authentication.
-// When mode is "platform", bop authenticates via the Delightful Hammers platform.
-// When mode is "legacy", bop uses environment variables directly (escape hatch).
-type AuthConfig struct {
-	// Mode determines the authentication mode.
-	// Valid values: "platform" (use platform auth), "legacy" (use env vars directly).
-	// Default: "platform". Legacy mode is an escape hatch via BOP_PLATFORM_URL="".
-	Mode string `yaml:"mode"`
-
-	// ServiceURL is the platform auth-service URL.
-	// Example: "https://api.delightfulhammers.com"
-	// If not set, derived from GetPlatformURL().
-	ServiceURL string `yaml:"serviceUrl"`
-
-	// ProductID identifies this product to the platform.
-	// Default: "bop"
-	ProductID string `yaml:"productId"`
-}
-
-// IsPlatformMode returns true if platform authentication is enabled.
-// Platform mode is the default unless BOP_PLATFORM_URL is explicitly empty.
-func (c AuthConfig) IsPlatformMode() bool {
-	// Check legacy escape hatch first
-	if IsLegacyEscapeHatch() {
-		return false
-	}
-	// Mode defaults to platform, but explicit "legacy" disables it
-	return !strings.EqualFold(c.Mode, "legacy")
-}
-
-// IsLegacyMode returns true if legacy (env var) authentication is used.
-// Legacy mode is enabled via BOP_PLATFORM_URL="" or explicit mode: legacy.
-func (c AuthConfig) IsLegacyMode() bool {
-	return !c.IsPlatformMode()
-}
-
-// GetServiceURL returns the effective service URL.
-// If ServiceURL is not explicitly set, returns the platform URL from GetPlatformURL().
-func (c AuthConfig) GetServiceURL() string {
-	if c.ServiceURL != "" {
-		return c.ServiceURL
-	}
-	return GetPlatformURL()
-}
-
-// AnalyticsConfig configures usage telemetry emission to the platform analytics service.
-// When enabled, bop emits usage events (review started, completed, failed) to track
-// product usage and help improve the service.
-type AnalyticsConfig struct {
-	// Enabled toggles analytics emission.
-	// Default: false (opt-in). Use pointer to distinguish unset from explicit false.
-	Enabled *bool `yaml:"enabled,omitempty"`
-
-	// ServiceURL is the analytics service endpoint.
-	// Example: "https://analytics.delightfulhammers.com"
-	// Required when enabled is true.
-	ServiceURL string `yaml:"serviceUrl"`
-
-	// ServiceKey is an optional service-level API key for analytics.
-	// If not set, auth tokens from platform auth are used.
-	ServiceKey string `yaml:"serviceKey"`
-}
-
 // ObservabilityConfig configures logging, metrics, and cost tracking.
 type ObservabilityConfig struct {
 	Logging LoggingConfig `yaml:"logging"`
@@ -481,8 +410,6 @@ func merge(base, overlay Config) Config {
 	result.Merge = chooseMerge(base.Merge, overlay.Merge)
 	result.Planning = choosePlanning(base.Planning, overlay.Planning)
 	result.Store = chooseStore(base.Store, overlay.Store)
-	result.Auth = chooseAuth(base.Auth, overlay.Auth)
-	result.Analytics = chooseAnalytics(base.Analytics, overlay.Analytics)
 	result.Observability = chooseObservability(base.Observability, overlay.Observability)
 	result.Review = chooseReview(base.Review, overlay.Review)
 	result.Verification = chooseVerification(base.Verification, overlay.Verification)
@@ -636,48 +563,6 @@ func chooseStore(base, overlay StoreConfig) StoreConfig {
 		return overlay
 	}
 	return base
-}
-
-func chooseAuth(base, overlay AuthConfig) AuthConfig {
-	result := base
-
-	// Mode: overlay wins if non-empty
-	if overlay.Mode != "" {
-		result.Mode = overlay.Mode
-	}
-
-	// ServiceURL: overlay wins if non-empty
-	if overlay.ServiceURL != "" {
-		result.ServiceURL = overlay.ServiceURL
-	}
-
-	// ProductID: overlay wins if non-empty
-	if overlay.ProductID != "" {
-		result.ProductID = overlay.ProductID
-	}
-
-	return result
-}
-
-func chooseAnalytics(base, overlay AnalyticsConfig) AnalyticsConfig {
-	result := base
-
-	// Enabled: overlay wins if explicitly set (pointer non-nil)
-	if overlay.Enabled != nil {
-		result.Enabled = overlay.Enabled
-	}
-
-	// ServiceURL: overlay wins if non-empty
-	if overlay.ServiceURL != "" {
-		result.ServiceURL = overlay.ServiceURL
-	}
-
-	// ServiceKey: overlay wins if non-empty
-	if overlay.ServiceKey != "" {
-		result.ServiceKey = overlay.ServiceKey
-	}
-
-	return result
 }
 
 func chooseObservability(base, overlay ObservabilityConfig) ObservabilityConfig {
