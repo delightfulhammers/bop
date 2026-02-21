@@ -21,9 +21,6 @@ type LoaderOptions struct {
 // Config files are loaded in order: user config (~/.config/bop/) first as base,
 // then project config (current directory) overlays it. Environment variables
 // override both.
-//
-// In platform mode (default), this function should only be called after
-// authentication to respect entitlement gating of local config.
 func Load(opts LoaderOptions) (Config, error) {
 	name := opts.FileName
 	if name == "" {
@@ -178,6 +175,9 @@ func expandEnvVars(cfg Config) Config {
 	// Expand store config
 	cfg.Store.Path = expandEnvString(cfg.Store.Path)
 
+	// Expand platform config
+	cfg.Platform.Token = expandEnvString(cfg.Platform.Token)
+
 	// Expand observability config
 	cfg.Observability.Logging.Level = expandEnvString(cfg.Observability.Logging.Level)
 	cfg.Observability.Logging.Format = expandEnvString(cfg.Observability.Logging.Format)
@@ -243,17 +243,19 @@ func expandEnvStringSlice(slice []string) []string {
 }
 
 // HasLocalConfig returns true if a local config file exists.
-// This checks for bop.yaml in the current directory.
+// Checks for bop.yaml first, then .bop.yaml as fallback.
 func HasLocalConfig() bool {
-	_, err := os.Stat("bop.yaml")
-	return err == nil
+	return GetLocalConfigPath() != ""
 }
 
 // GetLocalConfigPath returns the path to the local config file if it exists.
-// Returns empty string if no local config is found.
+// Checks bop.yaml first, then .bop.yaml as fallback. Returns empty string
+// if no local config is found.
 func GetLocalConfigPath() string {
-	if _, err := os.Stat("bop.yaml"); err == nil {
-		return "bop.yaml"
+	for _, name := range []string{"bop.yaml", ".bop.yaml"} {
+		if _, err := os.Stat(name); err == nil {
+			return name
+		}
 	}
 	return ""
 }
@@ -283,22 +285,29 @@ func locateConfigFiles(name string, paths []string) []string {
 		if dir == "" {
 			continue
 		}
-		candidate := filepath.Join(dir, name+".yaml")
 
-		// Normalize path to avoid duplicates from "." resolution
-		absCandidate, err := filepath.Abs(candidate)
-		if err != nil {
-			absCandidate = candidate
+		// Check bop.yaml first, then .bop.yaml as fallback.
+		// A directory contributes at most one config file (first match wins).
+		candidates := []string{
+			filepath.Join(dir, name+".yaml"),
+			filepath.Join(dir, "."+name+".yaml"),
 		}
+		for _, candidate := range candidates {
+			absCandidate, err := filepath.Abs(candidate)
+			if err != nil {
+				absCandidate = candidate
+			}
 
-		if seen[absCandidate] {
-			continue
-		}
+			if seen[absCandidate] {
+				break // This directory already contributed a file
+			}
 
-		info, err := os.Stat(candidate)
-		if err == nil && !info.IsDir() {
-			files = append(files, candidate)
-			seen[absCandidate] = true
+			info, err := os.Stat(candidate)
+			if err == nil && !info.IsDir() {
+				files = append(files, candidate)
+				seen[absCandidate] = true
+				break // First match in this directory wins
+			}
 		}
 	}
 	return files

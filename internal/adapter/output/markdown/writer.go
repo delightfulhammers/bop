@@ -54,19 +54,19 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 	var builder strings.Builder
 	caser := cases.Title(language.English)
 	builder.WriteString("# Code Review Report\n\n")
-	builder.WriteString(fmt.Sprintf("- Provider: %s (%s)\n", artifact.Review.ProviderName, artifact.Review.ModelName))
-	builder.WriteString(fmt.Sprintf("- Base: %s\n", artifact.BaseRef))
-	builder.WriteString(fmt.Sprintf("- Target: %s\n", artifact.TargetRef))
-	builder.WriteString(fmt.Sprintf("- Tokens: %d in / %d out\n", artifact.Review.TokensIn, artifact.Review.TokensOut))
-	builder.WriteString(fmt.Sprintf("- Cost: $%.4f\n", artifact.Review.Cost))
+	fmt.Fprintf(&builder, "- Provider: %s (%s)\n", artifact.Review.ProviderName, artifact.Review.ModelName)
+	fmt.Fprintf(&builder, "- Base: %s\n", artifact.BaseRef)
+	fmt.Fprintf(&builder, "- Target: %s\n", artifact.TargetRef)
+	fmt.Fprintf(&builder, "- Tokens: %d in / %d out\n", artifact.Review.TokensIn, artifact.Review.TokensOut)
+	fmt.Fprintf(&builder, "- Cost: $%.4f\n", artifact.Review.Cost)
 
 	// Show reviewer summary if findings have reviewer attribution
 	reviewerStats := collectReviewerStats(artifact.Review.Findings)
 	if len(reviewerStats) > 0 {
 		builder.WriteString("\n### Reviewers\n")
 		for _, stat := range reviewerStats {
-			builder.WriteString(fmt.Sprintf("- **%s** (weight: %.1f): %d findings\n",
-				stat.Name, stat.Weight, stat.Count))
+			fmt.Fprintf(&builder, "- **%s** (weight: %.1f): %d findings\n",
+				stat.Name, stat.Weight, stat.Count)
 		}
 	}
 	builder.WriteString("\n")
@@ -83,7 +83,7 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 		if len(artifact.Review.TruncatedFiles) > 0 {
 			builder.WriteString("**Files excluded from review:**\n")
 			for _, f := range artifact.Review.TruncatedFiles {
-				builder.WriteString(fmt.Sprintf("- `%s`\n", escapeMarkdownInlineCode(f)))
+				fmt.Fprintf(&builder, "- `%s`\n", escapeMarkdownInlineCode(f))
 			}
 			builder.WriteString("\n")
 		}
@@ -95,9 +95,9 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 	// Include verification summary if verification was performed
 	if len(artifact.Review.DiscoveryFindings) > 0 {
 		builder.WriteString("## Verification Summary\n\n")
-		builder.WriteString(fmt.Sprintf("- Discovery findings: %d\n", len(artifact.Review.DiscoveryFindings)))
-		builder.WriteString(fmt.Sprintf("- Verified findings: %d\n", len(artifact.Review.VerifiedFindings)))
-		builder.WriteString(fmt.Sprintf("- Reportable findings: %d\n\n", len(artifact.Review.ReportableFindings)))
+		fmt.Fprintf(&builder, "- Discovery findings: %d\n", len(artifact.Review.DiscoveryFindings))
+		fmt.Fprintf(&builder, "- Verified findings: %d\n", len(artifact.Review.VerifiedFindings))
+		fmt.Fprintf(&builder, "- Reportable findings: %d\n\n", len(artifact.Review.ReportableFindings))
 	}
 
 	builder.WriteString("## Summary\n\n")
@@ -114,17 +114,17 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 	// If we have verified findings, use those for richer output
 	if len(artifact.Review.ReportableFindings) > 0 {
 		for _, vf := range artifact.Review.ReportableFindings {
-			builder.WriteString(fmt.Sprintf("### %s (%s)\n", vf.Finding.Description, caser.String(vf.Finding.Severity)))
-			builder.WriteString(fmt.Sprintf("- File: %s:%d-%d\n", vf.Finding.File, vf.Finding.LineStart, vf.Finding.LineEnd))
-			builder.WriteString(fmt.Sprintf("- Category: %s\n", vf.Finding.Category))
-			builder.WriteString(fmt.Sprintf("- Suggestion: %s\n", vf.Finding.Suggestion))
-			builder.WriteString(fmt.Sprintf("- Classification: %s\n", vf.Classification))
-			builder.WriteString(fmt.Sprintf("- Confidence: %d%%\n", vf.Confidence))
+			fmt.Fprintf(&builder, "### %s (%s)\n", vf.Finding.Description, caser.String(vf.Finding.Severity))
+			fmt.Fprintf(&builder, "- File: %s:%d-%d\n", vf.Finding.File, vf.Finding.LineStart, vf.Finding.LineEnd)
+			fmt.Fprintf(&builder, "- Category: %s\n", vf.Finding.Category)
+			fmt.Fprintf(&builder, "- Suggestion: %s\n", vf.Finding.Suggestion)
+			fmt.Fprintf(&builder, "- Classification: %s\n", vf.Classification)
+			fmt.Fprintf(&builder, "- Confidence: %d%%\n", vf.Confidence)
 			if vf.BlocksOperation {
 				builder.WriteString("- Blocks Operation: Yes\n")
 			}
 			if vf.Evidence != "" {
-				builder.WriteString(fmt.Sprintf("- Verification Evidence: %s\n", vf.Evidence))
+				fmt.Fprintf(&builder, "- Verification Evidence: %s\n", vf.Evidence)
 			}
 			builder.WriteString("\n")
 		}
@@ -136,7 +136,7 @@ func buildContent(artifact domain.MarkdownArtifact) string {
 			// Multiple reviewers: show grouped sections
 			for _, group := range groupedFindings {
 				if group.ReviewerName != "" {
-					builder.WriteString(fmt.Sprintf("### %s (weight: %.1f)\n\n", group.ReviewerName, group.ReviewerWeight))
+					fmt.Fprintf(&builder, "### %s (weight: %.1f)\n\n", group.ReviewerName, group.ReviewerWeight)
 				}
 				for _, finding := range group.Findings {
 					writeFinding(&builder, finding, caser)

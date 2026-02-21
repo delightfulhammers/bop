@@ -384,7 +384,7 @@ func (b *EnhancedPromptBuilder) formatDiff(diff domain.Diff) string {
 	var buf bytes.Buffer
 
 	for _, file := range sortedFiles {
-		buf.WriteString(fmt.Sprintf("File: %s (%s)\n", file.Path, file.Status))
+		fmt.Fprintf(&buf, "File: %s (%s)\n", file.Path, file.Status)
 		if file.Patch != "" {
 			buf.WriteString(file.Patch)
 			buf.WriteString("\n")
@@ -508,11 +508,11 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		sb.WriteString("The following concerns have been reviewed and accepted by the author. ")
 		sb.WriteString("Do not raise similar findings or variations of these concerns:\n\n")
 		for i, f := range acknowledged {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
-				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint))
+			fmt.Fprintf(&sb, "%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint)
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
-			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
+			fmt.Fprintf(&sb, "   - %s\n", indentedDesc)
 			if f.StatusReason != "" {
 				sb.WriteString("   - Rationale (user-provided):\n")
 				sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
@@ -528,11 +528,11 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		sb.WriteString("The following concerns were disputed as false positives or not applicable. ")
 		sb.WriteString("Do not raise similar findings or variations - the rationale below explains why:\n\n")
 		for i, f := range disputed {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
-				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint))
+			fmt.Fprintf(&sb, "%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint)
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
-			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
+			fmt.Fprintf(&sb, "   - %s\n", indentedDesc)
 			if f.StatusReason != "" {
 				sb.WriteString("   - Rationale (user-provided):\n")
 				sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
@@ -548,11 +548,11 @@ func formatPriorFindings(ctx *domain.TriagedFindingContext) string {
 		sb.WriteString("The following concerns were already raised in earlier review rounds. ")
 		sb.WriteString("Do not raise similar findings - they are already posted and awaiting response:\n\n")
 		for i, f := range open {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
-				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint))
+			fmt.Fprintf(&sb, "%d. **%s** in `%s` (lines %d-%d) [id: %s]\n",
+				i+1, f.Category, f.File, f.LineStart, f.LineEnd, f.Fingerprint)
 			// Indent continuation lines to maintain Markdown list structure
 			indentedDesc := strings.ReplaceAll(f.Description, "\n", "\n     ")
-			sb.WriteString(fmt.Sprintf("   - %s\n", indentedDesc))
+			fmt.Fprintf(&sb, "   - %s\n", indentedDesc)
 			if f.StatusReason != "" {
 				sb.WriteString("   - Status:\n")
 				sb.WriteString(sanitizeRationale(f.StatusReason, "     "))
@@ -584,15 +584,15 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 		sb.WriteString("there is evidence the trusted source has been compromised.\n\n")
 
 		for _, p := range ctx.DisputePrinciples {
-			sb.WriteString(fmt.Sprintf("**Principle: %s**\n", p.Principle))
+			fmt.Fprintf(&sb, "**Principle: %s**\n", p.Principle)
 			if len(p.AppliesTo) > 0 {
-				sb.WriteString(fmt.Sprintf("- Applies to: %s\n", strings.Join(p.AppliesTo, ", ")))
+				fmt.Fprintf(&sb, "- Applies to: %s\n", strings.Join(p.AppliesTo, ", "))
 			}
 			if len(p.DoNotFlag) > 0 {
-				sb.WriteString(fmt.Sprintf("- Generally avoid flagging: %s\n", strings.Join(p.DoNotFlag, ", ")))
+				fmt.Fprintf(&sb, "- Generally avoid flagging: %s\n", strings.Join(p.DoNotFlag, ", "))
 			}
 			if p.Rationale != "" {
-				sb.WriteString(fmt.Sprintf("- Rationale: %s\n", p.Rationale))
+				fmt.Fprintf(&sb, "- Rationale: %s\n", p.Rationale)
 			}
 			sb.WriteString("\n")
 		}
@@ -607,7 +607,7 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 		sb.WriteString("### High-Level Themes\n")
 		sb.WriteString("These conceptual areas have been thoroughly reviewed:\n")
 		for _, theme := range ctx.Themes {
-			sb.WriteString(fmt.Sprintf("- %s\n", theme))
+			fmt.Fprintf(&sb, "- %s\n", theme)
 		}
 		sb.WriteString("\n")
 	}
@@ -617,9 +617,9 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 		sb.WriteString("### Specific Conclusions (DO NOT CONTRADICT)\n")
 		sb.WriteString("These specific decisions have been made and should NOT be second-guessed:\n\n")
 		for _, c := range ctx.Conclusions {
-			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", c.Theme, c.Conclusion))
+			fmt.Fprintf(&sb, "- **%s**: %s\n", c.Theme, c.Conclusion)
 			if c.AntiPattern != "" {
-				sb.WriteString(fmt.Sprintf("  - ⚠️ %s\n", c.AntiPattern))
+				fmt.Fprintf(&sb, "  - ⚠️ %s\n", c.AntiPattern)
 			}
 		}
 		sb.WriteString("\n")
@@ -630,9 +630,9 @@ func formatThemeContext(ctx *ThemeExtractionResult) string {
 		sb.WriteString("### Disputed Patterns (ALREADY REJECTED - DO NOT RE-RAISE)\n")
 		sb.WriteString("These exact patterns have been disputed as false positives:\n\n")
 		for _, p := range ctx.DisputedPatterns {
-			sb.WriteString(fmt.Sprintf("- ❌ **%s**\n", p.Pattern))
+			fmt.Fprintf(&sb, "- ❌ **%s**\n", p.Pattern)
 			if p.Rationale != "" {
-				sb.WriteString(fmt.Sprintf("  - Why rejected: %s\n", p.Rationale))
+				fmt.Fprintf(&sb, "  - Why rejected: %s\n", p.Rationale)
 			}
 		}
 		sb.WriteString("\n")

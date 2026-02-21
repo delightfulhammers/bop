@@ -182,9 +182,9 @@ func FormatFindingCommentWithActions(f domain.Finding, actions ReviewActions) st
 	blocking := IsBlockingFinding(f, actions)
 
 	// Header with severity, category, and blocking indicator
-	sb.WriteString(fmt.Sprintf("**Severity:** %s", f.Severity))
+	fmt.Fprintf(&sb, "**Severity:** %s", f.Severity)
 	if f.Category != "" {
-		sb.WriteString(fmt.Sprintf(" | **Category:** %s", f.Category))
+		fmt.Fprintf(&sb, " | **Category:** %s", f.Category)
 	}
 	if blocking {
 		sb.WriteString(" | **Blocking:** yes")
@@ -195,9 +195,9 @@ func FormatFindingCommentWithActions(f domain.Finding, actions ReviewActions) st
 
 	// Line reference
 	if f.LineStart == f.LineEnd || f.LineEnd == 0 {
-		sb.WriteString(fmt.Sprintf("📍 Line %d\n\n", f.LineStart))
+		fmt.Fprintf(&sb, "📍 Line %d\n\n", f.LineStart)
 	} else {
-		sb.WriteString(fmt.Sprintf("📍 Lines %d-%d\n\n", f.LineStart, f.LineEnd))
+		fmt.Fprintf(&sb, "📍 Lines %d-%d\n\n", f.LineStart, f.LineEnd)
 	}
 
 	// Description
@@ -683,7 +683,7 @@ func FormatOutOfDiffFindingComment(f domain.Finding, fingerprint domain.FindingF
 
 	// Add header explaining this is an out-of-diff finding
 	sb.WriteString("**⚠️ Finding Outside Diff**\n\n")
-	sb.WriteString(fmt.Sprintf("📁 `%s` (line %d)\n\n", f.File, f.LineStart))
+	fmt.Fprintf(&sb, "📁 `%s` (line %d)\n\n", f.File, f.LineStart)
 
 	// Add standard finding format
 	sb.WriteString(FormatFindingCommentWithActions(f, actions))
@@ -697,7 +697,7 @@ func FormatOutOfDiffFindingComment(f domain.Finding, fingerprint domain.FindingF
 	sb.WriteString(fileMarkerPrefix)
 	sb.WriteString(f.File)
 	sb.WriteString(lineMarkerPrefix)
-	sb.WriteString(fmt.Sprintf("%d", f.LineStart))
+	fmt.Fprintf(&sb, "%d", f.LineStart)
 
 	// Include reviewer name if present
 	if f.ReviewerName != "" {
@@ -784,7 +784,7 @@ func FormatReplyToOutOfDiffFinding(fingerprint, file, body string) string {
 	sb.WriteString("\n\n")
 
 	// Add quote context
-	sb.WriteString(fmt.Sprintf("> Replying to finding in `%s`\n\n", file))
+	fmt.Fprintf(&sb, "> Replying to finding in `%s`\n\n", file)
 
 	// Add the actual reply content
 	sb.WriteString(body)

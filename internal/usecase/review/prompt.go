@@ -34,14 +34,14 @@ func DefaultPromptBuilder(ctx ProjectContext, diff domain.Diff, req BranchReques
 
 	// Include custom instructions if provided
 	if ctx.CustomInstructions != "" {
-		builder.WriteString(fmt.Sprintf("Instructions: %s\n\n", ctx.CustomInstructions))
+		fmt.Fprintf(&builder, "Instructions: %s\n\n", ctx.CustomInstructions)
 	}
 
-	builder.WriteString(fmt.Sprintf("Base Ref: %s\n", req.BaseRef))
-	builder.WriteString(fmt.Sprintf("Target Ref: %s\n\n", req.TargetRef))
+	fmt.Fprintf(&builder, "Base Ref: %s\n", req.BaseRef)
+	fmt.Fprintf(&builder, "Target Ref: %s\n\n", req.TargetRef)
 	builder.WriteString("Unified Diff:\n")
 	for _, file := range diff.Files {
-		builder.WriteString(fmt.Sprintf("File: %s (%s)\n", file.Path, file.Status))
+		fmt.Fprintf(&builder, "File: %s (%s)\n", file.Path, file.Status)
 		builder.WriteString(file.Patch)
 		builder.WriteString("\n")
 	}

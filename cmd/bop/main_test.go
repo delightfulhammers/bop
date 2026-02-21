@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/delightfulhammers/bop/internal/config"
@@ -171,6 +172,144 @@ func TestCreatePlanningProvider(t *testing.T) {
 				expectedProvider := tt.providers[tt.cfg.Planning.Provider]
 				if got != expectedProvider {
 					t.Errorf("createPlanningProvider() returned different provider instance, want same instance")
+				}
+			}
+		})
+	}
+}
+
+func TestValidateReviewerProviders(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.Config
+		providers   map[string]review.Provider
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "default reviewer has provider available",
+			cfg: config.Config{
+				DefaultReviewers: []string{"default"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"default": {Provider: "anthropic"},
+				},
+			},
+			providers: map[string]review.Provider{
+				"anthropic": &mockProvider{name: "anthropic"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "default reviewer missing provider - anthropic",
+			cfg: config.Config{
+				DefaultReviewers: []string{"default"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"default": {Provider: "anthropic"},
+				},
+			},
+			providers:   map[string]review.Provider{},
+			wantErr:     true,
+			errContains: "ANTHROPIC_API_KEY",
+		},
+		{
+			name: "default reviewer missing provider - openai",
+			cfg: config.Config{
+				DefaultReviewers: []string{"myreviewer"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"myreviewer": {Provider: "openai"},
+				},
+			},
+			providers:   map[string]review.Provider{},
+			wantErr:     true,
+			errContains: "OPENAI_API_KEY",
+		},
+		{
+			name: "default reviewer missing provider - gemini",
+			cfg: config.Config{
+				DefaultReviewers: []string{"myreviewer"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"myreviewer": {Provider: "gemini"},
+				},
+			},
+			providers:   map[string]review.Provider{},
+			wantErr:     true,
+			errContains: "GEMINI_API_KEY",
+		},
+		{
+			name: "multiple default reviewers - all available",
+			cfg: config.Config{
+				DefaultReviewers: []string{"a", "b"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"a": {Provider: "anthropic"},
+					"b": {Provider: "openai"},
+				},
+			},
+			providers: map[string]review.Provider{
+				"anthropic": &mockProvider{name: "anthropic"},
+				"openai":    &mockProvider{name: "openai"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple default reviewers - second missing",
+			cfg: config.Config{
+				DefaultReviewers: []string{"a", "b"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"a": {Provider: "anthropic"},
+					"b": {Provider: "openai"},
+				},
+			},
+			providers: map[string]review.Provider{
+				"anthropic": &mockProvider{name: "anthropic"},
+			},
+			wantErr:     true,
+			errContains: "OPENAI_API_KEY",
+		},
+		{
+			name: "empty default reviewers - no error",
+			cfg: config.Config{
+				DefaultReviewers: []string{},
+				Reviewers:        map[string]config.ReviewerConfig{},
+			},
+			providers: map[string]review.Provider{},
+			wantErr:   false,
+		},
+		{
+			name: "default reviewer not in reviewers map - skipped gracefully",
+			cfg: config.Config{
+				DefaultReviewers: []string{"nonexistent"},
+				Reviewers:        map[string]config.ReviewerConfig{},
+			},
+			providers: map[string]review.Provider{},
+			wantErr:   false,
+		},
+		{
+			name: "unknown provider gets generic env var name",
+			cfg: config.Config{
+				DefaultReviewers: []string{"custom"},
+				Reviewers: map[string]config.ReviewerConfig{
+					"custom": {Provider: "custom_provider"},
+				},
+			},
+			providers:   map[string]review.Provider{},
+			wantErr:     true,
+			errContains: "CUSTOM_PROVIDER_API_KEY",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateReviewerProviders(tt.cfg, tt.providers)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("expected error to contain %q, got: %s", tt.errContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
 				}
 			}
 		})

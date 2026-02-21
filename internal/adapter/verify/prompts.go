@@ -75,7 +75,7 @@ Your confidence score (0-100) should reflect:
 `)
 
 	for _, tool := range tools {
-		sb.WriteString(fmt.Sprintf("- **%s**: %s\n", tool.Name(), tool.Description()))
+		fmt.Fprintf(&sb, "- **%s**: %s\n", tool.Name(), tool.Description())
 	}
 
 	sb.WriteString(`
@@ -144,29 +144,29 @@ func CandidatePrompt(candidate domain.CandidateFinding) string {
 	var sb strings.Builder
 
 	sb.WriteString("## Candidate Finding to Verify\n\n")
-	sb.WriteString(fmt.Sprintf("**File**: %s\n", candidate.Finding.File))
+	fmt.Fprintf(&sb, "**File**: %s\n", candidate.Finding.File)
 
 	if candidate.Finding.LineStart > 0 {
 		if candidate.Finding.LineEnd > 0 && candidate.Finding.LineEnd != candidate.Finding.LineStart {
-			sb.WriteString(fmt.Sprintf("**Lines**: %d-%d\n", candidate.Finding.LineStart, candidate.Finding.LineEnd))
+			fmt.Fprintf(&sb, "**Lines**: %d-%d\n", candidate.Finding.LineStart, candidate.Finding.LineEnd)
 		} else {
-			sb.WriteString(fmt.Sprintf("**Line**: %d\n", candidate.Finding.LineStart))
+			fmt.Fprintf(&sb, "**Line**: %d\n", candidate.Finding.LineStart)
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("**Severity**: %s\n", candidate.Finding.Severity))
-	sb.WriteString(fmt.Sprintf("**Description**: %s\n", candidate.Finding.Description))
+	fmt.Fprintf(&sb, "**Severity**: %s\n", candidate.Finding.Severity)
+	fmt.Fprintf(&sb, "**Description**: %s\n", candidate.Finding.Description)
 
 	if candidate.Finding.Category != "" {
-		sb.WriteString(fmt.Sprintf("**Category**: %s\n", candidate.Finding.Category))
+		fmt.Fprintf(&sb, "**Category**: %s\n", candidate.Finding.Category)
 	}
 
 	if candidate.Finding.Suggestion != "" {
-		sb.WriteString(fmt.Sprintf("**Suggestion**: %s\n", candidate.Finding.Suggestion))
+		fmt.Fprintf(&sb, "**Suggestion**: %s\n", candidate.Finding.Suggestion)
 	}
 
-	sb.WriteString(fmt.Sprintf("\n**Agreement Score**: %.0f%% of reviewers reported this issue\n", candidate.AgreementScore*100))
-	sb.WriteString(fmt.Sprintf("**Sources**: %s\n", strings.Join(candidate.Sources, ", ")))
+	fmt.Fprintf(&sb, "\n**Agreement Score**: %.0f%% of reviewers reported this issue\n", candidate.AgreementScore*100)
+	fmt.Fprintf(&sb, "**Sources**: %s\n", strings.Join(candidate.Sources, ", "))
 
 	sb.WriteString("\nPlease verify this finding by reading the relevant code and determining if the issue actually exists.\n")
 

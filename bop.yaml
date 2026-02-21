@@ -39,147 +39,86 @@ providers:
   #   enabled: false
   #   defaultModel: "qwen3:235b"
 
-# Reviewer Personas (Phase 3.2 - OPTIONAL)
-# Each reviewer represents a specialized code review perspective.
-# Reviewers reference providers defined above for LLM connectivity.
-# If this section is omitted, the original provider-based dispatch is used.
+# Reviewer Configuration
+# Each reviewer represents a code review perspective backed by an LLM provider.
+# The default reviewer uses Anthropic with no persona — it relies on the
+# review.instructions block below for guidance. This enables a zero-config
+# experience: one API key (ANTHROPIC_API_KEY) is all you need.
 #
-# The 'model' field is optional - if not specified, uses the provider's defaultModel.
+# For specialized reviewers, configure additional personas below or upgrade
+# to bop Pro for curated, provider-optimized reviewer panels.
 reviewers:
-  # Security-focused reviewer using Claude for nuanced vulnerability detection
-  # Note: model omitted - uses anthropic's defaultModel (claude-sonnet-4-5-20250929)
-  security:
+  default:
     provider: "anthropic"
-    weight: 1.5  # Higher weight for security findings
-    persona: |
-      You are a senior security engineer specializing in application security.
-      Focus on OWASP Top 10 vulnerabilities, authentication/authorization flaws,
-      injection attacks, and sensitive data exposure. You have deep experience
-      with secure coding practices and threat modeling.
-
-      **Trust Boundaries (CRITICAL):**
-      Not all data sources require the same security scrutiny. Apply threat modeling
-      based on the actual trust level of each data source:
-
-      UNTRUSTED (apply strict validation):
-      - User input (HTTP requests, form data, CLI arguments)
-      - External API responses from third parties
-      - File uploads and user-provided content
-      - Data from untrusted networks
-
-      TRUSTED (basic sanity checks suffice):
-      - Configured LLM provider responses (Anthropic, OpenAI, Google APIs)
-      - Data from application's own database (prior review findings, config)
-      - Application configuration files (bop.yaml, environment variables)
-      - Internal service-to-service communication
-
-      For TRUSTED sources, don't raise findings like:
-      - "Prompt injection" from internal database data
-      - "Resource exhaustion" from configured LLM provider responses
-      - "JSON parsing DoS" from trusted API responses
-      - "Malicious input" for data the application itself generated
-
-      Focus security findings on actual attack surfaces where untrusted data
-      crosses into the application. Over-engineering defenses against trusted
-      internal data paths creates noise without security benefit.
-    focus:
-      - security
-      - authentication
-      - authorization
-    ignore:
-      - style
-      - documentation
-
-  # Architecture/maintainability reviewer using GPT for code quality analysis
-  # Note: model omitted - uses openai's defaultModel (gpt-5.2)
-  architecture:
-    provider: "openai"
     weight: 1.0
-    persona: |
-      You are a software architect focused on code maintainability and design.
-      Evaluate SOLID principles, clean architecture patterns, appropriate
-      abstractions, and long-term maintainability. You prioritize readable,
-      well-structured code that's easy to extend and test.
-    focus:
-      - maintainability
-      - architecture
-      - complexity
-    ignore:
-      - performance  # Leave to performance reviewer
 
-  # Performance/efficiency reviewer using Gemini for deep analysis
-  # Example of explicit model override (uses different model than provider default)
-  performance:
-    provider: "gemini"
-    model: "gemini-3-flash-preview"  # Override: use flash for faster performance checks
-    weight: 1.0
-    persona: |
-      You are a performance engineer specializing in system efficiency.
-      Identify N+1 queries, unnecessary allocations, poor algorithmic
-      complexity, resource leaks, and concurrency issues. You focus on
-      measurable performance impacts rather than micro-optimizations.
-    focus:
-      - performance
-      - scalability
-      - resource_management
-    ignore:
-      - style
-      - documentation
-
-  # Observability/telemetry reviewer using a smaller model for pattern-based checks
-  # This reviewer focuses on logging, metrics, tracing, and operational visibility.
-  # Not included in defaultReviewers - opt-in via --reviewers flag
-  observability:
-    provider: "gemini"
-    model: "gemini-3-flash-preview"  # Smaller model sufficient for pattern-matching
-    weight: 1.0
-    persona: |
-      You are a senior observability engineer specializing in production systems.
-      Your expertise spans distributed tracing, metrics, logging, and alerting.
-
-      Focus on these high-value areas:
-
-      **Tracing:**
-      - Missing span creation at service boundaries (HTTP handlers, RPC calls, queue consumers)
-      - Context not propagated to downstream calls (missing ctx parameter)
-      - Missing defer span.End() or span.SetStatus() on errors
-      - Spans without meaningful attributes for debugging
-
-      **Metrics:**
-      - Missing request/response metrics at entry points (count, latency, errors)
-      - Unbounded label cardinality (user IDs, request IDs as labels = cardinality explosion)
-      - Error paths without error counters
-      - Missing resource utilization metrics (connection pools, caches, queues)
-
-      **Logging:**
-      - Errors caught but not logged, or logged without context
-      - Missing correlation IDs / trace IDs in log messages
-      - Inappropriate log levels (INFO for errors, ERROR for expected conditions)
-      - Sensitive data (passwords, tokens, PII) in log messages
-      - Inconsistent structured logging (mixing Printf with structured loggers)
-
-      **Alertability:**
-      - Operations that fail silently with no way to detect in production
-      - Missing health check endpoints or readiness probes
-
-      Prioritize findings at system boundaries and error paths. Avoid suggesting
-      logging for every internal function - focus on entry points, exits, and
-      decision points that operators need visibility into.
-    focus:
-      - observability
-      - logging
-      - metrics
-      - tracing
-    ignore:
-      - style
-      - architecture
-      - security  # Leave to security reviewer
+# Example specialized reviewers (uncomment and customize as needed):
+#
+#  security:
+#    provider: "anthropic"
+#    weight: 1.5
+#    persona: |
+#      You are a senior security engineer specializing in application security.
+#      Focus on OWASP Top 10 vulnerabilities, authentication/authorization flaws,
+#      injection attacks, and sensitive data exposure.
+#    focus:
+#      - security
+#      - authentication
+#      - authorization
+#    ignore:
+#      - style
+#      - documentation
+#
+#  architecture:
+#    provider: "openai"
+#    weight: 1.0
+#    persona: |
+#      You are a software architect focused on code maintainability and design.
+#      Evaluate SOLID principles, clean architecture patterns, appropriate
+#      abstractions, and long-term maintainability.
+#    focus:
+#      - maintainability
+#      - architecture
+#      - complexity
+#    ignore:
+#      - performance
+#
+#  performance:
+#    provider: "gemini"
+#    model: "gemini-3-flash-preview"
+#    weight: 1.0
+#    persona: |
+#      You are a performance engineer specializing in system efficiency.
+#      Identify N+1 queries, unnecessary allocations, poor algorithmic
+#      complexity, resource leaks, and concurrency issues.
+#    focus:
+#      - performance
+#      - scalability
+#      - resource_management
+#    ignore:
+#      - style
+#      - documentation
+#
+#  observability:
+#    provider: "gemini"
+#    model: "gemini-3-flash-preview"
+#    weight: 1.0
+#    persona: |
+#      You are a senior observability engineer specializing in production systems.
+#      Focus on tracing, metrics, logging, and alerting.
+#    focus:
+#      - observability
+#      - logging
+#      - metrics
+#      - tracing
+#    ignore:
+#      - style
+#      - architecture
+#      - security
 
 # Default reviewers to use when no --reviewers flag is specified
 defaultReviewers:
-  - security
-  - architecture
-  - performance
+  - default
 
 # Store Configuration
 # Enables persistence of review history to SQLite database
@@ -212,8 +151,10 @@ merge:
   model: "claude-haiku-4-5"
 
 # Verification Configuration (agent verification of findings)
+# Disabled by default: verification uses a separate LLM call (Gemini by default),
+# requiring a second API key. Enable and configure when you have multiple providers.
 verification:
-  enabled: true
+  enabled: false
   # LLM provider for verification (defaults to gemini/gemini-3-flash-preview)
   provider: "gemini"
   model: "gemini-3-flash-preview"

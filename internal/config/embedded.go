@@ -18,13 +18,12 @@ var embeddedConfigYAML []byte
 
 // LoadEmbedded returns the embedded default configuration.
 // This is the lowest-priority configuration layer that everything else merges over.
-// The embedded config is NOT gated by entitlements since it's controlled by bop maintainers.
 //
 // Load order (lowest to highest priority):
 // 1. Embedded bop.yaml (this function) - always loaded, baked into binary
-// 2. Platform API config - fetched from platform for authenticated users
-// 3. Local files (~/.config/bop/bop.yaml, ./bop.yaml) - requires local-bop-config entitlement
-// 4. CLI flags - highest priority
+// 2. User config (~/.config/bop/bop.yaml) - user-level defaults
+// 3. Project config (./bop.yaml or ./.bop.yaml) - project-specific overrides
+// 4. CLI flags and environment variables - highest priority
 func LoadEmbedded() (Config, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")

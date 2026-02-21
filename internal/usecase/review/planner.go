@@ -175,15 +175,15 @@ func (p *PlanningAgent) buildPlanningPrompt(ctx ProjectContext, diff domain.Diff
 		hasContext = true
 	}
 	if len(ctx.DesignDocs) > 0 {
-		b.WriteString(fmt.Sprintf("- Design documents: %d\n", len(ctx.DesignDocs)))
+		fmt.Fprintf(&b, "- Design documents: %d\n", len(ctx.DesignDocs))
 		hasContext = true
 	}
 	if len(ctx.RelevantDocs) > 0 {
-		b.WriteString(fmt.Sprintf("- Relevant documentation: %d\n", len(ctx.RelevantDocs)))
+		fmt.Fprintf(&b, "- Relevant documentation: %d\n", len(ctx.RelevantDocs))
 		hasContext = true
 	}
 	if len(ctx.CustomContextFiles) > 0 {
-		b.WriteString(fmt.Sprintf("- Custom context: %d files\n", len(ctx.CustomContextFiles)))
+		fmt.Fprintf(&b, "- Custom context: %d files\n", len(ctx.CustomContextFiles))
 		hasContext = true
 	}
 	if !hasContext {
@@ -195,7 +195,7 @@ func (p *PlanningAgent) buildPlanningPrompt(ctx ProjectContext, diff domain.Diff
 
 	// Change types
 	if len(ctx.ChangeTypes) > 0 {
-		b.WriteString(fmt.Sprintf("Change types detected: %s\n", strings.Join(ctx.ChangeTypes, ", ")))
+		fmt.Fprintf(&b, "Change types detected: %s\n", strings.Join(ctx.ChangeTypes, ", "))
 	}
 
 	// File count and paths
@@ -203,12 +203,12 @@ func (p *PlanningAgent) buildPlanningPrompt(ctx ProjectContext, diff domain.Diff
 	if fileCount == 0 {
 		fileCount = len(diff.Files)
 	}
-	b.WriteString(fmt.Sprintf("Files changed: %d\n", fileCount))
+	fmt.Fprintf(&b, "Files changed: %d\n", fileCount)
 
 	if len(ctx.ChangedPaths) > 0 {
 		b.WriteString("\nChanged files:\n")
 		for _, path := range ctx.ChangedPaths {
-			b.WriteString(fmt.Sprintf("- %s\n", path))
+			fmt.Fprintf(&b, "- %s\n", path)
 		}
 	}
 
@@ -287,9 +287,9 @@ func formatDiffForPreview(diff domain.Diff) string {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		b.WriteString(fmt.Sprintf("--- %s\n", file.Path))
+		fmt.Fprintf(&b, "--- %s\n", file.Path)
 		if file.Status != "" {
-			b.WriteString(fmt.Sprintf("Status: %s\n", file.Status))
+			fmt.Fprintf(&b, "Status: %s\n", file.Status)
 		}
 		if file.Patch != "" {
 			b.WriteString(file.Patch)
@@ -444,8 +444,8 @@ func (p *PlanningAgent) incorporateAnswers(ctx ProjectContext, questions []Quest
 			continue // Skip questions with no answer
 		}
 
-		b.WriteString(fmt.Sprintf("Q: %s\n", q.Text))
-		b.WriteString(fmt.Sprintf("A: %s\n\n", answer))
+		fmt.Fprintf(&b, "Q: %s\n", q.Text)
+		fmt.Fprintf(&b, "A: %s\n\n", answer)
 	}
 
 	// Create enhanced context

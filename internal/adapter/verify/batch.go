@@ -208,12 +208,12 @@ func batchVerificationUserPrompt(candidates []domain.CandidateFinding, fileConte
 	// Include file contents first
 	sb.WriteString("## Source Files\n\n")
 	for file, content := range fileContents {
-		sb.WriteString(fmt.Sprintf("### File: %s\n", file))
+		fmt.Fprintf(&sb, "### File: %s\n", file)
 		sb.WriteString("```\n")
 		// Add line numbers for easy reference
 		lines := strings.Split(content, "\n")
 		for i, line := range lines {
-			sb.WriteString(fmt.Sprintf("%4d | %s\n", i+1, line))
+			fmt.Fprintf(&sb, "%4d | %s\n", i+1, line)
 		}
 		sb.WriteString("```\n\n")
 	}
@@ -221,22 +221,22 @@ func batchVerificationUserPrompt(candidates []domain.CandidateFinding, fileConte
 	// Include findings to verify
 	sb.WriteString("## Findings to Verify\n\n")
 	for i, c := range candidates {
-		sb.WriteString(fmt.Sprintf("### Finding %d\n", i))
-		sb.WriteString(fmt.Sprintf("- **File**: %s\n", c.Finding.File))
+		fmt.Fprintf(&sb, "### Finding %d\n", i)
+		fmt.Fprintf(&sb, "- **File**: %s\n", c.Finding.File)
 		if c.Finding.LineStart > 0 {
 			if c.Finding.LineEnd > 0 && c.Finding.LineEnd != c.Finding.LineStart {
-				sb.WriteString(fmt.Sprintf("- **Lines**: %d-%d\n", c.Finding.LineStart, c.Finding.LineEnd))
+				fmt.Fprintf(&sb, "- **Lines**: %d-%d\n", c.Finding.LineStart, c.Finding.LineEnd)
 			} else {
-				sb.WriteString(fmt.Sprintf("- **Line**: %d\n", c.Finding.LineStart))
+				fmt.Fprintf(&sb, "- **Line**: %d\n", c.Finding.LineStart)
 			}
 		}
-		sb.WriteString(fmt.Sprintf("- **Severity**: %s\n", c.Finding.Severity))
-		sb.WriteString(fmt.Sprintf("- **Category**: %s\n", c.Finding.Category))
-		sb.WriteString(fmt.Sprintf("- **Description**: %s\n", c.Finding.Description))
+		fmt.Fprintf(&sb, "- **Severity**: %s\n", c.Finding.Severity)
+		fmt.Fprintf(&sb, "- **Category**: %s\n", c.Finding.Category)
+		fmt.Fprintf(&sb, "- **Description**: %s\n", c.Finding.Description)
 		if c.Finding.Suggestion != "" {
-			sb.WriteString(fmt.Sprintf("- **Suggestion**: %s\n", c.Finding.Suggestion))
+			fmt.Fprintf(&sb, "- **Suggestion**: %s\n", c.Finding.Suggestion)
 		}
-		sb.WriteString(fmt.Sprintf("- **Agreement**: %.0f%% of reviewers\n", c.AgreementScore*100))
+		fmt.Fprintf(&sb, "- **Agreement**: %.0f%% of reviewers\n", c.AgreementScore*100)
 		sb.WriteString("\n")
 	}
 

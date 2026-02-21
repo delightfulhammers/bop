@@ -114,21 +114,21 @@ For each candidate pair, determine if the NEW finding is a semantic duplicate of
 	sb.WriteString("## Candidate Pairs\n\n")
 
 	for i, cp := range candidates {
-		sb.WriteString(fmt.Sprintf("### Pair %d\n\n", i))
+		fmt.Fprintf(&sb, "### Pair %d\n\n", i)
 
 		sb.WriteString("**EXISTING finding:**\n")
-		sb.WriteString(fmt.Sprintf("- File: `%s`\n", cp.Existing.File))
-		sb.WriteString(fmt.Sprintf("- Lines: %d-%d\n", cp.Existing.LineStart, cp.Existing.LineEnd))
-		sb.WriteString(fmt.Sprintf("- Severity: %s\n", cp.Existing.Severity))
-		sb.WriteString(fmt.Sprintf("- Category: %s\n", cp.Existing.Category))
-		sb.WriteString(fmt.Sprintf("- Description: %s\n\n", cp.Existing.Description))
+		fmt.Fprintf(&sb, "- File: `%s`\n", cp.Existing.File)
+		fmt.Fprintf(&sb, "- Lines: %d-%d\n", cp.Existing.LineStart, cp.Existing.LineEnd)
+		fmt.Fprintf(&sb, "- Severity: %s\n", cp.Existing.Severity)
+		fmt.Fprintf(&sb, "- Category: %s\n", cp.Existing.Category)
+		fmt.Fprintf(&sb, "- Description: %s\n\n", cp.Existing.Description)
 
 		sb.WriteString("**NEW finding:**\n")
-		sb.WriteString(fmt.Sprintf("- File: `%s`\n", cp.New.File))
-		sb.WriteString(fmt.Sprintf("- Lines: %d-%d\n", cp.New.LineStart, cp.New.LineEnd))
-		sb.WriteString(fmt.Sprintf("- Severity: %s\n", cp.New.Severity))
-		sb.WriteString(fmt.Sprintf("- Category: %s\n", cp.New.Category))
-		sb.WriteString(fmt.Sprintf("- Description: %s\n\n", cp.New.Description))
+		fmt.Fprintf(&sb, "- File: `%s`\n", cp.New.File)
+		fmt.Fprintf(&sb, "- Lines: %d-%d\n", cp.New.LineStart, cp.New.LineEnd)
+		fmt.Fprintf(&sb, "- Severity: %s\n", cp.New.Severity)
+		fmt.Fprintf(&sb, "- Category: %s\n", cp.New.Category)
+		fmt.Fprintf(&sb, "- Description: %s\n\n", cp.New.Description)
 	}
 
 	sb.WriteString(`## Response Format

@@ -108,8 +108,8 @@ func formatOutOfDiffSection(findings []PositionedFinding) string {
 
 	for _, pf := range findings {
 		f := pf.Finding
-		sb.WriteString(fmt.Sprintf("- **%s** in `%s` (line %d): %s\n",
-			f.Severity, escapeMarkdownInlineCode(f.File), f.LineStart, f.Description))
+		fmt.Fprintf(&sb, "- **%s** in `%s` (line %d): %s\n",
+			f.Severity, escapeMarkdownInlineCode(f.File), f.LineStart, f.Description)
 	}
 
 	return sb.String()
@@ -123,7 +123,7 @@ func formatBinaryFilesSection(files []domain.FileDiff) string {
 	sb.WriteString("The following binary files were changed and excluded from review:\n\n")
 
 	for _, f := range files {
-		sb.WriteString(fmt.Sprintf("- `%s` (%s)\n", escapeMarkdownInlineCode(f.Path), f.Status))
+		fmt.Fprintf(&sb, "- `%s` (%s)\n", escapeMarkdownInlineCode(f.Path), f.Status)
 	}
 
 	return sb.String()
@@ -136,7 +136,7 @@ func formatRenamedFilesSection(files []domain.FileDiff) string {
 	sb.WriteString("## Files Renamed\n\n")
 
 	for _, f := range files {
-		sb.WriteString(fmt.Sprintf("- `%s` → `%s`\n", escapeMarkdownInlineCode(f.OldPath), escapeMarkdownInlineCode(f.Path)))
+		fmt.Fprintf(&sb, "- `%s` → `%s`\n", escapeMarkdownInlineCode(f.OldPath), escapeMarkdownInlineCode(f.Path))
 	}
 
 	return sb.String()
@@ -192,7 +192,7 @@ func FormatTruncationWarning(r domain.Review) string {
 		if len(r.TruncatedFiles) > 0 {
 			sb.WriteString("**Files excluded from review:**\n")
 			for _, f := range r.TruncatedFiles {
-				sb.WriteString(fmt.Sprintf("- `%s`\n", escapeMarkdownInlineCode(f)))
+				fmt.Fprintf(&sb, "- `%s`\n", escapeMarkdownInlineCode(f))
 			}
 			sb.WriteString("\n")
 		}
@@ -390,7 +390,7 @@ func formatFilesRequiringAttention(findings []PositionedFinding, attentionSeveri
 			}
 		}
 
-		sb.WriteString(fmt.Sprintf("- `%s` (%s)\n", escapeMarkdownInlineCode(file), strings.Join(badges, ", ")))
+		fmt.Fprintf(&sb, "- `%s` (%s)\n", escapeMarkdownInlineCode(file), strings.Join(badges, ", "))
 	}
 
 	return sb.String()
@@ -428,7 +428,7 @@ func formatCategoryTable(categoryCounts map[string]int) string {
 	sort.Strings(categories)
 
 	for _, cat := range categories {
-		sb.WriteString(fmt.Sprintf("| %s | %d |\n", escapeMarkdownTableCell(cat), categoryCounts[cat]))
+		fmt.Fprintf(&sb, "| %s | %d |\n", escapeMarkdownTableCell(cat), categoryCounts[cat])
 	}
 
 	return sb.String()

@@ -180,7 +180,7 @@ func (b *PersonaPromptBuilder) formatFocusSection(focus, ignore []string) string
 	if len(focus) > 0 {
 		sb.WriteString("**FOCUS** on these categories - prioritize findings in these areas:\n")
 		for _, cat := range focus {
-			sb.WriteString(fmt.Sprintf("- %s\n", cat))
+			fmt.Fprintf(&sb, "- %s\n", cat)
 		}
 	}
 
@@ -190,7 +190,7 @@ func (b *PersonaPromptBuilder) formatFocusSection(focus, ignore []string) string
 		}
 		sb.WriteString("**IGNORE** these categories - do not raise findings in these areas:\n")
 		for _, cat := range ignore {
-			sb.WriteString(fmt.Sprintf("- %s\n", cat))
+			fmt.Fprintf(&sb, "- %s\n", cat)
 		}
 	}
 

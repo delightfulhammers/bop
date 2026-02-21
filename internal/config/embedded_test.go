@@ -46,30 +46,44 @@ func TestLoadEmbeddedHasReviewers(t *testing.T) {
 		t.Fatalf("LoadEmbedded() error = %v", err)
 	}
 
-	// Verify all 4 reviewers are present (security, architecture, performance, observability)
-	expectedReviewers := []string{"security", "architecture", "performance", "observability"}
-	for _, name := range expectedReviewers {
-		if _, ok := cfg.Reviewers[name]; !ok {
-			t.Errorf("expected reviewer %q to be configured", name)
-		}
+	// Verify the single default reviewer is present
+	defaultReviewer, ok := cfg.Reviewers["default"]
+	if !ok {
+		t.Fatal("expected 'default' reviewer to be configured")
 	}
 
-	// Verify default reviewers
-	if len(cfg.DefaultReviewers) == 0 {
-		t.Error("expected defaultReviewers to be set")
+	// Default reviewer should use anthropic (single API key experience)
+	if defaultReviewer.Provider != "anthropic" {
+		t.Errorf("expected default reviewer provider 'anthropic', got %q", defaultReviewer.Provider)
+	}
+	if defaultReviewer.Weight != 1.0 {
+		t.Errorf("expected default reviewer weight 1.0, got %f", defaultReviewer.Weight)
 	}
 
-	// Verify security reviewer has expected properties
-	if security, ok := cfg.Reviewers["security"]; ok {
-		if security.Provider == "" {
-			t.Error("expected security reviewer to have a provider")
-		}
-		if security.Weight == 0 {
-			t.Error("expected security reviewer to have a weight")
-		}
-		if security.Persona == "" {
-			t.Error("expected security reviewer to have a persona")
-		}
+	// Default reviewer should have no persona (uses review.instructions directly)
+	if defaultReviewer.Persona != "" {
+		t.Error("expected default reviewer to have no persona (uses review.instructions)")
+	}
+
+	// Verify default reviewers list
+	if len(cfg.DefaultReviewers) != 1 {
+		t.Fatalf("expected 1 default reviewer, got %d", len(cfg.DefaultReviewers))
+	}
+	if cfg.DefaultReviewers[0] != "default" {
+		t.Errorf("expected default reviewer 'default', got %q", cfg.DefaultReviewers[0])
+	}
+}
+
+func TestLoadEmbeddedVerificationDisabled(t *testing.T) {
+	cfg, err := LoadEmbedded()
+	if err != nil {
+		t.Fatalf("LoadEmbedded() error = %v", err)
+	}
+
+	// Verification should be disabled by default to avoid requiring a second API key.
+	// It uses Gemini by default, which the default user (Anthropic-only) won't have.
+	if cfg.Verification.Enabled {
+		t.Error("expected Verification.Enabled to be false in embedded config (single API key experience)")
 	}
 }
 
@@ -132,8 +146,11 @@ func TestEmbeddedConfigInCI(t *testing.T) {
 	}
 
 	// Verify it's the real config, not a stub
-	if len(cfg.Reviewers) < 4 {
-		t.Errorf("expected at least 4 reviewers in CI, got %d", len(cfg.Reviewers))
+	if len(cfg.Reviewers) < 1 {
+		t.Errorf("expected at least 1 reviewer in CI, got %d", len(cfg.Reviewers))
+	}
+	if _, ok := cfg.Reviewers["default"]; !ok {
+		t.Error("expected 'default' reviewer in CI")
 	}
 	if len(cfg.Providers) < 3 {
 		t.Errorf("expected at least 3 providers in CI, got %d", len(cfg.Providers))

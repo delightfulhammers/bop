@@ -110,13 +110,13 @@ Your task: Identify the main THEMES across these findings. Each theme should be 
 
 	sb.WriteString("## Findings to Analyze\n\n")
 	for i, f := range findings {
-		sb.WriteString(fmt.Sprintf("### Finding %d\n", i+1))
-		sb.WriteString(fmt.Sprintf("- File: `%s`\n", f.File))
-		sb.WriteString(fmt.Sprintf("- Category: %s\n", f.Category))
-		sb.WriteString(fmt.Sprintf("- Description: %s\n\n", f.Description))
+		fmt.Fprintf(&sb, "### Finding %d\n", i+1)
+		fmt.Fprintf(&sb, "- File: `%s`\n", f.File)
+		fmt.Fprintf(&sb, "- Category: %s\n", f.Category)
+		fmt.Fprintf(&sb, "- Description: %s\n\n", f.Description)
 	}
 
-	sb.WriteString(fmt.Sprintf(`## Response Format
+	fmt.Fprintf(&sb, `## Response Format
 
 Extract up to %d themes. Respond with a JSON object:
 
@@ -134,7 +134,7 @@ Guidelines:
 - Only include themes that appear in 2+ findings
 - Focus on conceptual areas, not specific implementation details
 - If no clear themes emerge, return an empty array
-`, maxThemes))
+`, maxThemes)
 
 	return sb.String()
 }
@@ -154,18 +154,18 @@ Your task: Identify themes AND the specific conclusions that have been reached a
 
 	sb.WriteString("## Findings to Analyze\n\n")
 	for i, f := range findings {
-		sb.WriteString(fmt.Sprintf("### Finding %d\n", i+1))
-		sb.WriteString(fmt.Sprintf("- File: `%s`\n", f.File))
-		sb.WriteString(fmt.Sprintf("- Category: %s\n", f.Category))
-		sb.WriteString(fmt.Sprintf("- Status: %s\n", f.Status))
-		sb.WriteString(fmt.Sprintf("- Description: %s\n", f.Description))
+		fmt.Fprintf(&sb, "### Finding %d\n", i+1)
+		fmt.Fprintf(&sb, "- File: `%s`\n", f.File)
+		fmt.Fprintf(&sb, "- Category: %s\n", f.Category)
+		fmt.Fprintf(&sb, "- Status: %s\n", f.Status)
+		fmt.Fprintf(&sb, "- Description: %s\n", f.Description)
 		if f.StatusReason != "" {
-			sb.WriteString(fmt.Sprintf("- Rationale: %s\n", f.StatusReason))
+			fmt.Fprintf(&sb, "- Rationale: %s\n", f.StatusReason)
 		}
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(fmt.Sprintf(`## Response Format
+	fmt.Fprintf(&sb, `## Response Format
 
 Respond with a JSON object containing themes and conclusions:
 
@@ -186,7 +186,7 @@ Guidelines:
 - For each theme with a clear decision, add a conclusion
 - anti_pattern describes what NOT to suggest based on this conclusion
 - Focus on conclusions that would prevent repeat findings
-`, maxThemes))
+`, maxThemes)
 
 	return sb.String()
 }
@@ -230,10 +230,10 @@ This context will be injected into future review prompts to prevent the same con
 	if len(disputed) > 0 {
 		sb.WriteString("### DISPUTED Findings (IMPORTANT - these should NOT be re-raised)\n\n")
 		for i, f := range disputed {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s`\n", i+1, f.Category, f.File))
-			sb.WriteString(fmt.Sprintf("   - Description: %s\n", f.Description))
+			fmt.Fprintf(&sb, "%d. **%s** in `%s`\n", i+1, f.Category, f.File)
+			fmt.Fprintf(&sb, "   - Description: %s\n", f.Description)
 			if f.StatusReason != "" {
-				sb.WriteString(fmt.Sprintf("   - DISPUTE RATIONALE: %s\n", f.StatusReason))
+				fmt.Fprintf(&sb, "   - DISPUTE RATIONALE: %s\n", f.StatusReason)
 			}
 			sb.WriteString("\n")
 		}
@@ -243,10 +243,10 @@ This context will be injected into future review prompts to prevent the same con
 	if len(acknowledged) > 0 {
 		sb.WriteString("### Acknowledged Findings\n\n")
 		for i, f := range acknowledged {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s`\n", i+1, f.Category, f.File))
-			sb.WriteString(fmt.Sprintf("   - Description: %s\n", f.Description))
+			fmt.Fprintf(&sb, "%d. **%s** in `%s`\n", i+1, f.Category, f.File)
+			fmt.Fprintf(&sb, "   - Description: %s\n", f.Description)
 			if f.StatusReason != "" {
-				sb.WriteString(fmt.Sprintf("   - Note: %s\n", f.StatusReason))
+				fmt.Fprintf(&sb, "   - Note: %s\n", f.StatusReason)
 			}
 			sb.WriteString("\n")
 		}
@@ -256,13 +256,13 @@ This context will be injected into future review prompts to prevent the same con
 	if len(other) > 0 {
 		sb.WriteString("### Other Findings\n\n")
 		for i, f := range other {
-			sb.WriteString(fmt.Sprintf("%d. **%s** in `%s`\n", i+1, f.Category, f.File))
-			sb.WriteString(fmt.Sprintf("   - Description: %s\n", f.Description))
+			fmt.Fprintf(&sb, "%d. **%s** in `%s`\n", i+1, f.Category, f.File)
+			fmt.Fprintf(&sb, "   - Description: %s\n", f.Description)
 			sb.WriteString("\n")
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf(`## Response Format
+	fmt.Fprintf(&sb, `## Response Format
 
 Respond with a JSON object:
 
@@ -320,7 +320,7 @@ This principle would prevent future findings like:
 - "Off-by-one in buffer size check" (intentional conservative bound)
 - "Timeout threshold could be tighter" (intentional safety margin)
 - "Response limit check is one byte too strict" (conservative by design)
-`, maxThemes))
+`, maxThemes)
 
 	return sb.String()
 }

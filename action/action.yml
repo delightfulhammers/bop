@@ -1,0 +1,93 @@
+name: "bop Code Review"
+description: "AI-powered code review for pull requests"
+branding:
+  icon: "eye"
+  color: "purple"
+
+inputs:
+  anthropic-api-key:
+    description: "Anthropic API key (recommended for default reviewer)"
+    required: false
+  openai-api-key:
+    description: "OpenAI API key"
+    required: false
+  google-api-key:
+    description: "Google Gemini API key"
+    required: false
+  base-ref:
+    description: "Base branch to compare against"
+    required: false
+    default: "main"
+  block-threshold:
+    description: "Severity threshold for blocking PRs (critical, high, medium, low, none)"
+    required: false
+    default: "none"
+  reviewers:
+    description: "Comma-separated list of reviewer personas"
+    required: false
+  post-findings:
+    description: "Post findings as PR review comments"
+    required: false
+    default: "true"
+  fail-on-findings:
+    description: "Fail the workflow if findings are detected"
+    required: false
+    default: "false"
+  log-level:
+    description: "Log level (trace, debug, info, error)"
+    required: false
+    default: "info"
+  version:
+    description: "bop version to install (e.g., v0.7.2 or latest)"
+    required: false
+    default: "latest"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install bop
+      shell: bash
+      env:
+        BOP_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        # Determine version to install
+        if [ "$BOP_VERSION" = "latest" ]; then
+          DOWNLOAD_TAG=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/delightfulhammers/bop/releases/latest" \
+            | jq -r '.tag_name')
+        else
+          DOWNLOAD_TAG="$BOP_VERSION"
+        fi
+
+        # Determine OS and architecture
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64) ARCH="amd64" ;;
+          aarch64|arm64) ARCH="arm64" ;;
+        esac
+
+        # Download and install binary
+        DOWNLOAD_URL="https://github.com/delightfulhammers/bop/releases/download/${DOWNLOAD_TAG}/bop_${OS}_${ARCH}"
+        echo "Installing bop ${DOWNLOAD_TAG} (${OS}/${ARCH})..."
+        curl -fsSL -o /usr/local/bin/bop "$DOWNLOAD_URL"
+        chmod +x /usr/local/bin/bop
+        echo "bop ${DOWNLOAD_TAG} installed successfully"
+
+    - name: Run code review
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GEMINI_API_KEY: ${{ inputs.google-api-key }}
+        BOP_BASE_REF: ${{ inputs.base-ref }}
+        BOP_BLOCK_THRESHOLD: ${{ inputs.block-threshold }}
+        BOP_REVIEWERS: ${{ inputs.reviewers }}
+        BOP_POST_FINDINGS: ${{ inputs.post-findings }}
+        BOP_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+        BOP_LOG_LEVEL: ${{ inputs.log-level }}
+      run: bop github-action

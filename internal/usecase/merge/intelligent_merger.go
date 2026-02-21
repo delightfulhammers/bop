@@ -477,8 +477,8 @@ func buildSynthesisPrompt(reviews []domain.Review) string {
 	prompt.WriteString("Input reviews:\n\n")
 
 	for _, review := range reviews {
-		prompt.WriteString(fmt.Sprintf("**%s (%s)** - %d findings:\n",
-			review.ProviderName, review.ModelName, len(review.Findings)))
+		fmt.Fprintf(&prompt, "**%s (%s)** - %d findings:\n",
+			review.ProviderName, review.ModelName, len(review.Findings))
 		prompt.WriteString(review.Summary)
 		prompt.WriteString("\n\n")
 	}

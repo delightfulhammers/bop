@@ -232,9 +232,9 @@ func (t *GrepTool) Execute(ctx context.Context, input string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d matches:\n", len(matches)))
+	fmt.Fprintf(&sb, "Found %d matches:\n", len(matches))
 	for _, m := range matches {
-		sb.WriteString(fmt.Sprintf("%s:%d: %s\n", m.File, m.Line, m.Content))
+		fmt.Fprintf(&sb, "%s:%d: %s\n", m.File, m.Line, m.Content)
 	}
 
 	return truncateOutput(sb.String()), nil
@@ -282,7 +282,7 @@ func (t *GlobTool) Execute(ctx context.Context, input string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d files:\n", len(files)))
+	fmt.Fprintf(&sb, "Found %d files:\n", len(files))
 	for _, f := range files {
 		sb.WriteString(f + "\n")
 	}
@@ -444,7 +444,7 @@ func (t *BashTool) Execute(ctx context.Context, input string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Exit code: %d\n", result.ExitCode))
+	fmt.Fprintf(&sb, "Exit code: %d\n", result.ExitCode)
 
 	if result.Stdout != "" {
 		sb.WriteString("Stdout:\n")

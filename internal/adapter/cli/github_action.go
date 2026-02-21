@@ -481,7 +481,7 @@ func writeSummaryFile(path string, counts map[string]int, total int, reviewErr e
 		if len(errMsg) > 500 {
 			errMsg = errMsg[:500] + "..."
 		}
-		sb.WriteString(fmt.Sprintf("> [!WARNING]\n> Review completed with errors: %s\n\n", errMsg))
+		fmt.Fprintf(&sb, "> [!WARNING]\n> Review completed with errors: %s\n\n", errMsg)
 	}
 
 	if total == 0 {
@@ -490,18 +490,18 @@ func writeSummaryFile(path string, counts map[string]int, total int, reviewErr e
 		sb.WriteString("| Severity | Count |\n")
 		sb.WriteString("|----------|-------|\n")
 		if counts["critical"] > 0 {
-			sb.WriteString(fmt.Sprintf("| Critical | %d |\n", counts["critical"]))
+			fmt.Fprintf(&sb, "| Critical | %d |\n", counts["critical"])
 		}
 		if counts["high"] > 0 {
-			sb.WriteString(fmt.Sprintf("| High | %d |\n", counts["high"]))
+			fmt.Fprintf(&sb, "| High | %d |\n", counts["high"])
 		}
 		if counts["medium"] > 0 {
-			sb.WriteString(fmt.Sprintf("| Medium | %d |\n", counts["medium"]))
+			fmt.Fprintf(&sb, "| Medium | %d |\n", counts["medium"])
 		}
 		if counts["low"] > 0 {
-			sb.WriteString(fmt.Sprintf("| Low | %d |\n", counts["low"]))
+			fmt.Fprintf(&sb, "| Low | %d |\n", counts["low"])
 		}
-		sb.WriteString(fmt.Sprintf("| **Total** | **%d** |\n", total))
+		fmt.Fprintf(&sb, "| **Total** | **%d** |\n", total)
 	}
 
 	content := sb.String()

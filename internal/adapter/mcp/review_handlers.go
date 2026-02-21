@@ -1296,8 +1296,8 @@ func createSyntheticDiff(root string, files []string) (domain.Diff, error) {
 		// Create a patch-like format for the file content
 		lines := strings.Split(string(content), "\n")
 		var patchBuilder strings.Builder
-		patchBuilder.WriteString(fmt.Sprintf("--- /dev/null\n+++ %s\n", relPath))
-		patchBuilder.WriteString(fmt.Sprintf("@@ -0,0 +1,%d @@\n", len(lines)))
+		fmt.Fprintf(&patchBuilder, "--- /dev/null\n+++ %s\n", relPath)
+		fmt.Fprintf(&patchBuilder, "@@ -0,0 +1,%d @@\n", len(lines))
 		for _, line := range lines {
 			patchBuilder.WriteString("+")
 			patchBuilder.WriteString(line)

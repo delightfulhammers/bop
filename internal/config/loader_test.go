@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -381,6 +382,149 @@ func TestExpandEnvString_TildeExpansion(t *testing.T) {
 			result := expandEnvString(tt.input)
 			assert.Equal(t, tt.expected, result, "input: %s", tt.input)
 		})
+	}
+}
+
+// .bop.yaml (dot-prefixed) config file discovery tests
+
+func TestLocateConfigFiles_DotPrefixFallback(t *testing.T) {
+	// When only .bop.yaml exists, it should be found
+	dir := t.TempDir()
+	dotConfig := filepath.Join(dir, ".bop.yaml")
+	if err := os.WriteFile(dotConfig, []byte("output:\n  directory: dot\n"), 0o600); err != nil {
+		t.Fatalf("failed to write .bop.yaml: %v", err)
+	}
+
+	files := locateConfigFiles("bop", []string{dir})
+	found := false
+	for _, f := range files {
+		if filepath.Base(f) == ".bop.yaml" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected .bop.yaml to be found when bop.yaml is absent")
+	}
+}
+
+func TestLocateConfigFiles_BopYamlTakesPrecedence(t *testing.T) {
+	// When both bop.yaml and .bop.yaml exist in the same directory,
+	// bop.yaml should take precedence and .bop.yaml should be ignored
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "bop.yaml"), []byte("output:\n  directory: non-dot\n"), 0o600); err != nil {
+		t.Fatalf("failed to write bop.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".bop.yaml"), []byte("output:\n  directory: dot\n"), 0o600); err != nil {
+		t.Fatalf("failed to write .bop.yaml: %v", err)
+	}
+
+	files := locateConfigFiles("bop", []string{dir})
+	// Only one file from this directory should be found
+	dirFiles := 0
+	for _, f := range files {
+		absDir, _ := filepath.Abs(dir)
+		absF, _ := filepath.Abs(filepath.Dir(f))
+		if absDir == absF {
+			dirFiles++
+			if filepath.Base(f) != "bop.yaml" {
+				t.Errorf("expected bop.yaml to win, got %s", filepath.Base(f))
+			}
+		}
+	}
+	if dirFiles != 1 {
+		t.Errorf("expected exactly 1 config file from directory, got %d", dirFiles)
+	}
+}
+
+func TestLocateConfigFiles_NeitherExists(t *testing.T) {
+	// When neither bop.yaml nor .bop.yaml exist, no files should be found
+	dir := t.TempDir()
+	files := locateConfigFiles("bop", []string{dir})
+	for _, f := range files {
+		absDir, _ := filepath.Abs(dir)
+		absF, _ := filepath.Abs(filepath.Dir(f))
+		if absDir == absF {
+			t.Errorf("expected no config files in empty dir, got %s", f)
+		}
+	}
+}
+
+func TestHasLocalConfig_DotPrefix(t *testing.T) {
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+
+	// Neither exists
+	if HasLocalConfig() {
+		t.Error("expected HasLocalConfig()=false when no config exists")
+	}
+
+	// Only .bop.yaml exists
+	if err := os.WriteFile(".bop.yaml", []byte("output:\n  directory: dot\n"), 0o600); err != nil {
+		t.Fatalf("failed to write .bop.yaml: %v", err)
+	}
+	if !HasLocalConfig() {
+		t.Error("expected HasLocalConfig()=true when .bop.yaml exists")
+	}
+}
+
+func TestGetLocalConfigPath_DotPrefix(t *testing.T) {
+	dir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to chdir: %v", err)
+	}
+
+	// Neither exists
+	if path := GetLocalConfigPath(); path != "" {
+		t.Errorf("expected empty path, got %q", path)
+	}
+
+	// Only .bop.yaml exists
+	if err := os.WriteFile(".bop.yaml", []byte("output:\n  directory: dot\n"), 0o600); err != nil {
+		t.Fatalf("failed to write .bop.yaml: %v", err)
+	}
+	if path := GetLocalConfigPath(); path != ".bop.yaml" {
+		t.Errorf("expected '.bop.yaml', got %q", path)
+	}
+
+	// Both exist — bop.yaml wins
+	if err := os.WriteFile("bop.yaml", []byte("output:\n  directory: non-dot\n"), 0o600); err != nil {
+		t.Fatalf("failed to write bop.yaml: %v", err)
+	}
+	if path := GetLocalConfigPath(); path != "bop.yaml" {
+		t.Errorf("expected 'bop.yaml', got %q", path)
+	}
+}
+
+func TestLoadDotBopYaml(t *testing.T) {
+	dir := t.TempDir()
+	dotConfig := filepath.Join(dir, ".bop.yaml")
+	if err := os.WriteFile(dotConfig, []byte("output:\n  directory: from-dot-config\n"), 0o600); err != nil {
+		t.Fatalf("failed to write .bop.yaml: %v", err)
+	}
+
+	cfg, err := Load(LoaderOptions{
+		ConfigPaths: []string{dir},
+		FileName:    "bop",
+		EnvPrefix:   "BOP_DOT_TEST",
+	})
+	if err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+
+	if cfg.Output.Directory != "from-dot-config" {
+		t.Errorf("expected output directory 'from-dot-config', got %q", cfg.Output.Directory)
 	}
 }
 

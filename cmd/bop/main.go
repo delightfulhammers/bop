@@ -176,6 +176,11 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		log.Fatalf("Failed to create reviewer registry: %v\nPlease configure reviewers in your bop.yaml", err)
 	}
 
+	// Validate that default reviewers have their providers available
+	if err := validateReviewerProviders(cfg, providers); err != nil {
+		return err
+	}
+
 	// Use enhanced prompt builder for richer context, wrapped with persona support
 	basePromptBuilder := review.NewEnhancedPromptBuilder()
 	personaPromptBuilder := review.NewPersonaPromptBuilder(basePromptBuilder)
@@ -1141,6 +1146,42 @@ func isProviderUsable(cfg config.ProviderConfig, exists bool) bool {
 		return false
 	}
 	return isProviderEnabled(cfg)
+}
+
+// providerEnvVar returns the expected environment variable name for a provider.
+func providerEnvVar(provider string) string {
+	switch provider {
+	case "anthropic":
+		return "ANTHROPIC_API_KEY"
+	case "openai":
+		return "OPENAI_API_KEY"
+	case "gemini":
+		return "GEMINI_API_KEY"
+	default:
+		return strings.ToUpper(provider) + "_API_KEY"
+	}
+}
+
+// validateReviewerProviders checks that each default reviewer's provider is
+// available in the built providers map. Returns a descriptive error when a
+// provider is missing, guiding the user to set the correct API key.
+func validateReviewerProviders(cfg config.Config, providers map[string]review.Provider) error {
+	for _, reviewerName := range cfg.DefaultReviewers {
+		reviewerCfg, ok := cfg.Reviewers[reviewerName]
+		if !ok {
+			continue // Registry validation handles missing reviewers
+		}
+		providerName := reviewerCfg.Provider
+		if _, available := providers[providerName]; !available {
+			envVar := providerEnvVar(providerName)
+			return fmt.Errorf(
+				"default reviewer %q requires the %q provider, but it is not available\n"+
+					"Set the %s environment variable, or configure a different provider in your bop.yaml",
+				reviewerName, providerName, envVar,
+			)
+		}
+	}
+	return nil
 }
 
 // openaiLLMAdapter adapts openai.HTTPClient to verifyadapter.LLMClient.

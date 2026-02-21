@@ -23,6 +23,7 @@ type Config struct {
 	Deduplication   DeduplicationConfig       `yaml:"deduplication"`
 	ThemeExtraction ThemeExtractionConfig     `yaml:"themeExtraction"`
 	SizeGuards      SizeGuardsConfig          `yaml:"sizeGuards"`
+	Platform        PlatformConfig            `yaml:"platform"`
 
 	// Phase 3.2: Reviewer Personas
 	// Reviewers configures the reviewer personas for code review.
@@ -226,6 +227,29 @@ type StoreConfig struct {
 	Path    string `yaml:"path"`
 }
 
+// PlatformConfig configures bop Pro platform integration.
+// This struct is parsed but currently ignored at runtime. It stabilizes the
+// config format before public release so users can prepare their .bop.yaml
+// files for Pro features without breaking on future upgrades.
+type PlatformConfig struct {
+	// Enabled toggles platform integration. When true, bop connects to
+	// the bop Pro platform for curated reviewer panels, usage analytics,
+	// and team features.
+	Enabled bool `yaml:"enabled"`
+
+	// Token is the platform authentication token.
+	// Supports environment variable expansion: ${BOP_PLATFORM_TOKEN}
+	Token string `yaml:"token,omitempty"`
+
+	// ManagedProxy routes LLM requests through the platform's managed proxy,
+	// eliminating the need for individual API keys.
+	ManagedProxy bool `yaml:"managedProxy"`
+
+	// UseCuratedPanel uses the platform's provider-optimized reviewer panel
+	// instead of the locally configured reviewers.
+	UseCuratedPanel bool `yaml:"useCuratedPanel"`
+}
+
 // ObservabilityConfig configures logging, metrics, and cost tracking.
 type ObservabilityConfig struct {
 	Logging LoggingConfig `yaml:"logging"`
@@ -416,6 +440,7 @@ func merge(base, overlay Config) Config {
 	result.Deduplication = chooseDeduplication(base.Deduplication, overlay.Deduplication)
 	result.ThemeExtraction = chooseThemeExtraction(base.ThemeExtraction, overlay.ThemeExtraction)
 	result.SizeGuards = chooseSizeGuards(base.SizeGuards, overlay.SizeGuards)
+	result.Platform = choosePlatform(base.Platform, overlay.Platform)
 	result.Providers = mergeProviders(base.Providers, overlay.Providers)
 
 	// Phase 3.2: Merge reviewer personas
@@ -560,6 +585,13 @@ func choosePlanning(base, overlay PlanningConfig) PlanningConfig {
 
 func chooseStore(base, overlay StoreConfig) StoreConfig {
 	if overlay.Enabled || overlay.Path != "" {
+		return overlay
+	}
+	return base
+}
+
+func choosePlatform(base, overlay PlatformConfig) PlatformConfig {
+	if overlay.Enabled || overlay.Token != "" || overlay.ManagedProxy || overlay.UseCuratedPanel {
 		return overlay
 	}
 	return base

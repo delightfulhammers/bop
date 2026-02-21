@@ -772,7 +772,7 @@ func formatDedupSection(stats DedupStats) string {
 
 	totalSkipped := stats.DisputeInherited + stats.FingerprintDuplicates + stats.SemanticDuplicates
 	if totalSkipped == 0 {
-		sb.WriteString(fmt.Sprintf("🔄 **%d findings** | 0 duplicates\n", stats.NewFindings))
+		fmt.Fprintf(&sb, "🔄 **%d findings** | 0 duplicates\n", stats.NewFindings)
 	} else {
 		// Build detailed breakdown of what was skipped
 		var parts []string
@@ -785,8 +785,8 @@ func formatDedupSection(stats DedupStats) string {
 		if stats.SemanticDuplicates > 0 {
 			parts = append(parts, fmt.Sprintf("%d semantic", stats.SemanticDuplicates))
 		}
-		sb.WriteString(fmt.Sprintf("🔄 **%d new** | %s duplicates skipped\n",
-			stats.NewFindings, strings.Join(parts, " | ")))
+		fmt.Fprintf(&sb, "🔄 **%d new** | %s duplicates skipped\n",
+			stats.NewFindings, strings.Join(parts, " | "))
 	}
 
 	return sb.String()
@@ -816,10 +816,10 @@ func formatCostSection(stats CostStats) string {
 	sb.WriteString("### Costs\n\n")
 
 	if stats.PriorCost > 0 {
-		sb.WriteString(fmt.Sprintf("💰 This review: $%.4f | Cumulative: $%.4f\n",
-			stats.CurrentCost, stats.CumulativeCost))
+		fmt.Fprintf(&sb, "💰 This review: $%.4f | Cumulative: $%.4f\n",
+			stats.CurrentCost, stats.CumulativeCost)
 	} else {
-		sb.WriteString(fmt.Sprintf("💰 This review: $%.4f\n", stats.CurrentCost))
+		fmt.Fprintf(&sb, "💰 This review: $%.4f\n", stats.CurrentCost)
 	}
 
 	// Embed cost marker for future extraction (invisible in rendered markdown)
@@ -868,13 +868,13 @@ func formatStatusSection(counts StatusCounts) string {
 	sb.WriteString("| Status | Count | Effect |\n")
 	sb.WriteString("|--------|-------|--------|\n")
 	sb.WriteString("| 🔓 Open | ")
-	sb.WriteString(fmt.Sprintf("%d", counts.Open))
+	fmt.Fprintf(&sb, "%d", counts.Open)
 	sb.WriteString(" | Counts toward blocking |\n")
 	sb.WriteString("| ✅ Acknowledged | ")
-	sb.WriteString(fmt.Sprintf("%d", counts.Acknowledged))
+	fmt.Fprintf(&sb, "%d", counts.Acknowledged)
 	sb.WriteString(" | Won't block (author accepted) |\n")
 	sb.WriteString("| ❌ Disputed | ")
-	sb.WriteString(fmt.Sprintf("%d", counts.Disputed))
+	fmt.Fprintf(&sb, "%d", counts.Disputed)
 	sb.WriteString(" | Won't block (author disputes) |\n")
 
 	return sb.String()

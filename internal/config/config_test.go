@@ -1789,6 +1789,120 @@ func TestMergeProviders_EmptyOverlayPreservesBase(t *testing.T) {
 	}
 }
 
+// PlatformConfig tests (forward-compatible struct for Pro tier)
+
+func TestPlatformConfig_Defaults(t *testing.T) {
+	// Zero-value config should be completely inert
+	cfg := config.PlatformConfig{}
+
+	if cfg.Enabled {
+		t.Error("expected Enabled to default to false")
+	}
+	if cfg.Token != "" {
+		t.Error("expected Token to default to empty")
+	}
+	if cfg.ManagedProxy {
+		t.Error("expected ManagedProxy to default to false")
+	}
+	if cfg.UseCuratedPanel {
+		t.Error("expected UseCuratedPanel to default to false")
+	}
+}
+
+func TestPlatformConfig_FromFile(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "bop.yaml")
+	content := `
+platform:
+  enabled: true
+  token: "${PLATFORM_TOKEN}"
+  managedProxy: true
+  useCuratedPanel: true
+`
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	t.Setenv("PLATFORM_TOKEN", "test-platform-token")
+
+	cfg, err := config.Load(config.LoaderOptions{
+		ConfigPaths: []string{dir},
+		FileName:    "bop",
+		EnvPrefix:   "BOP_PLATFORM_TEST",
+	})
+	if err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+
+	if !cfg.Platform.Enabled {
+		t.Error("expected Platform.Enabled to be true from file")
+	}
+	if cfg.Platform.Token != "test-platform-token" {
+		t.Errorf("expected Platform.Token 'test-platform-token', got %q", cfg.Platform.Token)
+	}
+	if !cfg.Platform.ManagedProxy {
+		t.Error("expected Platform.ManagedProxy to be true from file")
+	}
+	if !cfg.Platform.UseCuratedPanel {
+		t.Error("expected Platform.UseCuratedPanel to be true from file")
+	}
+}
+
+func TestPlatformConfig_MergeOverlayWins(t *testing.T) {
+	base := config.Config{
+		Platform: config.PlatformConfig{
+			Enabled: true,
+			Token:   "base-token",
+		},
+	}
+	overlay := config.Config{
+		Platform: config.PlatformConfig{
+			Enabled: false,
+			Token:   "overlay-token",
+		},
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if merged.Platform.Enabled {
+		t.Error("expected Platform.Enabled to be false from overlay")
+	}
+	if merged.Platform.Token != "overlay-token" {
+		t.Errorf("expected Platform.Token 'overlay-token', got %q", merged.Platform.Token)
+	}
+}
+
+func TestPlatformConfig_MergePreservesBase(t *testing.T) {
+	base := config.Config{
+		Platform: config.PlatformConfig{
+			Enabled:      true,
+			Token:        "base-token",
+			ManagedProxy: true,
+		},
+	}
+	overlay := config.Config{
+		// Empty platform config — should preserve base
+	}
+
+	merged, err := config.Merge(base, overlay)
+	if err != nil {
+		t.Fatalf("Merge returned error: %v", err)
+	}
+
+	if !merged.Platform.Enabled {
+		t.Error("expected Platform.Enabled to be preserved from base")
+	}
+	if merged.Platform.Token != "base-token" {
+		t.Errorf("expected Platform.Token preserved from base, got %q", merged.Platform.Token)
+	}
+	if !merged.Platform.ManagedProxy {
+		t.Error("expected Platform.ManagedProxy preserved from base")
+	}
+}
+
 func TestMergeProviders_AllFieldsMerge(t *testing.T) {
 	// Table-driven test exercising every field in mergeProvider individually.
 	// Each case sets one field in the overlay and verifies it overrides base
