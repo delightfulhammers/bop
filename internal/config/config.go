@@ -228,9 +228,8 @@ type StoreConfig struct {
 }
 
 // PlatformConfig configures bop Pro platform integration.
-// This struct is parsed but currently ignored at runtime. It stabilizes the
-// config format before public release so users can prepare their .bop.yaml
-// files for Pro features without breaking on future upgrades.
+// When enabled (or when useCuratedPanel is true), bop connects to the platform
+// to fetch curated reviewer panels, resolve entitlements, and sync team features.
 type PlatformConfig struct {
 	// Enabled toggles platform integration. When true, bop connects to
 	// the bop Pro platform for curated reviewer panels, usage analytics,
@@ -239,6 +238,7 @@ type PlatformConfig struct {
 
 	// Token is the platform authentication token.
 	// Supports environment variable expansion: ${BOP_PLATFORM_TOKEN}
+	// Optional when using `bop auth login` (device flow stores credentials separately).
 	Token string `yaml:"token,omitempty"`
 
 	// ManagedProxy routes LLM requests through the platform's managed proxy,
@@ -248,6 +248,14 @@ type PlatformConfig struct {
 	// UseCuratedPanel uses the platform's provider-optimized reviewer panel
 	// instead of the locally configured reviewers.
 	UseCuratedPanel bool `yaml:"useCuratedPanel"`
+
+	// URL is the platform API URL.
+	// Default: "https://api.delightfulhammers.com"
+	URL string `yaml:"url,omitempty"`
+
+	// Override when true causes local reviewer configuration to take precedence
+	// over platform-sourced reviewer config. By default, platform config wins.
+	Override bool `yaml:"override"`
 }
 
 // ObservabilityConfig configures logging, metrics, and cost tracking.
@@ -591,7 +599,7 @@ func chooseStore(base, overlay StoreConfig) StoreConfig {
 }
 
 func choosePlatform(base, overlay PlatformConfig) PlatformConfig {
-	if overlay.Enabled || overlay.Token != "" || overlay.ManagedProxy || overlay.UseCuratedPanel {
+	if overlay.Enabled || overlay.Token != "" || overlay.ManagedProxy || overlay.UseCuratedPanel || overlay.URL != "" || overlay.Override {
 		return overlay
 	}
 	return base

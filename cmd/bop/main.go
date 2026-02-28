@@ -35,6 +35,7 @@ import (
 	"github.com/delightfulhammers/bop/internal/config"
 	"github.com/delightfulhammers/bop/internal/determinism"
 	"github.com/delightfulhammers/bop/internal/domain"
+	"github.com/delightfulhammers/bop/internal/platform"
 	"github.com/delightfulhammers/bop/internal/redaction"
 	usecasedeup "github.com/delightfulhammers/bop/internal/usecase/dedup"
 	usecasegithub "github.com/delightfulhammers/bop/internal/usecase/github"
@@ -101,6 +102,9 @@ func run() error {
 
 // runWithConfig runs the CLI with the given configuration.
 func runWithConfig(ctx context.Context, cfg config.Config) error {
+
+	// Fetch and merge platform config if enabled and authenticated
+	cfg = fetchPlatformConfig(ctx, cfg)
 
 	repoDir := cfg.Git.RepositoryDir
 	if repoDir == "" {
@@ -355,6 +359,7 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		},
 		DefaultBotUsername:   cfg.Review.BotUsername,
 		DefaultPostOutOfDiff: cfg.Review.ShouldPostOutOfDiff(),
+		DefaultPlatformURL:   cfg.Platform.URL,
 		DefaultVerification: cli.DefaultVerification{
 			Enabled:            cfg.Verification.Enabled,
 			Depth:              cfg.Verification.Depth,
@@ -1237,4 +1242,48 @@ func (a *geminiLLMAdapter) Call(ctx context.Context, systemPrompt, userPrompt st
 		return "", 0, 0, 0, err
 	}
 	return resp.Text, resp.TokensIn, resp.TokensOut, resp.Cost, nil
+}
+
+// fetchPlatformConfig loads stored credentials and fetches config from the platform.
+// Returns the merged config on success, or the original config on any failure (graceful degradation).
+func fetchPlatformConfig(ctx context.Context, cfg config.Config) config.Config {
+	if !cfg.Platform.Enabled && !cfg.Platform.UseCuratedPanel {
+		return cfg
+	}
+
+	creds, err := platform.LoadCredentials()
+	if err != nil {
+		log.Printf("warning: failed to load platform credentials: %v", err)
+		return cfg
+	}
+	if creds == nil {
+		log.Println("warning: platform enabled but not logged in — run `bop auth login` to authenticate")
+		return cfg
+	}
+
+	platformURL := cfg.Platform.URL
+	if platformURL == "" {
+		platformURL = creds.PlatformURL
+	}
+
+	client := platform.NewClient(platformURL, creds).
+		WithOnRefresh(func(c *platform.Credentials) {
+			_ = platform.SaveCredentials(c)
+		})
+
+	configResp, err := client.GetConfig(ctx, "bop")
+	if err != nil {
+		log.Printf("warning: platform config fetch failed, using local config: %v", err)
+		return cfg
+	}
+
+	result := &config.PlatformConfigResult{
+		Config:     configResp.Config,
+		Tier:       configResp.Tier,
+		IsReadOnly: configResp.IsReadOnly,
+	}
+
+	merged := config.MergePlatformConfig(cfg, result)
+	log.Printf("Platform config applied (tier=%s)", configResp.Tier)
+	return merged
 }
