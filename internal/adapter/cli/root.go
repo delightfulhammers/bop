@@ -137,7 +137,8 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 			BranchReviewer: deps.BranchReviewer,
 		}))
 	}
-	// Add platform auth command
+	// Add platform auth command (defaults to https://api.delightfulhammers.com
+	// if deps.DefaultPlatformURL is empty — see loginCommand fallback)
 	root.AddCommand(NewAuthCommand(AuthDeps{
 		DefaultPlatformURL: deps.DefaultPlatformURL,
 	}))

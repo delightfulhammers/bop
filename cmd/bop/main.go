@@ -1263,6 +1263,9 @@ func fetchPlatformConfig(ctx context.Context, cfg config.Config) config.Config {
 	platformURL := cfg.Platform.URL
 	if platformURL == "" {
 		platformURL = creds.PlatformURL
+	} else if creds.PlatformURL != "" && platformURL != creds.PlatformURL {
+		log.Printf("warning: config platform URL (%s) differs from login URL (%s) — using config URL",
+			platformURL, creds.PlatformURL)
 	}
 
 	client := platform.NewClient(platformURL, creds).

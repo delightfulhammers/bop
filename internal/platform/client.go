@@ -181,7 +181,9 @@ func (c *Client) GetConfig(ctx context.Context, productID string) (*ConfigRespon
 }
 
 // ensureFreshToken refreshes the token if it's near expiry.
-// Protected by a mutex to prevent concurrent refresh races.
+// The mutex protects credential state (AccessToken, RefreshToken, ExpiresAt)
+// during refresh. Concurrent HTTP requests via http.Client are safe.
+// The onRefresh callback is called under the lock, so it must not re-enter Client methods.
 func (c *Client) ensureFreshToken(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
