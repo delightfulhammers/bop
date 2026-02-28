@@ -86,6 +86,7 @@ type Dependencies struct {
 	DefaultBotUsername   string // Bot username for auto-dismissing stale reviews
 	DefaultVerification  DefaultVerification
 	DefaultPostOutOfDiff bool // Post out-of-diff findings as issue comments (default: true)
+	DefaultPlatformURL   string
 	Version              string
 }
 
@@ -136,6 +137,11 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 			BranchReviewer: deps.BranchReviewer,
 		}))
 	}
+	// Add platform auth command (defaults to https://api.delightfulhammers.com
+	// if deps.DefaultPlatformURL is empty — see loginCommand fallback)
+	root.AddCommand(NewAuthCommand(AuthDeps{
+		DefaultPlatformURL: deps.DefaultPlatformURL,
+	}))
 
 	var showVersion bool
 	root.PersistentFlags().BoolVarP(&showVersion, "version", "v", false, "Show version and exit")
