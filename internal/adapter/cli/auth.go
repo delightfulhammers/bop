@@ -59,11 +59,13 @@ func loginCommand(deps AuthDeps) *cobra.Command {
 
 			_, _ = fmt.Fprintf(out, "\nLogged in as %s\n", creds.Username)
 
-			// Fetch user info for tier display
+			// Fetch user info for tier display (non-fatal on failure)
 			authClient := platform.NewClient(platformURL, creds)
 			info, err := authClient.GetUserInfo(ctx)
-			if err == nil && info.PlanID != "" {
-				_, _ = fmt.Fprintf(out, "Tier: %s\n", info.PlanID)
+			if err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not fetch user info: %v\n", err)
+			} else if info.PlanID != "" {
+				_, _ = fmt.Fprintf(out, "Tier: %s\n", displayTier(info.PlanID))
 			}
 
 			return nil
@@ -99,7 +101,8 @@ func logoutCommand() *cobra.Command {
 			// Best-effort token revocation
 			client := platform.NewClient(creds.PlatformURL, creds)
 			if err := client.RevokeToken(ctx); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: token revocation failed: %v\n", err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"warning: token revocation failed: %v\nYour session may still be active remotely.\n", err)
 			}
 
 			if err := platform.ClearCredentials(); err != nil {

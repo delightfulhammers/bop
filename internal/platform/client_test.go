@@ -3,8 +3,10 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -122,6 +124,71 @@ func TestClient_PollDeviceToken_ExpiredToken(t *testing.T) {
 	_, err := client.PollDeviceToken(context.Background(), "bop", "device-123")
 	if err == nil {
 		t.Fatal("expected error for expired_token")
+	}
+}
+
+func TestClient_PollDeviceToken_SlowDown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(DeviceFlowError{
+			Error:            "slow_down",
+			ErrorDescription: "polling too fast",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, nil)
+	_, err := client.PollDeviceToken(context.Background(), "bop", "device-123")
+	if !errors.Is(err, ErrSlowDown) {
+		t.Fatalf("expected ErrSlowDown, got: %v", err)
+	}
+}
+
+func TestClient_PollDeviceToken_Malformed400(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("not json"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, nil)
+	resp, err := client.PollDeviceToken(context.Background(), "bop", "device-123")
+	if err == nil {
+		t.Fatal("expected error for malformed 400 response")
+	}
+	if resp != nil {
+		t.Error("expected nil response for malformed 400")
+	}
+	if !strings.Contains(err.Error(), "unexpected status 400") {
+		t.Errorf("expected 'unexpected status 400' in error, got: %v", err)
+	}
+}
+
+func TestClient_ErrorBodyTruncation(t *testing.T) {
+	// Generate a response body larger than maxErrorBodyBytes
+	largeBody := strings.Repeat("x", 2048)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(largeBody))
+	}))
+	defer server.Close()
+
+	creds := &Credentials{
+		AccessToken: "test-token",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}
+	client := NewClient(server.URL, creds)
+
+	_, err := client.GetUserInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	// Error message should be truncated (1024 + "..." = 1027 chars max in body portion)
+	if len(err.Error()) >= 2048 {
+		t.Errorf("error body should be truncated, got length %d", len(err.Error()))
+	}
+	if !strings.HasSuffix(err.Error(), "...") {
+		t.Error("truncated error should end with '...'")
 	}
 }
 

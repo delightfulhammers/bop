@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/delightfulhammers/bop/internal/config"
@@ -9,10 +10,12 @@ import (
 func TestMergePlatformConfig_NilResult(t *testing.T) {
 	local := config.Config{
 		DefaultReviewers: []string{"default"},
+		Output:           config.OutputConfig{Directory: "out"},
+		Git:              config.GitConfig{RepositoryDir: "/repo"},
 	}
 	merged := config.MergePlatformConfig(local, nil)
-	if len(merged.DefaultReviewers) != 1 || merged.DefaultReviewers[0] != "default" {
-		t.Errorf("expected local config unchanged, got %v", merged.DefaultReviewers)
+	if !reflect.DeepEqual(merged, local) {
+		t.Errorf("expected local config unchanged\ngot:  %+v\nwant: %+v", merged, local)
 	}
 }
 
@@ -72,7 +75,9 @@ func TestMergePlatformConfig_OverrideWeights(t *testing.T) {
 func TestMergePlatformConfig_OverrideModel(t *testing.T) {
 	local := config.Config{
 		Reviewers: map[string]config.ReviewerConfig{
-			"default": {Provider: "anthropic", Model: "claude-haiku-4-5"},
+			"default":  {Provider: "anthropic"},                             // No explicit model → should get platform model
+			"security": {Provider: "anthropic", Model: "claude-haiku-4-5"},  // Has explicit model → preserved
+			"perf":     {Provider: "openai"},                                // No explicit model → should get platform model
 		},
 	}
 	result := &config.PlatformConfigResult{
@@ -81,8 +86,18 @@ func TestMergePlatformConfig_OverrideModel(t *testing.T) {
 		},
 	}
 	merged := config.MergePlatformConfig(local, result)
+
+	// Reviewers without explicit model get the platform model
 	if merged.Reviewers["default"].Model != "claude-sonnet-4-6" {
-		t.Errorf("expected model 'claude-sonnet-4-6', got %q", merged.Reviewers["default"].Model)
+		t.Errorf("default model: got %q, want %q", merged.Reviewers["default"].Model, "claude-sonnet-4-6")
+	}
+	if merged.Reviewers["perf"].Model != "claude-sonnet-4-6" {
+		t.Errorf("perf model: got %q, want %q", merged.Reviewers["perf"].Model, "claude-sonnet-4-6")
+	}
+
+	// Reviewer with explicit model is preserved
+	if merged.Reviewers["security"].Model != "claude-haiku-4-5" {
+		t.Errorf("security model: got %q, want %q (explicit model should be preserved)", merged.Reviewers["security"].Model, "claude-haiku-4-5")
 	}
 }
 

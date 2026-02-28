@@ -102,10 +102,22 @@ func saveCredentialsToPath(path string, creds *Credentials) error {
 		return fmt.Errorf("marshal credentials: %w", err)
 	}
 
-	// Atomic write: write to temp file then rename
+	// Atomic write: write to temp file (with restricted permissions from creation)
+	// then rename. Using os.OpenFile ensures the file is never world-readable,
+	// even briefly before rename.
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, credentialsFilePerm); err != nil {
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, credentialsFilePerm)
+	if err != nil {
+		return fmt.Errorf("create credentials temp file: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write credentials temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close credentials temp file: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath) // Clean up on rename failure

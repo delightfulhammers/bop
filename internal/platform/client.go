@@ -4,22 +4,31 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
+// ErrSlowDown is returned by PollDeviceToken when the server requests the client
+// to increase its polling interval (RFC 8628 §3.5).
+var ErrSlowDown = errors.New("slow_down: server requested slower polling")
+
 const (
-	defaultTimeout = 5 * time.Second
-	defaultBaseURL = "https://api.delightfulhammers.com"
+	defaultTimeout    = 30 * time.Second
+	defaultBaseURL    = "https://api.delightfulhammers.com"
+	maxErrorBodyBytes = 1024
 )
 
 // Client communicates with the bop platform API.
 // It handles automatic token refresh when credentials are near expiry.
+// All credential mutations are protected by a mutex for concurrent use.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	mu         sync.Mutex
 	creds      *Credentials
 	onRefresh  func(*Credentials) // Called after successful refresh to persist updated credentials
 }
@@ -100,13 +109,20 @@ func (c *Client) PollDeviceToken(ctx context.Context, productID, deviceCode stri
 	// Check for known device flow error responses
 	var flowErr DeviceFlowError
 	if err := json.Unmarshal(respBody, &flowErr); err == nil && flowErr.Error != "" {
-		if flowErr.Error == "authorization_pending" {
+		switch flowErr.Error {
+		case "authorization_pending":
 			return nil, nil // Caller should retry
+		case "slow_down":
+			return nil, ErrSlowDown // Caller should increase interval (RFC 8628 §3.5)
+		default:
+			return nil, fmt.Errorf("%s: %s", flowErr.Error, flowErr.ErrorDescription)
 		}
-		return nil, fmt.Errorf("%s: %s", flowErr.Error, flowErr.ErrorDescription)
 	}
 
-	return nil, fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, string(respBody))
+	// Malformed 400 response without a valid error field — don't return nil,nil
+	// which would cause infinite polling
+	bodySnippet := truncateBody(respBody)
+	return nil, fmt.Errorf("unexpected status %d: %s", httpResp.StatusCode, bodySnippet)
 }
 
 // RefreshToken refreshes the access token using the stored refresh token.
@@ -164,7 +180,11 @@ func (c *Client) GetConfig(ctx context.Context, productID string) (*ConfigRespon
 }
 
 // ensureFreshToken refreshes the token if it's near expiry.
+// Protected by a mutex to prevent concurrent refresh races.
 func (c *Client) ensureFreshToken(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.creds == nil || !c.creds.NeedsRefresh() {
 		return nil
 	}
@@ -237,7 +257,7 @@ func (c *Client) doJSON(req *http.Request, result any) error {
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateBody(respBody))
 	}
 
 	if result != nil && len(respBody) > 0 {
@@ -246,4 +266,12 @@ func (c *Client) doJSON(req *http.Request, result any) error {
 		}
 	}
 	return nil
+}
+
+// truncateBody returns the body as a string, truncated to maxErrorBodyBytes.
+func truncateBody(body []byte) string {
+	if len(body) <= maxErrorBodyBytes {
+		return string(body)
+	}
+	return string(body[:maxErrorBodyBytes]) + "..."
 }

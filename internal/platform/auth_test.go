@@ -133,6 +133,66 @@ func TestLogin_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestLogin_SlowDown(t *testing.T) {
+	var pollCount atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/auth/device":
+			_ = json.NewEncoder(w).Encode(DeviceFlowResponse{
+				DeviceCode:      "device-123",
+				UserCode:        "ABCD-1234",
+				VerificationURI: "https://example.com/verify",
+				ExpiresIn:       300,
+				Interval:        1,
+			})
+
+		case "/auth/device/token":
+			count := pollCount.Add(1)
+			if count == 1 {
+				// First poll: slow_down
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(DeviceFlowError{
+					Error:            "slow_down",
+					ErrorDescription: "polling too fast",
+				})
+				return
+			}
+			// Second poll: success
+			_ = json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				TokenType:    "bearer",
+				ExpiresIn:    3600,
+				UserID:       "user-1",
+				Username:     "testuser",
+			})
+
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, nil)
+	var out bytes.Buffer
+
+	creds, err := Login(context.Background(), client, "bop", &out)
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if creds.AccessToken != "access-token" {
+		t.Errorf("AccessToken: got %q, want %q", creds.AccessToken, "access-token")
+	}
+	// Verify we polled at least twice (first slow_down, then success)
+	if pollCount.Load() < 2 {
+		t.Errorf("expected at least 2 polls (slow_down + success), got %d", pollCount.Load())
+	}
+}
+
 func TestLogin_TokenDenied(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

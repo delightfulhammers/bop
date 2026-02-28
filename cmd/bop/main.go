@@ -102,7 +102,6 @@ func run() error {
 
 // runWithConfig runs the CLI with the given configuration.
 func runWithConfig(ctx context.Context, cfg config.Config) error {
-
 	// Fetch and merge platform config if enabled and authenticated
 	cfg = fetchPlatformConfig(ctx, cfg)
 
@@ -1273,7 +1272,12 @@ func fetchPlatformConfig(ctx context.Context, cfg config.Config) config.Config {
 
 	configResp, err := client.GetConfig(ctx, "bop")
 	if err != nil {
-		log.Printf("warning: platform config fetch failed, using local config: %v", err)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "HTTP 401") || strings.Contains(errMsg, "HTTP 403") {
+			log.Printf("warning: platform authentication failed — run `bop auth login` to re-authenticate: %v", err)
+		} else {
+			log.Printf("warning: platform config fetch failed, using local config: %v", err)
+		}
 		return cfg
 	}
 

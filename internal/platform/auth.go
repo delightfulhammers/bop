@@ -2,12 +2,16 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"runtime"
 	"time"
 )
+
+const slowDownIncrement = 5 * time.Second
 
 // Login orchestrates the device flow: initiates, prompts the user, polls for
 // the token, and returns credentials on success.
@@ -39,12 +43,17 @@ func Login(ctx context.Context, client *Client, productID string, out io.Writer)
 		case <-time.After(interval):
 		}
 
+		// Check deadline before polling to avoid confusing "done!" then "expired" sequence
 		if time.Now().After(deadline) {
 			_, _ = fmt.Fprintln(out, " timed out.")
 			return nil, fmt.Errorf("device flow expired — please try again")
 		}
 
 		tokenResp, err := client.PollDeviceToken(ctx, productID, flowResp.DeviceCode)
+		if errors.Is(err, ErrSlowDown) {
+			interval += slowDownIncrement // RFC 8628 §3.5
+			continue
+		}
 		if err != nil {
 			_, _ = fmt.Fprintln(out, " failed.")
 			return nil, err
@@ -68,7 +77,8 @@ func Login(ctx context.Context, client *Client, productID string, out io.Writer)
 	}
 }
 
-// openBrowser attempts to open a URL in the user's default browser. Best-effort, never errors.
+// openBrowser attempts to open a URL in the user's default browser.
+// Best-effort: logs a warning if the browser cannot be opened.
 func openBrowser(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -77,9 +87,11 @@ func openBrowser(url string) {
 	case "linux":
 		cmd = exec.Command("xdg-open", url)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	default:
 		return
 	}
-	_ = cmd.Start()
+	if err := cmd.Start(); err != nil {
+		log.Printf("warning: could not open browser: %v", err)
+	}
 }

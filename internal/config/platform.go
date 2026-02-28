@@ -27,7 +27,8 @@ func MergePlatformConfig(local Config, result *PlatformConfigResult) Config {
 		return local
 	}
 
-	// If local override is set, platform config is informational only
+	// If local override is set, platform config is informational only —
+	// local reviewers, weights, and models take precedence over platform.
 	if local.Platform.Override {
 		return local
 	}
@@ -51,15 +52,17 @@ func MergePlatformConfig(local Config, result *PlatformConfigResult) Config {
 		}
 	}
 
-	// Apply platform model → provider defaultModel for the "default" reviewer
+	// Apply platform model to all reviewers that don't have an explicit model set.
+	// This ensures platform model selection applies consistently across the panel.
 	if model, ok := result.Config["model"].(string); ok && model != "" {
 		if merged.Reviewers == nil {
 			merged.Reviewers = make(map[string]ReviewerConfig)
 		}
-		// Apply to the "default" reviewer if it exists
-		if rc, exists := merged.Reviewers["default"]; exists {
-			rc.Model = model
-			merged.Reviewers["default"] = rc
+		for name, rc := range merged.Reviewers {
+			if rc.Model == "" {
+				rc.Model = model
+				merged.Reviewers[name] = rc
+			}
 		}
 	}
 
