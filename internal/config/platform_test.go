@@ -75,9 +75,9 @@ func TestMergePlatformConfig_OverrideWeights(t *testing.T) {
 func TestMergePlatformConfig_OverrideModel(t *testing.T) {
 	local := config.Config{
 		Reviewers: map[string]config.ReviewerConfig{
-			"default":  {Provider: "anthropic"},                             // No explicit model → should get platform model
-			"security": {Provider: "anthropic", Model: "claude-haiku-4-5"},  // Has explicit model → preserved
-			"perf":     {Provider: "openai"},                                // No explicit model → should get platform model
+			"default":  {Provider: "anthropic"},                            // No explicit model → should get platform model
+			"security": {Provider: "anthropic", Model: "claude-haiku-4-5"}, // Has explicit model → preserved
+			"perf":     {Provider: "openai"},                               // No explicit model → should get platform model
 		},
 	}
 	result := &config.PlatformConfigResult{
