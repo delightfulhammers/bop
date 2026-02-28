@@ -48,6 +48,7 @@ func NewClient(baseURL string, creds *Credentials) *Client {
 
 // WithOnRefresh sets a callback invoked after a successful token refresh.
 // This is typically used to persist the updated credentials to disk.
+// Must be called during setup before any concurrent API operations.
 func (c *Client) WithOnRefresh(fn func(*Credentials)) *Client {
 	c.onRefresh = fn
 	return c
