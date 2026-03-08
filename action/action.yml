@@ -104,7 +104,7 @@ runs:
         GEMINI_API_KEY: ${{ inputs.google-api-key }}
         BOP_BASE_REF: ${{ inputs.base-ref }}
         BOP_BLOCK_THRESHOLD: ${{ inputs.block-threshold }}
-        BOP_REVIEWERS: ${{ inputs.reviewers }}
+        BOP_REVIEWER_NAMES: ${{ inputs.reviewers }}
         BOP_POST_FINDINGS: ${{ inputs.post-findings }}
         BOP_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         BOP_LOG_LEVEL: ${{ inputs.log-level }}

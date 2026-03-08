@@ -2099,10 +2099,10 @@ func TestMergeProviders_AllFieldsMerge(t *testing.T) {
 }
 
 func TestLoadReviewersNotClobberedByEmptyEnvVar(t *testing.T) {
-	// Regression test: when the composite GitHub Action sets BOP_REVIEWERS=""
-	// (empty because the 'reviewers' input wasn't provided), Viper's AutomaticEnv
-	// with AllowEmptyEnv(true) would override the YAML-defined reviewers map
-	// with an empty string, causing it to unmarshal as nil.
+	// Regression test: Viper's AutomaticEnv maps BOP_REVIEWERS to the "reviewers"
+	// config key. With AllowEmptyEnv(true), an empty BOP_REVIEWERS="" would override
+	// the YAML-defined reviewers map with an empty string, causing nil after unmarshal.
+	// This test verifies the AllowEmptyEnv(false) safety net works.
 	dir := t.TempDir()
 	content := `
 reviewers:
@@ -2120,7 +2120,8 @@ defaultReviewers:
 		t.Fatalf("write config: %v", err)
 	}
 
-	// Simulate the composite action setting BOP_REVIEWERS to empty
+	// BOP_REVIEWERS maps to Viper key "reviewers" — the same key as the YAML map.
+	// With AllowEmptyEnv disabled, this empty value should be ignored.
 	t.Setenv("BOP_REVIEWERS", "")
 
 	cfg, err := config.Load(config.LoaderOptions{
@@ -2146,5 +2147,46 @@ defaultReviewers:
 	// DefaultReviewers must also survive
 	if len(cfg.DefaultReviewers) != 2 {
 		t.Fatalf("expected 2 default reviewers, got %d", len(cfg.DefaultReviewers))
+	}
+}
+
+func TestLoadReviewerNamesEnvDoesNotCollide(t *testing.T) {
+	// The action env var was renamed from BOP_REVIEWERS to BOP_REVIEWER_NAMES
+	// to avoid colliding with the "reviewers" config key. BOP_REVIEWER_NAMES maps
+	// to Viper key "reviewer_names", which is not a real config key — no collision.
+	dir := t.TempDir()
+	content := `
+reviewers:
+  security:
+    provider: "anthropic"
+    weight: 1.5
+  architecture:
+    provider: "openai"
+    weight: 1.0
+defaultReviewers:
+  - security
+  - architecture
+`
+	if err := os.WriteFile(filepath.Join(dir, "bop.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	// Both empty and non-empty values should be safe since "reviewer_names"
+	// doesn't collide with the "reviewers" config key.
+	for _, val := range []string{"", "security,architecture"} {
+		t.Setenv("BOP_REVIEWER_NAMES", val)
+
+		cfg, err := config.Load(config.LoaderOptions{
+			ConfigPaths: []string{dir},
+			FileName:    "bop",
+			EnvPrefix:   "BOP",
+		})
+		if err != nil {
+			t.Fatalf("load returned error with BOP_REVIEWER_NAMES=%q: %v", val, err)
+		}
+
+		if len(cfg.Reviewers) != 2 {
+			t.Fatalf("expected 2 reviewers with BOP_REVIEWER_NAMES=%q, got %d", val, len(cfg.Reviewers))
+		}
 	}
 }

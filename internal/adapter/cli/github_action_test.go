@@ -15,7 +15,7 @@ func TestParseActionConfig(t *testing.T) {
 	envVars := []string{
 		"BOP_BASE_REF",
 		"BOP_POST_FINDINGS",
-		"BOP_REVIEWERS",
+		"BOP_REVIEWER_NAMES",
 		"BOP_BLOCK_THRESHOLD",
 		"BOP_FAIL_ON_FINDINGS",
 		"BOP_ALWAYS_BLOCK_CATEGORIES",
@@ -65,7 +65,7 @@ func TestParseActionConfig(t *testing.T) {
 		{
 			name: "reviewers list",
 			env: map[string]string{
-				"BOP_REVIEWERS": "security, architecture, code-reviewer",
+				"BOP_REVIEWER_NAMES": "security, architecture, code-reviewer",
 			},
 			expected: actionConfig{
 				BaseRef:        "main",
@@ -104,7 +104,7 @@ func TestParseActionConfig(t *testing.T) {
 		{
 			name: "reviewers with empty segments",
 			env: map[string]string{
-				"BOP_REVIEWERS": "security,,architecture, ,code-reviewer,",
+				"BOP_REVIEWER_NAMES": "security,,architecture, ,code-reviewer,",
 			},
 			expected: actionConfig{
 				BaseRef:        "main",

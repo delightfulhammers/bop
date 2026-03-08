@@ -38,10 +38,9 @@ func Load(opts LoaderOptions) (Config, error) {
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 	// NOTE: AllowEmptyEnv is intentionally NOT set (defaults to false).
-	// When true, empty env vars like BOP_REVIEWERS="" override YAML values,
-	// which breaks complex config keys (maps, slices). The GitHub Action's
-	// composite step always sets BOP_REVIEWERS (even when empty), which
-	// would clobber the reviewers map from bop.yaml.
+	// When true, empty env vars override YAML values, which breaks complex
+	// config keys (maps, slices). For example, an empty env var matching a
+	// map config key would clobber the entire YAML-defined map with nil.
 	setDefaults(v)
 
 	// Find all config files in priority order (base → overlay)
