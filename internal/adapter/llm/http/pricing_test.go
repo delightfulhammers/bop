@@ -111,14 +111,14 @@ func TestDefaultPricing_Gemini_31ProPreview(t *testing.T) {
 	assert.InDelta(t, 0.008, cost, 0.0001)
 }
 
-func TestDefaultPricing_Gemini_31FlashPreview(t *testing.T) {
+func TestDefaultPricing_Gemini_31FlashLitePreview(t *testing.T) {
 	pricing := http.NewDefaultPricing()
 
-	// gemini-3.1-flash-preview: $0.25 per 1M input, $1.50 per 1M output
+	// gemini-3.1-flash-lite-preview: $0.25 per 1M input, $1.50 per 1M output
 	// 1000 input tokens = $0.00025
 	// 500 output tokens = $0.00075
 	// Total = $0.00100
-	cost := pricing.GetCost("gemini", "gemini-3.1-flash-preview", 1000, 500)
+	cost := pricing.GetCost("gemini", "gemini-3.1-flash-lite-preview", 1000, 500)
 	assert.InDelta(t, 0.00100, cost, 0.00001)
 }
 
@@ -235,7 +235,7 @@ func TestDefaultPricing_AllProviders(t *testing.T) {
 		{"anthropic", "claude-3-5-sonnet-20241022", 1000, 0.001},
 		{"anthropic", "claude-3-5-haiku-20241022", 1000, 0.0005},
 		{"gemini", "gemini-3.1-pro-preview", 1000, 0.001},
-		{"gemini", "gemini-3.1-flash-preview", 1000, 0.0001},
+		{"gemini", "gemini-3.1-flash-lite-preview", 1000, 0.0001},
 		{"gemini", "gemini-3-pro-preview", 1000, 0.001},
 		{"gemini", "gemini-3-flash-preview", 1000, 0.0001},
 		{"gemini", "gemini-2.5-pro", 1000, 0.001},
