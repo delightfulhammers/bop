@@ -156,7 +156,7 @@ func buildPricingTable() map[string]map[string]ModelPricing {
 				InputPer1M:  2.00,
 				OutputPer1M: 12.00,
 			},
-			"gemini-3.1-flash-preview": {
+			"gemini-3.1-flash-lite-preview": {
 				InputPer1M:  0.25,
 				OutputPer1M: 1.50,
 			},
