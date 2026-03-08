@@ -59,7 +59,7 @@ composite action.
 Environment variables:
   BOP_BASE_REF         Base branch to compare against (default: main)
   BOP_POST_FINDINGS    Whether to post findings to PR (default: true)
-  BOP_REVIEWERS        Comma-separated list of reviewers
+  BOP_REVIEWER_NAMES        Comma-separated list of reviewers
   BOP_BLOCK_THRESHOLD  Severity threshold for blocking (critical, high, medium, low, none)
   BOP_LOG_LEVEL        Log level (trace, debug, info, warn, error)
 
@@ -253,7 +253,7 @@ func parseActionConfig() (actionConfig, error) {
 		FailOnFindings: getEnvBool("BOP_FAIL_ON_FINDINGS", false),
 	}
 
-	if reviewers := os.Getenv("BOP_REVIEWERS"); reviewers != "" {
+	if reviewers := os.Getenv("BOP_REVIEWER_NAMES"); reviewers != "" {
 		cfg.Reviewers = splitAndFilter(reviewers)
 	}
 

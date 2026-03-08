@@ -34,6 +34,17 @@ func TestDefaultPricing_OpenAI_GPT4o(t *testing.T) {
 	assert.InDelta(t, 0.0075, cost, 0.0001)
 }
 
+func TestDefaultPricing_OpenAI_GPT54(t *testing.T) {
+	pricing := http.NewDefaultPricing()
+
+	// gpt-5.4: $2.50 per 1M input tokens, $15.00 per 1M output tokens
+	// 1000 input tokens = $0.0025
+	// 500 output tokens = $0.0075
+	// Total = $0.0100
+	cost := pricing.GetCost("openai", "gpt-5.4", 1000, 500)
+	assert.InDelta(t, 0.0100, cost, 0.0001)
+}
+
 func TestDefaultPricing_OpenAI_O1(t *testing.T) {
 	pricing := http.NewDefaultPricing()
 
@@ -43,6 +54,28 @@ func TestDefaultPricing_OpenAI_O1(t *testing.T) {
 	// Total = $0.045
 	cost := pricing.GetCost("openai", "o1", 1000, 500)
 	assert.InDelta(t, 0.045, cost, 0.001)
+}
+
+func TestDefaultPricing_Anthropic_Claude46Sonnet(t *testing.T) {
+	pricing := http.NewDefaultPricing()
+
+	// claude-sonnet-4-6: $3.00 per 1M input, $15.00 per 1M output
+	// 1000 input tokens = $0.003
+	// 500 output tokens = $0.0075
+	// Total = $0.0105
+	cost := pricing.GetCost("anthropic", "claude-sonnet-4-6", 1000, 500)
+	assert.InDelta(t, 0.0105, cost, 0.0001)
+}
+
+func TestDefaultPricing_Anthropic_Claude46Opus(t *testing.T) {
+	pricing := http.NewDefaultPricing()
+
+	// claude-opus-4-6: $5.00 per 1M input, $25.00 per 1M output
+	// 1000 input tokens = $0.005
+	// 500 output tokens = $0.0125
+	// Total = $0.0175
+	cost := pricing.GetCost("anthropic", "claude-opus-4-6", 1000, 500)
+	assert.InDelta(t, 0.0175, cost, 0.0001)
 }
 
 func TestDefaultPricing_Anthropic_Claude35Sonnet(t *testing.T) {
@@ -65,6 +98,28 @@ func TestDefaultPricing_Anthropic_Claude35Haiku(t *testing.T) {
 	// Total = $0.0028
 	cost := pricing.GetCost("anthropic", "claude-3-5-haiku-20241022", 1000, 500)
 	assert.InDelta(t, 0.0028, cost, 0.0001)
+}
+
+func TestDefaultPricing_Gemini_31ProPreview(t *testing.T) {
+	pricing := http.NewDefaultPricing()
+
+	// gemini-3.1-pro-preview: $2.00 per 1M input, $12.00 per 1M output
+	// 1000 input tokens = $0.002
+	// 500 output tokens = $0.006
+	// Total = $0.008
+	cost := pricing.GetCost("gemini", "gemini-3.1-pro-preview", 1000, 500)
+	assert.InDelta(t, 0.008, cost, 0.0001)
+}
+
+func TestDefaultPricing_Gemini_31FlashPreview(t *testing.T) {
+	pricing := http.NewDefaultPricing()
+
+	// gemini-3.1-flash-preview: $0.25 per 1M input, $1.50 per 1M output
+	// 1000 input tokens = $0.00025
+	// 500 output tokens = $0.00075
+	// Total = $0.00100
+	cost := pricing.GetCost("gemini", "gemini-3.1-flash-preview", 1000, 500)
+	assert.InDelta(t, 0.00100, cost, 0.00001)
 }
 
 func TestDefaultPricing_Gemini_15Pro(t *testing.T) {
@@ -167,11 +222,24 @@ func TestDefaultPricing_AllProviders(t *testing.T) {
 		tokensIn int
 		minCost  float64 // Minimum expected cost (should be > 0 except Ollama)
 	}{
+		{"openai", "gpt-5.4", 1000, 0.001},
+		{"openai", "gpt-5.2", 1000, 0.001},
 		{"openai", "gpt-4o-mini", 1000, 0.0001},
 		{"openai", "gpt-4o", 1000, 0.001},
 		{"openai", "o1", 1000, 0.01},
+		{"anthropic", "claude-opus-4-6", 1000, 0.001},
+		{"anthropic", "claude-sonnet-4-6", 1000, 0.001},
+		{"anthropic", "claude-opus-4-5", 1000, 0.001},
+		{"anthropic", "claude-sonnet-4-5", 1000, 0.001},
+		{"anthropic", "claude-haiku-4-5", 1000, 0.0005},
 		{"anthropic", "claude-3-5-sonnet-20241022", 1000, 0.001},
 		{"anthropic", "claude-3-5-haiku-20241022", 1000, 0.0005},
+		{"gemini", "gemini-3.1-pro-preview", 1000, 0.001},
+		{"gemini", "gemini-3.1-flash-preview", 1000, 0.0001},
+		{"gemini", "gemini-3-pro-preview", 1000, 0.001},
+		{"gemini", "gemini-3-flash-preview", 1000, 0.0001},
+		{"gemini", "gemini-2.5-pro", 1000, 0.001},
+		{"gemini", "gemini-2.5-flash", 1000, 0.0001},
 		{"gemini", "gemini-1.5-pro", 1000, 0.001},
 		{"gemini", "gemini-1.5-flash", 1000, 0.00005},
 		{"ollama", "codellama", 1000, 0.0}, // Free

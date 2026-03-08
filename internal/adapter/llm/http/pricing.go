@@ -43,15 +43,20 @@ func (p *DefaultPricing) GetCost(provider, model string, tokensIn, tokensOut int
 }
 
 // buildPricingTable returns pricing data for all models.
-// Pricing as of: 2025-12-27
+// Pricing as of: 2026-03-08
 // Sources:
 // - OpenAI: https://openai.com/api/pricing/
-// - Anthropic: https://claude.com/pricing
+// - Anthropic: https://www.anthropic.com/pricing
 // - Gemini: https://ai.google.dev/gemini-api/docs/pricing
 // - Ollama: Free (local)
 func buildPricingTable() map[string]map[string]ModelPricing {
 	return map[string]map[string]ModelPricing{
 		"openai": {
+			// GPT-5.4 family (March 2026)
+			"gpt-5.4": {
+				InputPer1M:  2.50,
+				OutputPer1M: 15.00,
+			},
 			// GPT-5.2 family (December 2025)
 			// Short aliases (commonly used in config)
 			"gpt-5.2": {
@@ -103,6 +108,15 @@ func buildPricingTable() map[string]map[string]ModelPricing {
 			},
 		},
 		"anthropic": {
+			// Claude 4.6 family (2026)
+			"claude-opus-4-6": {
+				InputPer1M:  5.00,
+				OutputPer1M: 25.00,
+			},
+			"claude-sonnet-4-6": {
+				InputPer1M:  3.00,
+				OutputPer1M: 15.00,
+			},
 			// Claude 4.5 family (2025)
 			// Short aliases (commonly used in config)
 			"claude-opus-4-5": {
@@ -137,6 +151,15 @@ func buildPricingTable() map[string]map[string]ModelPricing {
 			},
 		},
 		"gemini": {
+			// Gemini 3.1 family (March 2026)
+			"gemini-3.1-pro-preview": {
+				InputPer1M:  2.00,
+				OutputPer1M: 12.00,
+			},
+			"gemini-3.1-flash-preview": {
+				InputPer1M:  0.25,
+				OutputPer1M: 1.50,
+			},
 			// Gemini 3 family (December 2025)
 			"gemini-3-pro-preview": {
 				InputPer1M:  2.00,
