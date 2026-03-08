@@ -108,4 +108,6 @@ runs:
         BOP_POST_FINDINGS: ${{ inputs.post-findings }}
         BOP_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         BOP_LOG_LEVEL: ${{ inputs.log-level }}
+        GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_PR_SHA: ${{ github.event.pull_request.head.sha }}
       run: bop github-action

@@ -37,7 +37,11 @@ func Load(opts LoaderOptions) (Config, error) {
 	v.SetEnvPrefix(prefix)
 	v.AutomaticEnv()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
-	v.AllowEmptyEnv(true)
+	// NOTE: AllowEmptyEnv is intentionally NOT set (defaults to false).
+	// When true, empty env vars like BOP_REVIEWERS="" override YAML values,
+	// which breaks complex config keys (maps, slices). The GitHub Action's
+	// composite step always sets BOP_REVIEWERS (even when empty), which
+	// would clobber the reviewers map from bop.yaml.
 	setDefaults(v)
 
 	// Find all config files in priority order (base → overlay)
@@ -351,9 +355,9 @@ func setDefaults(v *viper.Viper) {
 	// Note: providers.*.enabled is intentionally not defaulted.
 	// When nil (unset), isProviderEnabled uses API key presence to determine if enabled.
 	// This maintains backward compatibility while allowing explicit enabled: false to work.
-	v.SetDefault("providers.openai.defaultModel", "gpt-5.2")
-	v.SetDefault("providers.anthropic.defaultModel", "claude-sonnet-4-5")
-	v.SetDefault("providers.gemini.defaultModel", "gemini-3-pro-preview")
+	v.SetDefault("providers.openai.defaultModel", "gpt-5.4")
+	v.SetDefault("providers.anthropic.defaultModel", "claude-sonnet-4-6")
+	v.SetDefault("providers.gemini.defaultModel", "gemini-3.1-pro-preview")
 	// NOTE: Ollama default intentionally omitted. Setting a default for keyless providers
 	// causes Viper to create a config entry, which triggers "enabled by presence" logic
 	// and activates the provider even when commented out in config. Users must explicitly

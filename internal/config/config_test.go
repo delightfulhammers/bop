@@ -2097,3 +2097,54 @@ func TestMergeProviders_AllFieldsMerge(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadReviewersNotClobberedByEmptyEnvVar(t *testing.T) {
+	// Regression test: when the composite GitHub Action sets BOP_REVIEWERS=""
+	// (empty because the 'reviewers' input wasn't provided), Viper's AutomaticEnv
+	// with AllowEmptyEnv(true) would override the YAML-defined reviewers map
+	// with an empty string, causing it to unmarshal as nil.
+	dir := t.TempDir()
+	content := `
+reviewers:
+  security:
+    provider: "anthropic"
+    weight: 1.5
+  architecture:
+    provider: "openai"
+    weight: 1.0
+defaultReviewers:
+  - security
+  - architecture
+`
+	if err := os.WriteFile(filepath.Join(dir, "bop.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	// Simulate the composite action setting BOP_REVIEWERS to empty
+	t.Setenv("BOP_REVIEWERS", "")
+
+	cfg, err := config.Load(config.LoaderOptions{
+		ConfigPaths: []string{dir},
+		FileName:    "bop",
+		EnvPrefix:   "BOP",
+	})
+	if err != nil {
+		t.Fatalf("load returned error: %v", err)
+	}
+
+	// Reviewers from YAML must survive the empty env var
+	if len(cfg.Reviewers) != 2 {
+		t.Fatalf("expected 2 reviewers, got %d: %+v", len(cfg.Reviewers), cfg.Reviewers)
+	}
+	if _, ok := cfg.Reviewers["security"]; !ok {
+		t.Error("expected 'security' reviewer to be present")
+	}
+	if _, ok := cfg.Reviewers["architecture"]; !ok {
+		t.Error("expected 'architecture' reviewer to be present")
+	}
+
+	// DefaultReviewers must also survive
+	if len(cfg.DefaultReviewers) != 2 {
+		t.Fatalf("expected 2 default reviewers, got %d", len(cfg.DefaultReviewers))
+	}
+}

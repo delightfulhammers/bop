@@ -18,21 +18,21 @@ providers:
   # OpenAI provider (GPT models)
   openai:
     enabled: true
-    defaultModel: "gpt-5.2"
+    defaultModel: "gpt-5.4"
     apiKey: "${OPENAI_API_KEY}"
 
   # Anthropic provider (Claude models)
   anthropic:
     enabled: true
-    defaultModel: "claude-sonnet-4-5"
+    defaultModel: "claude-sonnet-4-6"
     apiKey: "${ANTHROPIC_API_KEY}"
 
   # Google Gemini provider
   gemini:
     enabled: true
-    defaultModel: "gemini-3-pro-preview"
+    defaultModel: "gemini-3.1-pro-preview"
     apiKey: "${GEMINI_API_KEY}"
-    timeout: "180s"  # Gemini 3 Pro is a reasoning model that may need extra time
+    timeout: "180s"  # Gemini 3.1 Pro is a reasoning model that may need extra time
 
   # Ollama provider (local LLM)
   # ollama:
