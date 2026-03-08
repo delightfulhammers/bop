@@ -71,10 +71,28 @@ runs:
         esac
 
         # Download and install binary
-        DOWNLOAD_URL="https://github.com/delightfulhammers/bop/releases/download/${DOWNLOAD_TAG}/bop_${OS}_${ARCH}"
+        VERSION_NUM="${DOWNLOAD_TAG#v}"
+        if [ "$OS" = "windows" ]; then
+          ARCHIVE_NAME="bop_${VERSION_NUM}_${OS}_${ARCH}.zip"
+        else
+          ARCHIVE_NAME="bop_${VERSION_NUM}_${OS}_${ARCH}.tar.gz"
+        fi
+        DOWNLOAD_URL="https://github.com/delightfulhammers/bop/releases/download/${DOWNLOAD_TAG}/${ARCHIVE_NAME}"
         echo "Installing bop ${DOWNLOAD_TAG} (${OS}/${ARCH})..."
-        curl -fsSL -o /usr/local/bin/bop "$DOWNLOAD_URL"
+
+        TEMP_DIR=$(mktemp -d)
+        curl -fsSL -o "$TEMP_DIR/$ARCHIVE_NAME" "$DOWNLOAD_URL"
+
+        # Extract binary from archive
+        if [ "$OS" = "windows" ]; then
+          unzip -q "$TEMP_DIR/$ARCHIVE_NAME" -d "$TEMP_DIR"
+        else
+          tar xzf "$TEMP_DIR/$ARCHIVE_NAME" -C "$TEMP_DIR"
+        fi
+
+        mv "$TEMP_DIR/bop" /usr/local/bin/bop
         chmod +x /usr/local/bin/bop
+        rm -rf "$TEMP_DIR"
         echo "bop ${DOWNLOAD_TAG} installed successfully"
 
     - name: Run code review
