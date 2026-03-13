@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -236,13 +237,17 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		}
 	}
 
-	// Create GitHub poster and triage context fetcher if token is available
+	// Create GitHub client once for all GitHub operations (posting, triage, remote PR review).
 	var githubPoster review.GitHubPoster
 	var triageContextFetcher review.TriageContextFetcher
+	var remoteGitHubClient review.RemoteGitHubClient
 	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
 		githubClient := githubadapter.NewClient(githubToken)
 		// Support GitHub Enterprise Server via GITHUB_API_URL.
 		if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
+			if err := validateGitHubAPIURL(apiURL); err != nil {
+				return fmt.Errorf("invalid GITHUB_API_URL: %w", err)
+			}
 			githubClient.SetBaseURL(apiURL)
 		}
 
@@ -279,6 +284,9 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 
 		// Create triage context fetcher for prior context injection (Issue #138)
 		triageContextFetcher = usecasegithub.NewTriageContextFetcher(githubClient, cfg.Review.BotUsername)
+
+		// Phase 3.5: Reuse the same client for remote PR review
+		remoteGitHubClient = githubClient
 	}
 
 	// Create verification agent if enabled and a suitable provider is available
@@ -294,19 +302,6 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 
 	// Build per-provider max tokens map from config
 	providerMaxTokens := buildProviderMaxTokens(cfg.Providers)
-
-	// Phase 3.5: Create RemoteGitHubClient for remote PR review
-	// This shares the same GitHub client used for posting, enabling
-	// cr review pr <identifier> to work without a local clone.
-	var remoteGitHubClient review.RemoteGitHubClient
-	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
-		client := githubadapter.NewClient(githubToken)
-		// Support GitHub Enterprise Server via GITHUB_API_URL.
-		if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
-			client.SetBaseURL(apiURL)
-		}
-		remoteGitHubClient = client
-	}
 
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{
 		Git:                    gitEngine,
@@ -454,6 +449,18 @@ func validateLogLevel(level string) string {
 		return ""
 	}
 	return level
+}
+
+// validateGitHubAPIURL validates that the given URL is a well-formed absolute URL.
+func validateGitHubAPIURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("must be an absolute URL with scheme and host, got %q", rawURL)
+	}
+	return nil
 }
 
 // observabilityComponents holds shared observability instances

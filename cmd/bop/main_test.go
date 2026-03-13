@@ -376,6 +376,29 @@ func TestIsProviderEnabled(t *testing.T) {
 	}
 }
 
+func TestValidateGitHubAPIURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{name: "valid https URL", url: "https://github.example.com/api/v3", wantErr: false},
+		{name: "valid http URL", url: "http://localhost:8080", wantErr: false},
+		{name: "missing scheme", url: "github.example.com/api/v3", wantErr: true},
+		{name: "missing host", url: "https://", wantErr: true},
+		{name: "just slashes", url: "///", wantErr: true},
+		{name: "empty after trim would be caught before call", url: "not-a-url", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateGitHubAPIURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateGitHubAPIURL(%q) error = %v, wantErr %v", tt.url, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestIsProviderUsable(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -61,6 +62,9 @@ func run() error {
 	// Support GitHub Enterprise Server via GITHUB_API_URL.
 	// This is the standard environment variable used by GitHub Actions for GHE.
 	if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
+		if err := validateGitHubAPIURL(apiURL); err != nil {
+			return fmt.Errorf("invalid GITHUB_API_URL: %w", err)
+		}
 		githubClient.SetBaseURL(apiURL)
 	}
 
@@ -174,4 +178,16 @@ func run() error {
 func defaultConfigPaths() []string {
 	home, _ := os.UserHomeDir()
 	return []string{".", home + "/.config/bop"}
+}
+
+// validateGitHubAPIURL validates that the given URL is a well-formed absolute URL.
+func validateGitHubAPIURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("must be an absolute URL with scheme and host, got %q", rawURL)
+	}
+	return nil
 }
