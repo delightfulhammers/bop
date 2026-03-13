@@ -62,6 +62,33 @@ func TestSetBaseURL_TrimsTrailingSlashes(t *testing.T) {
 	}
 }
 
+func TestValidateAPIURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{name: "valid https URL", url: "https://github.example.com/api/v3", wantErr: false},
+		{name: "valid https no path", url: "https://api.github.com", wantErr: false},
+		{name: "valid http URL (warns but passes)", url: "http://ghe.corp.com/api/v3", wantErr: false},
+		{name: "http localhost", url: "http://localhost:8080", wantErr: false},
+		{name: "missing scheme", url: "github.example.com/api/v3", wantErr: true},
+		{name: "missing host", url: "https://", wantErr: true},
+		{name: "just slashes", url: "///", wantErr: true},
+		{name: "no scheme or host", url: "not-a-url", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := github.ValidateAPIURL(tt.url)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestClient_CreateReview_Success(t *testing.T) {
 	requestReceived := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

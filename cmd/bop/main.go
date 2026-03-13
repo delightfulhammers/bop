@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -245,7 +244,7 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 		githubClient := githubadapter.NewClient(githubToken)
 		// Support GitHub Enterprise Server via GITHUB_API_URL.
 		if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
-			if err := validateGitHubAPIURL(apiURL); err != nil {
+			if err := githubadapter.ValidateAPIURL(apiURL); err != nil {
 				return fmt.Errorf("invalid GITHUB_API_URL: %w", err)
 			}
 			githubClient.SetBaseURL(apiURL)
@@ -449,18 +448,6 @@ func validateLogLevel(level string) string {
 		return ""
 	}
 	return level
-}
-
-// validateGitHubAPIURL validates that the given URL is a well-formed absolute URL.
-func validateGitHubAPIURL(rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("malformed URL: %w", err)
-	}
-	if u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("must be an absolute URL with scheme and host, got %q", rawURL)
-	}
-	return nil
 }
 
 // observabilityComponents holds shared observability instances

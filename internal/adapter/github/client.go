@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -125,6 +126,24 @@ func NewClient(token string) *Client {
 // All trailing slashes are trimmed to ensure consistent URL construction.
 func (c *Client) SetBaseURL(baseURL string) {
 	c.baseURL = strings.TrimRight(baseURL, "/")
+}
+
+// ValidateAPIURL validates that a GitHub API URL is well-formed.
+// Returns an error if the URL is malformed or missing scheme/host.
+// Logs a warning if HTTP (non-TLS) is used, since the Authorization header
+// containing the GitHub token will be sent in plaintext.
+func ValidateAPIURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("must be an absolute URL with scheme and host, got %q", rawURL)
+	}
+	if u.Scheme == "http" {
+		log.Printf("[WARN] GITHUB_API_URL uses http:// — GitHub token will be sent over an unencrypted connection. Use https:// unless you are certain this is intentional (e.g., behind a corporate VPN).")
+	}
+	return nil
 }
 
 // SetTimeout sets the HTTP timeout.
