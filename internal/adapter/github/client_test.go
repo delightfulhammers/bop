@@ -62,6 +62,39 @@ func TestSetBaseURL_TrimsTrailingSlashes(t *testing.T) {
 	}
 }
 
+func TestValidateAPIURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		// Valid: well-formed HTTPS URLs
+		{name: "valid https with path", url: "https://github.example.com/api/v3", wantErr: false},
+		{name: "valid https no path", url: "https://api.github.com", wantErr: false},
+
+		// Rejected: non-HTTPS schemes (token would be sent in plaintext)
+		{name: "http rejected", url: "http://ghe.corp.com/api/v3", wantErr: true},
+		{name: "http localhost rejected", url: "http://localhost:8080", wantErr: true},
+		{name: "ftp rejected", url: "ftp://ghe.corp.com/api/v3", wantErr: true},
+
+		// Rejected: malformed URLs (url.Parse produces empty Scheme and/or Host)
+		{name: "missing scheme", url: "github.example.com/api/v3", wantErr: true}, // parsed as path-only: Scheme="" Host=""
+		{name: "missing host", url: "https://", wantErr: true},                    // Scheme="https" but Host=""
+		{name: "just slashes", url: "///", wantErr: true},                         // Scheme="" Host=""
+		{name: "no scheme or host", url: "not-a-url", wantErr: true},              // parsed as path-only: Scheme="" Host=""
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := github.ValidateAPIURL(tt.url)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestClient_CreateReview_Success(t *testing.T) {
 	requestReceived := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

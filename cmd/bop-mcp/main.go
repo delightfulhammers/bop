@@ -58,6 +58,15 @@ func run() error {
 	// Initialize GitHub client (implements PRReader, AnnotationReader, CommentReader).
 	githubClient := github.NewClient(githubToken)
 
+	// Support GitHub Enterprise Server via GITHUB_API_URL.
+	// This is the standard environment variable used by GitHub Actions for GHE.
+	if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
+		if err := github.ValidateAPIURL(apiURL); err != nil {
+			return fmt.Errorf("invalid GITHUB_API_URL: %w", err)
+		}
+		githubClient.SetBaseURL(apiURL)
+	}
+
 	// Initialize git engine (implements FileReader, DiffReader).
 	gitEngine := git.NewEngine(repoDir)
 
@@ -140,6 +149,7 @@ func run() error {
 			ReviewerRegistry:     reviewerRegistry,
 			PersonaPromptBuilder: personaPromptBuilder,
 			SeedGenerator:        determinism.GenerateSeed,
+			RemoteGitHubClient:   githubClient,
 		})
 		branchReviewer = orchestrator
 		prReviewer = orchestrator
@@ -156,6 +166,7 @@ func run() error {
 		ReviewerRegistry:     reviewerRegistry,
 		PersonaPromptBuilder: personaPromptBuilder,
 		SeedGenerator:        determinism.GenerateSeed,
+		RemoteGitHubClient:   githubClient,
 	})
 
 	// Run the server (blocks until context is cancelled or error occurs).

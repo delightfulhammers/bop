@@ -34,20 +34,26 @@ func (m *mockFindingPoster) PostReview(ctx context.Context, req review.GitHubPos
 	return m.result, m.err
 }
 
-// mockPRMetadataFetcher is a test mock for PRMetadataFetcher interface.
-type mockPRMetadataFetcher struct {
-	metadata *domain.PRMetadata
-	diff     domain.Diff
-	metaErr  error
-	diffErr  error
+// mockRemoteGitHubClient is a test mock for review.RemoteGitHubClient interface.
+type mockRemoteGitHubClient struct {
+	metadata    *domain.PRMetadata
+	diff        domain.Diff
+	metaErr     error
+	diffErr     error
+	fileContent string
+	fileErr     error
 }
 
-func (m *mockPRMetadataFetcher) GetPRMetadata(ctx context.Context, owner, repo string, prNumber int) (*domain.PRMetadata, error) {
+func (m *mockRemoteGitHubClient) GetPRMetadata(ctx context.Context, owner, repo string, prNumber int) (*domain.PRMetadata, error) {
 	return m.metadata, m.metaErr
 }
 
-func (m *mockPRMetadataFetcher) GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error) {
+func (m *mockRemoteGitHubClient) GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error) {
 	return m.diff, m.diffErr
+}
+
+func (m *mockRemoteGitHubClient) GetFileContent(ctx context.Context, owner, repo, path, ref string) (string, error) {
+	return m.fileContent, m.fileErr
 }
 
 // mockCommentReaderForDedup is a minimal mock for triage.CommentReader used in skip_duplicates tests.
@@ -643,7 +649,7 @@ func TestHandlePostFindings(t *testing.T) {
 	t.Run("dry run returns what would be posted", func(t *testing.T) {
 		s := &Server{deps: ServerDeps{
 			FindingPoster:      &mockFindingPoster{},
-			RemoteGitHubClient: &mockPRMetadataFetcher{},
+			RemoteGitHubClient: &mockRemoteGitHubClient{},
 		}}
 
 		input := PostFindingsInput{
@@ -676,7 +682,7 @@ func TestHandlePostFindings(t *testing.T) {
 				CommentsSkipped: 0,
 			},
 		}
-		mockFetcher := &mockPRMetadataFetcher{
+		mockFetcher := &mockRemoteGitHubClient{
 			metadata: &domain.PRMetadata{
 				HeadSHA: "abc123",
 				BaseRef: "main",
@@ -714,7 +720,7 @@ func TestHandlePostFindings(t *testing.T) {
 	})
 
 	t.Run("propagates metadata fetch errors", func(t *testing.T) {
-		mockFetcher := &mockPRMetadataFetcher{
+		mockFetcher := &mockRemoteGitHubClient{
 			metaErr: errors.New("rate limit exceeded"),
 		}
 		s := &Server{deps: ServerDeps{
@@ -735,7 +741,7 @@ func TestHandlePostFindings(t *testing.T) {
 	})
 
 	t.Run("propagates diff fetch errors", func(t *testing.T) {
-		mockFetcher := &mockPRMetadataFetcher{
+		mockFetcher := &mockRemoteGitHubClient{
 			metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 			diffErr:  errors.New("diff too large"),
 		}
@@ -760,7 +766,7 @@ func TestHandlePostFindings(t *testing.T) {
 		mockPoster := &mockFindingPoster{
 			err: errors.New("permission denied"),
 		}
-		mockFetcher := &mockPRMetadataFetcher{
+		mockFetcher := &mockRemoteGitHubClient{
 			metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 			diff:     domain.Diff{},
 		}
@@ -784,7 +790,7 @@ func TestHandlePostFindings(t *testing.T) {
 	t.Run("validates severity for each finding", func(t *testing.T) {
 		s := &Server{deps: ServerDeps{
 			FindingPoster:      &mockFindingPoster{},
-			RemoteGitHubClient: &mockPRMetadataFetcher{},
+			RemoteGitHubClient: &mockRemoteGitHubClient{},
 		}}
 
 		input := PostFindingsInput{
@@ -814,7 +820,7 @@ func TestHandlePostFindings(t *testing.T) {
 				CommentsPosted: 1,
 			},
 		}
-		mockFetcher := &mockPRMetadataFetcher{
+		mockFetcher := &mockRemoteGitHubClient{
 			metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 			diff:     domain.Diff{},
 		}
@@ -854,7 +860,7 @@ func TestHandlePostFindings(t *testing.T) {
 	t.Run("computes fingerprint when not provided", func(t *testing.T) {
 		s := &Server{deps: ServerDeps{
 			FindingPoster:      &mockFindingPoster{},
-			RemoteGitHubClient: &mockPRMetadataFetcher{},
+			RemoteGitHubClient: &mockRemoteGitHubClient{},
 		}}
 
 		input := PostFindingsInput{
@@ -896,7 +902,7 @@ func TestHandlePostFindings(t *testing.T) {
 				FindingPoster: &mockFindingPoster{
 					result: &review.GitHubPostResult{CommentsPosted: 1},
 				},
-				RemoteGitHubClient: &mockPRMetadataFetcher{
+				RemoteGitHubClient: &mockRemoteGitHubClient{
 					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
 				},
@@ -936,7 +942,7 @@ func TestHandlePostFindings(t *testing.T) {
 				FindingPoster: &mockFindingPoster{
 					result: &review.GitHubPostResult{},
 				},
-				RemoteGitHubClient: &mockPRMetadataFetcher{
+				RemoteGitHubClient: &mockRemoteGitHubClient{
 					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
 				},
@@ -977,7 +983,7 @@ func TestHandlePostFindings(t *testing.T) {
 				FindingPoster: &mockFindingPoster{
 					result: &review.GitHubPostResult{CommentsPosted: 2},
 				},
-				RemoteGitHubClient: &mockPRMetadataFetcher{
+				RemoteGitHubClient: &mockRemoteGitHubClient{
 					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
 				},
@@ -1014,7 +1020,7 @@ func TestHandlePostFindings(t *testing.T) {
 				FindingPoster: &mockFindingPoster{
 					result: &review.GitHubPostResult{CommentsPosted: 1},
 				},
-				RemoteGitHubClient: &mockPRMetadataFetcher{
+				RemoteGitHubClient: &mockRemoteGitHubClient{
 					metadata: &domain.PRMetadata{HeadSHA: "abc123"},
 					diff:     domain.Diff{Files: []domain.FileDiff{{Path: "test.go"}}},
 				},

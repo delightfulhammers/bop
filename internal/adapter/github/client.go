@@ -121,10 +121,28 @@ func NewClient(token string) *Client {
 	}
 }
 
-// SetBaseURL sets a custom base URL (for testing).
+// SetBaseURL sets a custom base URL (e.g., for GitHub Enterprise Server).
 // All trailing slashes are trimmed to ensure consistent URL construction.
 func (c *Client) SetBaseURL(baseURL string) {
 	c.baseURL = strings.TrimRight(baseURL, "/")
+}
+
+// ValidateAPIURL validates that a GitHub API URL is well-formed and uses HTTPS.
+// Returns an error if the URL is malformed, missing scheme/host, or uses a
+// non-HTTPS scheme. HTTPS is enforced because the Authorization header
+// containing the GitHub token would otherwise be sent in plaintext.
+func ValidateAPIURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("malformed URL: %w", err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("must be an absolute URL with scheme and host, got %q", rawURL)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("must use https:// (got %q) — GitHub tokens must not be sent over unencrypted connections", u.Scheme)
+	}
+	return nil
 }
 
 // SetTimeout sets the HTTP timeout.
