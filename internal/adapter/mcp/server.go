@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/delightfulhammers/bop/internal/adapter/llm/provider"
-	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/review"
 	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,12 +19,6 @@ type PRReviewer interface {
 // This is implemented by github.Poster.
 type FindingPoster interface {
 	PostReview(ctx context.Context, req review.GitHubPostRequest) (*review.GitHubPostResult, error)
-}
-
-// PRMetadataFetcher fetches PR metadata for the post_findings tool.
-type PRMetadataFetcher interface {
-	GetPRMetadata(ctx context.Context, owner, repo string, prNumber int) (*domain.PRMetadata, error)
-	GetPRDiff(ctx context.Context, owner, repo string, prNumber int) (domain.Diff, error)
 }
 
 // BranchReviewer reviews local git branches (for review_branch tool).
@@ -67,9 +60,9 @@ type ServerDeps struct {
 	// Optional: only required for post_findings tool.
 	FindingPoster FindingPoster
 
-	// RemoteGitHubClient fetches PR metadata and diffs.
-	// Optional: only required for post_findings tool.
-	RemoteGitHubClient PRMetadataFetcher
+	// RemoteGitHubClient fetches PR metadata, diffs, and file content.
+	// Optional: required for post_findings tool and per-request PR review orchestrators.
+	RemoteGitHubClient review.RemoteGitHubClient
 
 	// BranchReviewer reviews local git branches.
 	// Optional: only required for review_branch tool when direct API keys are available.

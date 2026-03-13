@@ -241,6 +241,10 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 	var triageContextFetcher review.TriageContextFetcher
 	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
 		githubClient := githubadapter.NewClient(githubToken)
+		// Support GitHub Enterprise Server via GITHUB_API_URL.
+		if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
+			githubClient.SetBaseURL(apiURL)
+		}
 
 		// Configure semantic deduplication (Issue #125)
 		// Use DefaultConfig as base, then override with user config if provided
@@ -296,7 +300,12 @@ func runWithConfig(ctx context.Context, cfg config.Config) error {
 	// cr review pr <identifier> to work without a local clone.
 	var remoteGitHubClient review.RemoteGitHubClient
 	if githubToken := os.Getenv("GITHUB_TOKEN"); githubToken != "" {
-		remoteGitHubClient = githubadapter.NewClient(githubToken)
+		client := githubadapter.NewClient(githubToken)
+		// Support GitHub Enterprise Server via GITHUB_API_URL.
+		if apiURL := os.Getenv("GITHUB_API_URL"); apiURL != "" {
+			client.SetBaseURL(apiURL)
+		}
+		remoteGitHubClient = client
 	}
 
 	orchestrator := review.NewOrchestrator(review.OrchestratorDeps{

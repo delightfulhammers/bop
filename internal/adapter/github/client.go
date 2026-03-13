@@ -121,7 +121,7 @@ func NewClient(token string) *Client {
 	}
 }
 
-// SetBaseURL sets a custom base URL (for testing).
+// SetBaseURL sets a custom base URL (e.g., for GitHub Enterprise Server).
 // All trailing slashes are trimmed to ensure consistent URL construction.
 func (c *Client) SetBaseURL(baseURL string) {
 	c.baseURL = strings.TrimRight(baseURL, "/")
