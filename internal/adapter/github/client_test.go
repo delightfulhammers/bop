@@ -68,14 +68,20 @@ func TestValidateAPIURL(t *testing.T) {
 		url     string
 		wantErr bool
 	}{
-		{name: "valid https URL", url: "https://github.example.com/api/v3", wantErr: false},
+		// Valid: well-formed HTTPS URLs
+		{name: "valid https with path", url: "https://github.example.com/api/v3", wantErr: false},
 		{name: "valid https no path", url: "https://api.github.com", wantErr: false},
-		{name: "valid http URL (warns but passes)", url: "http://ghe.corp.com/api/v3", wantErr: false},
-		{name: "http localhost", url: "http://localhost:8080", wantErr: false},
-		{name: "missing scheme", url: "github.example.com/api/v3", wantErr: true},
-		{name: "missing host", url: "https://", wantErr: true},
-		{name: "just slashes", url: "///", wantErr: true},
-		{name: "no scheme or host", url: "not-a-url", wantErr: true},
+
+		// Rejected: non-HTTPS schemes (token would be sent in plaintext)
+		{name: "http rejected", url: "http://ghe.corp.com/api/v3", wantErr: true},
+		{name: "http localhost rejected", url: "http://localhost:8080", wantErr: true},
+		{name: "ftp rejected", url: "ftp://ghe.corp.com/api/v3", wantErr: true},
+
+		// Rejected: malformed URLs (url.Parse produces empty Scheme and/or Host)
+		{name: "missing scheme", url: "github.example.com/api/v3", wantErr: true}, // parsed as path-only: Scheme="" Host=""
+		{name: "missing host", url: "https://", wantErr: true},                    // Scheme="https" but Host=""
+		{name: "just slashes", url: "///", wantErr: true},                         // Scheme="" Host=""
+		{name: "no scheme or host", url: "not-a-url", wantErr: true},              // parsed as path-only: Scheme="" Host=""
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

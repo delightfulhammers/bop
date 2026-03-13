@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -128,10 +127,10 @@ func (c *Client) SetBaseURL(baseURL string) {
 	c.baseURL = strings.TrimRight(baseURL, "/")
 }
 
-// ValidateAPIURL validates that a GitHub API URL is well-formed.
-// Returns an error if the URL is malformed or missing scheme/host.
-// Logs a warning if HTTP (non-TLS) is used, since the Authorization header
-// containing the GitHub token will be sent in plaintext.
+// ValidateAPIURL validates that a GitHub API URL is well-formed and uses HTTPS.
+// Returns an error if the URL is malformed, missing scheme/host, or uses a
+// non-HTTPS scheme. HTTPS is enforced because the Authorization header
+// containing the GitHub token would otherwise be sent in plaintext.
 func ValidateAPIURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -140,8 +139,8 @@ func ValidateAPIURL(rawURL string) error {
 	if u.Scheme == "" || u.Host == "" {
 		return fmt.Errorf("must be an absolute URL with scheme and host, got %q", rawURL)
 	}
-	if u.Scheme == "http" {
-		log.Printf("[WARN] GITHUB_API_URL uses http:// — GitHub token will be sent over an unencrypted connection. Use https:// unless you are certain this is intentional (e.g., behind a corporate VPN).")
+	if u.Scheme != "https" {
+		return fmt.Errorf("must use https:// (got %q) — GitHub tokens must not be sent over unencrypted connections", u.Scheme)
 	}
 	return nil
 }
