@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"strings"
 
 	"github.com/delightfulhammers/bop/internal/adapter/github"
@@ -927,15 +928,17 @@ func determineEffectiveEvent(
 type SemanticDuplicateMap map[domain.FindingFingerprint]domain.FindingFingerprint
 
 // safeCompare wraps SemanticComparer.Compare with panic recovery.
-// If Compare panics, the panic is converted to an error so callers can fail open.
+// If Compare panics, the panic is converted to an error (with stack trace) so
+// callers can fail open while still providing diagnostic context for on-call.
 func safeCompare(ctx context.Context, comparer dedup.SemanticComparer, candidates []dedup.CandidatePair) (result *dedup.ComparisonResult, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			stack := debug.Stack()
 			switch v := r.(type) {
 			case error:
-				err = fmt.Errorf("panic in semantic comparer: %w", v)
+				err = fmt.Errorf("panic in semantic comparer: %w\n%s", v, stack)
 			default:
-				err = fmt.Errorf("panic in semantic comparer: %v", v)
+				err = fmt.Errorf("panic in semantic comparer: %v\n%s", v, stack)
 			}
 		}
 	}()
