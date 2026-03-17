@@ -926,6 +926,22 @@ func determineEffectiveEvent(
 // This allows determineEffectiveEvent to inherit the status of the original finding.
 type SemanticDuplicateMap map[domain.FindingFingerprint]domain.FindingFingerprint
 
+// safeCompare wraps SemanticComparer.Compare with panic recovery.
+// If Compare panics, the panic is converted to an error so callers can fail open.
+func safeCompare(ctx context.Context, comparer dedup.SemanticComparer, candidates []dedup.CandidatePair) (result *dedup.ComparisonResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			switch v := r.(type) {
+			case error:
+				err = fmt.Errorf("panic in semantic comparer: %w", v)
+			default:
+				err = fmt.Errorf("panic in semantic comparer: %v", v)
+			}
+		}
+	}()
+	return comparer.Compare(ctx, candidates)
+}
+
 // filterSemanticDuplicates uses LLM-based comparison to identify findings that are
 // semantic duplicates of existing comments, even if they have different fingerprints.
 // Returns the filtered findings, count of semantic duplicates found, and a mapping
@@ -979,11 +995,14 @@ func (p *ReviewPoster) filterSemanticDuplicates(
 		}
 	}
 
-	// Call the semantic comparer
-	result, err := p.semanticComparer.Compare(ctx, candidates)
+	// Call the semantic comparer with panic recovery.
+	// The comparer invokes LLM adapters that may panic unexpectedly (nil pointers,
+	// index out of range, etc.). We recover to preserve the fail-open guarantee:
+	// a panic in dedup must never crash the review posting flow.
+	result, err := safeCompare(ctx, p.semanticComparer, candidates)
 	if err != nil {
 		// Fail open: on error, treat all findings as unique
-		log.Printf("warning: semantic dedup failed: %v (treating all as unique)", err)
+		log.Printf("warning: semantic dedup failed (candidates=%d): %v (treating all as unique)", len(candidates), err)
 		return findings, 0, nil
 	}
 
