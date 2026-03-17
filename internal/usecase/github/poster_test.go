@@ -2340,3 +2340,173 @@ func TestReviewPoster_PostReview_OutOfDiffWithoutIssueClient(t *testing.T) {
 	assert.Equal(t, 0, result.OutOfDiffPosted)
 	assert.Equal(t, 0, result.OutOfDiffSkipped)
 }
+
+// panicSemanticComparer is a mock that panics with a configurable value.
+// Shared by all TestReviewPoster_PostReview_SemanticDedupPanicRecovery_* tests.
+type panicSemanticComparer struct {
+	panicValue interface{}
+	callCount  int
+}
+
+func (p *panicSemanticComparer) Compare(_ context.Context, _ []dedup.CandidatePair) (*dedup.ComparisonResult, error) {
+	p.callCount++
+	panic(p.panicValue)
+}
+
+func TestReviewPoster_PostReview_SemanticDedupPanicRecovery_ErrorValue(t *testing.T) {
+	// When Compare() panics with an error value, the poster should recover,
+	// log a warning, and treat all findings as unique (fail-open).
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				{
+					ID:   1,
+					Path: "file1.go",
+					Line: diff.IntPtr(10),
+					Body: "<!-- CR_FINGERPRINT:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 -->\n**Severity:** high | **Category:** test\n\n📍 Line 10\n\nExisting finding",
+					User: github.User{Login: "bot[bot]"},
+				},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+
+	panicComparer := &panicSemanticComparer{
+		panicValue: errors.New("nil pointer dereference in embedding logic"),
+	}
+
+	poster := usecasegithub.NewReviewPoster(
+		client,
+		usecasegithub.WithSemanticComparer(panicComparer, usecasegithub.SemanticDedupConfig{
+			LineThreshold: 50,
+			MaxCandidates: 200,
+		}),
+	)
+
+	finding := makeFinding("file1.go", 10, "high", "A high severity issue")
+	findings := []github.PositionedFinding{
+		{Finding: finding, DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	// Should not propagate the panic — should succeed with all findings posted
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CommentsPosted, "all findings should be posted when Compare panics")
+	assert.Equal(t, 0, result.SemanticDuplicatesSkipped, "no semantic duplicates when Compare panics")
+	assert.Equal(t, 1, panicComparer.callCount, "Compare must have been invoked (not short-circuited by fingerprint dedup)")
+}
+
+func TestReviewPoster_PostReview_SemanticDedupPanicRecovery_StringValue(t *testing.T) {
+	// When Compare() panics with a non-error value (string), recovery should still work.
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				{
+					ID:   1,
+					Path: "file1.go",
+					Line: diff.IntPtr(10),
+					Body: "<!-- CR_FINGERPRINT:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 -->\n**Severity:** high | **Category:** test\n\n📍 Line 10\n\nExisting finding",
+					User: github.User{Login: "bot[bot]"},
+				},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+
+	panicComparer := &panicSemanticComparer{
+		panicValue: "unexpected runtime error",
+	}
+
+	poster := usecasegithub.NewReviewPoster(
+		client,
+		usecasegithub.WithSemanticComparer(panicComparer, usecasegithub.SemanticDedupConfig{
+			LineThreshold: 50,
+			MaxCandidates: 200,
+		}),
+	)
+
+	finding := makeFinding("file1.go", 10, "high", "A high severity issue")
+	findings := []github.PositionedFinding{
+		{Finding: finding, DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	// Should not propagate the panic — should succeed with all findings posted
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CommentsPosted, "all findings should be posted when Compare panics with string")
+	assert.Equal(t, 0, result.SemanticDuplicatesSkipped, "no semantic duplicates when Compare panics")
+	assert.Equal(t, 1, panicComparer.callCount, "Compare must have been invoked (not short-circuited by fingerprint dedup)")
+}
+
+func TestReviewPoster_PostReview_SemanticDedupPanicRecovery_IntValue(t *testing.T) {
+	// When Compare() panics with a non-string, non-error value (int),
+	// recovery should still work via the default branch of the type switch.
+	client := &MockReviewClient{
+		ListPullRequestCommentsFunc: func(ctx context.Context, owner, repo string, pullNumber int) ([]github.PullRequestComment, error) {
+			return []github.PullRequestComment{
+				{
+					ID:   1,
+					Path: "file1.go",
+					Line: diff.IntPtr(10),
+					Body: "<!-- CR_FINGERPRINT:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1 -->\n**Severity:** high | **Category:** test\n\n📍 Line 10\n\nExisting finding",
+					User: github.User{Login: "bot[bot]"},
+				},
+			}, nil
+		},
+		CreateReviewFunc: func(ctx context.Context, input github.CreateReviewInput) (*github.CreateReviewResponse, error) {
+			return &github.CreateReviewResponse{ID: 123}, nil
+		},
+	}
+
+	panicComparer := &panicSemanticComparer{
+		panicValue: 42,
+	}
+
+	poster := usecasegithub.NewReviewPoster(
+		client,
+		usecasegithub.WithSemanticComparer(panicComparer, usecasegithub.SemanticDedupConfig{
+			LineThreshold: 50,
+			MaxCandidates: 200,
+		}),
+	)
+
+	finding := makeFinding("file1.go", 10, "high", "A high severity issue")
+	findings := []github.PositionedFinding{
+		{Finding: finding, DiffPosition: diff.IntPtr(5)},
+	}
+
+	result, err := poster.PostReview(context.Background(), usecasegithub.PostReviewRequest{
+		Owner:       "owner",
+		Repo:        "repo",
+		PullNumber:  1,
+		CommitSHA:   "sha",
+		Findings:    findings,
+		BotUsername: "bot[bot]",
+	})
+
+	// Should not propagate the panic — should succeed with all findings posted
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.CommentsPosted, "all findings should be posted when Compare panics with int")
+	assert.Equal(t, 0, result.SemanticDuplicatesSkipped, "no semantic duplicates when Compare panics")
+	assert.Equal(t, 1, panicComparer.callCount, "Compare must have been invoked (not short-circuited by fingerprint dedup)")
+}
