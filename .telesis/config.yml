@@ -1,0 +1,8 @@
+# Telesis project configuration
+project:
+  name: bop
+  owner: delightfulhammers
+  languages:
+    - Go
+  status: active
+  repo: github.com/delightfulhammers/bop

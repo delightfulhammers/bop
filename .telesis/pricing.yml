@@ -1,0 +1,10 @@
+# Telesis model pricing — used for cost estimation
+# Update manually or via `telesis pricing update` (future)
+lastUpdated: '2026-03-17'
+models:
+  anthropic:
+    claude-sonnet-4-6:
+      inputPer1MTokens: 3
+      outputPer1MTokens: 15
+      cacheReadPer1MTokens: 0.3
+      cacheWritePer1MTokens: 3.75
