@@ -1,0 +1,11 @@
+{
+  "id": "c88cecf5-179d-40d2-ad1b-fab1c1f8aa7a",
+  "source": "github",
+  "sourceId": "234",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/234",
+  "title": "Add hard cap on maxThemes configuration",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `10dba040daccec6ac474ac8237a0975d`)\n\n## Problem\n\nThe `maxThemes` configuration parameter is passed directly to the LLM prompt without an upper bound. A misconfiguration (e.g., `maxThemes: 1000`) could cause excessive LLM output, high token costs, and latency.\n\n## Suggested Improvements\n\n1. Enforce a hard cap (e.g., 50) in `NewExtractor` or `ExtractThemes`\n2. Log a warning if configured value exceeds the cap\n3. Document the maximum allowed value in config comments\n\n## Priority\n\nLow - edge case misconfiguration; users who set this high probably want it high.\n\n## Related\n\n- PR #223: Theme extraction feature",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.742Z"
+}

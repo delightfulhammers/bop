@@ -1,0 +1,10 @@
+{
+  "id": "fad2e688-175c-4331-affb-1b460e5af412",
+  "agent": "claude",
+  "task": "Execute plan 30b3437b: Improve semantic dedup error handling with recover() and detailed logging (GitHub issue #317). Task: Add panic recovery and improved logging to semantic dedup in internal/usecase/github/poster.go. TDD approach — write tests first. Wrap CompareAgainstExisting in a safe helper using recover(). Handle both error and non-error panic values. Enrich warning logs with candidate count and error details. Preserve existing fallback behavior (treat all findings as unique on failure). Definition of Done: tests pass, mage lint passes (fix any pre-existing lint errors), mage testRace passes, mage buildAll succeeds.",
+  "status": "failed",
+  "startedAt": "2026-03-17T21:40:22.303Z",
+  "eventCount": 323,
+  "completedAt": "2026-03-17T21:43:57.715Z",
+  "error": "acpx prompt exited with code 1: [acpx] session fad2e688-175c-4331-affb-1b460e5af412 (60a0e686-e3ad-4ff2-ab5a-93af4eabe8ff) · /Users/brandon/Development/delightfulhammers/bop · agent needs reconnect"
+}

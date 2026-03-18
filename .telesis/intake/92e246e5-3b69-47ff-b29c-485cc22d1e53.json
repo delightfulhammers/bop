@@ -1,0 +1,11 @@
+{
+  "id": "92e246e5-3b69-47ff-b29c-485cc22d1e53",
+  "source": "github",
+  "sourceId": "248",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/248",
+  "title": "Make all theme extraction limits configurable",
+  "body": "## Background\n\nIn PR #247, we added `MaxDisputePrinciples` and `MaxPrincipleItems` to `ThemeExtractionConfig` to make principle extraction limits configurable. However, the existing `sanitizePatterns` and `sanitizeConclusions` functions still use package-level constants:\n\n- `maxDisputedPatterns` (constant)\n- `maxConclusions` (constant)\n\nThis creates an inconsistent configuration model where some limits are configurable and others are not.\n\n## Proposed Change\n\nAdd the following fields to `ThemeExtractionConfig`:\n- `MaxDisputedPatterns` (default: current constant value)\n- `MaxConclusions` (default: current constant value)\n\nUpdate `sanitizePatterns` and `sanitizeConclusions` to accept config-driven limits, similar to how `sanitizePrinciples` works.\n\n## Files to Modify\n\n- `internal/usecase/review/theme_extractor.go` - Add new config fields\n- `internal/adapter/theme/extractor.go` - Thread config into sanitize functions\n\n## Benefits\n\n- Consistent configuration model\n- All limits tunable from a single location\n- Easier to extend with new extraction types\n\n---\n\n*Originated from code review finding in PR #247*",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.741Z"
+}

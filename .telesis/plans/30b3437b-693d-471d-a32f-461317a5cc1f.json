@@ -1,0 +1,21 @@
+{
+  "id": "30b3437b-693d-471d-a32f-461317a5cc1f",
+  "workItemId": "4247da7e-9937-4b26-bd20-532a26a8175d",
+  "title": "Improve semantic dedup error handling with recover() and detailed logging",
+  "status": "approved",
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "Add panic recovery and improved logging to semantic dedup in poster.go",
+      "description": "Improve the error handling in the semantic deduplication code in `internal/usecase/github/poster.go` around line 984.\n\n**Changes to make:**\n\n1. Wrap the `CompareAgainstExisting` call in a helper function (e.g., `safeCompareAgainstExisting`) that uses `recover()` to catch any panics from the comparer. The recovered panic should be converted to an error and returned.\n\n2. Update the warning log to include:\n   - The number of candidate findings being deduplicated\n   - The full error details (or panic details if recovered)\n   - The fallback behavior (treating all as unique)\n\n   Example log format: `\"warning: semantic dedup failed for %d candidates: %v (treating all as unique)\"`\n\n3. Consider wrapping errors with `fmt.Errorf(\"semantic dedup: %w\", err)` so callers have structured error context. The current behavior of returning `findings, 0, nil` on error should be preserved (callers see dedup as a no-op, not a hard failure), but ensure the logged error is rich enough for production debugging.\n\n**TDD approach — write tests first:**\n\nIn the corresponding test file (likely `internal/usecase/github/poster_test.go` or a dedup-specific test file), add test cases that:\n- Verify that a panicking comparer does NOT crash the process and instead logs a warning and returns all findings as unique\n- Verify that a comparer returning an error logs a warning with the candidate count and returns all findings as unique\n- Verify that the wrapped/recovered error message contains useful context (candidate count, original error or panic value)\n\nUse a mock or stub for the comparer interface to simulate panics and errors.\n\n**Edge cases:**\n- Panic value may not be an `error` — handle both `error` and arbitrary `interface{}` panic values\n- Zero-length candidate list should still be handled gracefully\n- Ensure the race detector passes (`mage testRace`)\n\n**Definition of Done:**\n- Tests written and passing\n- `mage lint` passes (fix any pre-existing lint errors you encounter)\n- `mage testRace` passes\n- `mage buildAll` succeeds",
+      "dependsOn": [],
+      "status": "pending"
+    }
+  ],
+  "createdAt": "2026-03-17T21:38:58.634Z",
+  "tokenUsage": {
+    "inputTokens": 2941,
+    "outputTokens": 604
+  },
+  "approvedAt": "2026-03-17T21:39:40.418Z"
+}

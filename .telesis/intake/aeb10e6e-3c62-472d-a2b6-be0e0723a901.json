@@ -1,0 +1,11 @@
+{
+  "id": "aeb10e6e-3c62-472d-a2b6-be0e0723a901",
+  "source": "github",
+  "sourceId": "303",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/303",
+  "title": "Hardening: Platform config conversion improvements",
+  "body": "## Summary\n\nFollow-up items identified during PR #302 code review for improving platform config conversion security and consistency.\n\n## Items\n\n### 1. Add depth limits to ConvertPlatformConfig\n**Finding:** `afbdba4731ccdede1e0f788101c32675`\n\nConvertPlatformConfig accepts arbitrary `map[string]any` from platform without depth limits on nested structures. While the 1MB network limit provides primary protection, pathological structures (deeply nested objects) could still cause issues during conversion.\n\n**Suggested fix:** Add recursive depth tracking to reject configs exceeding a reasonable limit (e.g., 10 levels).\n\n### 2. Centralize config defaults\n**Finding:** `b5fe135b26127d5cb841124fca8bd2e6`\n\nConvertPlatformConfig initializes Config with hardcoded defaults that may diverge from loader defaults. If defaults evolve in one place, the other may not be updated.\n\n**Suggested fix:** Extract defaults into a shared `NewDefaultConfig()` function used by both loader and ConvertPlatformConfig.\n\n## Priority\n\nLow - these are defense-in-depth improvements. The primary protections (1MB size limit, validation) are in place.\n\n---\n*From code review of PR #302*",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.734Z"
+}

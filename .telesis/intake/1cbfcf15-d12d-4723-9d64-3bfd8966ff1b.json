@@ -1,0 +1,11 @@
+{
+  "id": "1cbfcf15-d12d-4723-9d64-3bfd8966ff1b",
+  "source": "github",
+  "sourceId": "236",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/236",
+  "title": "Reduce false positive rate in code review findings",
+  "body": "## Context\n\nFrom PR #223 review experience: ~34% of findings were disputed as false positives.\n\n## Examples of False Positives\n\n1. **Off-by-one in truncation check** - suggested fix (`>`) would never trigger since LimitReader caps at n bytes\n2. **HTTP client hardening** - \"server push attacks\" don't apply to API clients\n3. **API key validation** - already handled by fallback logic\n4. **Factory pattern suggestion** - architectural preference, not a defect\n\n## Root Causes\n\n- Findings based on hypotheticals rather than demonstrated bugs\n- Lack of context about intentional design decisions\n- Over-application of security patterns to inappropriate contexts\n\n## Potential Solutions\n\n1. Require demonstrated exploitability for security findings\n2. Add \"confidence\" field to findings (high/medium/low)\n3. Improve prompts to distinguish \"definite bug\" from \"consider this\"\n4. Add examples of false positive patterns to avoid\n\n## Priority\n\nHigh - false positives erode trust and cause review fatigue.",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.742Z"
+}

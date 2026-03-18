@@ -1,0 +1,11 @@
+{
+  "id": "6b64742e-e5ea-4112-9d59-09071bf1dbff",
+  "source": "github",
+  "sourceId": "224",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/224",
+  "title": "Improve JSON extraction robustness in theme extractor",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `e008859380223fb97f16d357694f63aa`, `03dca65aa997037556ce081a440008ac`)\n\n## Problem\n\nThe `extractJSON` function in `internal/adapter/theme/extractor.go` uses handwritten brace-matching parser that can misbehave with:\n- Braces inside JSON strings (e.g., `{\"theme\": \"use {braces} carefully\"}`)\n- Multiple JSON objects in the response\n- Edge cases as prompts evolve\n\n## Suggested Improvements\n\n1. Use `json.Decoder` with `DisallowUnknownFields=false` to find the first valid JSON object\n2. Alternatively, use LLM tool/function calling for structured output where available\n3. Add tests for edge cases (braces in strings, multiple code blocks)\n\n## Priority\n\nLow - the current implementation works for well-formed LLM responses. This is a hardening measure.\n\n## Related\n\n- PR #223: Theme extraction feature",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.744Z"
+}

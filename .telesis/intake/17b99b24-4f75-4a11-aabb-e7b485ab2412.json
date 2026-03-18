@@ -1,0 +1,11 @@
+{
+  "id": "17b99b24-4f75-4a11-aabb-e7b485ab2412",
+  "source": "github",
+  "sourceId": "275",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/275",
+  "title": "Use context deadline for device code expiration during polling",
+  "body": "## Background\n\nFrom PR #268 code review finding.\n\n## Problem\n\nDevice code expiration is checked with `time.Now().After(deadline)` only **before** each poll request. If the deadline expires **during** a long poll request (30s HTTP timeout), the code continues waiting for the response rather than canceling immediately.\n\nThis can delay the expiration error by up to 30 seconds.\n\n## Proposed Solution\n\nAdd a deadline-based context for the poll request:\n\n```go\n// Create context that expires with the device code\npollCtx, cancel := context.WithDeadline(ctx, deadline)\ndefer cancel()\n\ntokenResp, dfErr, err := client.PollDeviceToken(pollCtx, initResp.DeviceCode)\n```\n\nThis ensures the HTTP request is canceled when the device code expires, providing immediate feedback to the user.\n\n## Impact\n\nMore responsive expiration handling - users get the \"device code expired\" error immediately rather than up to 30s late.\n\n## References\n\n- PR #268\n- Finding fingerprint: `ac082e89ea945dd7be992487d651b043`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.738Z"
+}

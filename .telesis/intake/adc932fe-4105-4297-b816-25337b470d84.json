@@ -1,0 +1,11 @@
+{
+  "id": "adc932fe-4105-4297-b816-25337b470d84",
+  "source": "github",
+  "sourceId": "256",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/256",
+  "title": "refactor(poster): consolidate comment parsing into single preprocessing step",
+  "body": "## Summary\n\nCurrently `analyzeFindingStatuses` and `filterDuplicateFindings` both iterate over comments and extract fingerprints independently. This causes redundant parsing and creates two sources of truth that could drift.\n\n## Current Behavior\n\n1. `analyzeFindingStatuses()` iterates comments → builds `map[fingerprint]status`\n2. `filterDuplicateFindings()` iterates comments again → builds `map[fingerprint]bool` via `extractBotFingerprints()`\n\nBoth functions parse the same comment set but derive fingerprints separately.\n\n## Proposed Solution\n\nConsolidate into a single preprocessing step that returns a structured view:\n\n```go\ntype CommentAnalysis struct {\n    Fingerprints map[domain.FindingFingerprint]bool\n    Statuses     map[domain.FindingFingerprint]domain.FindingStatus\n    StatusCounts StatusCounts\n    // Could also include thread info, reply metadata, etc.\n}\n\nfunc analyzeComments(comments []github.PullRequestComment, botUsername string) CommentAnalysis\n```\n\nThen all dedup stages (Stage 0, Stage 1, Stage 2) operate on this shared structure.\n\n## Benefits\n\n- Single iteration over comments\n- Single source of truth for fingerprint extraction\n- No risk of drift if parsing rules change\n- Easier to extend with additional analysis\n\n## Files\n\n- `internal/usecase/github/poster.go` - Main refactoring target\n\n## Context\n\nIdentified during PR #255 code review by architecture and performance reviewers.",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.740Z"
+}

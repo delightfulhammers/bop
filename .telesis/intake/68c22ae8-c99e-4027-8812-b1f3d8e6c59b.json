@@ -1,0 +1,11 @@
+{
+  "id": "68c22ae8-c99e-4027-8812-b1f3d8e6c59b",
+  "source": "github",
+  "sourceId": "258",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/258",
+  "title": "feat: product feedback client integrations (MCP, CLI, Web UI)",
+  "body": "## Summary\n\nEnable users to submit product feedback from all bop interfaces: MCP server (coding assistants), CLI, and Web UI.\n\n## User Journeys\n\n### 1. MCP Server (Coding Assistants)\nUser in Claude Code or similar:\n> \"Provide feedback to the bop developers that bop is amazing and helps me move faster\"\n\nThe assistant calls a `send_feedback` MCP tool that submits to the backend API.\n\n### 2. CLI\n```bash\nbop feedback \"bop is amazing, helps me move faster with higher confidence\"\n\n# Or with flags\nbop feedback --message \"Great tool!\" --category suggestion\n```\n\n### 3. Web UI (Future)\n- \"Submit Feedback\" button/link in the UI\n- Modal or dedicated page for feedback form\n- Could include category selection (bug, suggestion, praise, etc.)\n\n## Implementation\n\n### MCP Server Tool\n- New tool: `send_feedback` or `submit_product_feedback`\n- Parameters: `message` (required), `category` (optional)\n- Calls backend API endpoint\n\n### CLI Command\n- New command: `bop feedback <message>` or `bop send-feedback`\n- Flags: `--message`, `--category`\n- Calls backend API endpoint\n\n### Web UI\n- Feedback button in header/footer\n- Form with message textarea, optional category\n- Calls backend API endpoint\n\n## Dependencies\n\n- #257 - Backend API endpoint must exist first\n\n## Considerations\n\n- Should feedback be anonymous or always tied to user identity?\n- Include automatic context (version, OS, recent errors)?\n- Confirmation message after submission\n- Offline queuing for CLI?",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.740Z"
+}

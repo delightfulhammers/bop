@@ -1,0 +1,11 @@
+{
+  "id": "79eb9970-8807-41f0-b801-97c980e5d76d",
+  "source": "github",
+  "sourceId": "279",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/279",
+  "title": "Use system keychain for token storage instead of cleartext file",
+  "body": "## Background\n\nFrom PR #268 code review finding (HIGH severity).\n\n## Problem\n\nAuthentication tokens (access_token, refresh_token) are stored in cleartext in `~/.config/bop/auth.json` with 0600 permissions. While file permissions provide some protection, tokens remain vulnerable to:\n\n1. Process memory dumps\n2. Backup systems (cloud sync, Time Machine)\n3. Filesystem-level attacks\n4. Malware with user-level access\n\n## Proposed Solution\n\nUse system keychain integration:\n- **macOS**: Keychain (via Security framework)\n- **Windows**: Windows Credential Manager\n- **Linux**: Secret Service API (GNOME Keyring, KWallet)\n\nLibraries like `github.com/zalando/go-keyring` provide cross-platform keychain access.\n\nImplementation:\n1. Add `KeychainStore` implementation of a `TokenStorage` interface\n2. Fall back to encrypted file storage if keychain unavailable\n3. Migrate existing cleartext tokens to keychain on first use\n4. Add config option to force file storage for CI/headless environments\n\n## Impact\n\nSignificantly improved security for token storage, especially on developer machines.\n\n## References\n\n- PR #268\n- Finding fingerprint: `0d939e6966930907aada20145adad2f4`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.737Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "a2739324-c10b-4953-90c5-e30466fe2615",
+  "source": "github",
+  "sourceId": "266",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/266",
+  "title": "reply_to_finding should gracefully handle out-of-diff flat comments",
+  "body": "## Problem\n\nWhen an MCP client attempts to use `reply_to_finding` on an out-of-diff finding (which is posted as a flat issue comment rather than a review comment thread), the tool fails with an opaque error:\n\n```\nFinding not found: <fingerprint>. The comment may have been deleted.\n```\n\nThis is misleading - the finding exists, but it's a flat comment that doesn't support threaded replies.\n\n## Impact\n\nMCP clients (like Claude Code) don't have context to know that `reply_to_finding` doesn't universally work for all finding types. The silent/confusing failure causes:\n- Confusion about what went wrong\n- Findings appearing \"unreplied\" when they've actually been reviewed\n- Inconsistent triage workflows\n\n## Proposed Solution\n\nOption A: **Return a helpful error message**\n```\nThis finding is an out-of-diff issue comment (not a review thread) and cannot be replied to directly. \nTo respond, use post_comment to create a new issue comment, or simply acknowledge in your workflow.\n```\n\nOption B: **Auto-fallback behavior**\nDetect the out-of-diff case and automatically post a new issue comment that references the original finding.\n\n## Context\n\nOut-of-diff findings are posted as flat issue comments (via `CreateIssueComment`) because GitHub's review API only supports inline comments on lines that exist in the diff. These flat comments have fingerprint markers but don't support the reply threading that review comments do.",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.739Z"
+}

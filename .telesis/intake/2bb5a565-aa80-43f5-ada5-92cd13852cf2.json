@@ -1,0 +1,11 @@
+{
+  "id": "2bb5a565-aa80-43f5-ada5-92cd13852cf2",
+  "source": "github",
+  "sourceId": "227",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/227",
+  "title": "Document theme extraction fallback provider behavior",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `21f0018d849b2d2b5002ee09ef5ff4c8`)\n\n## Problem\n\nTheme extraction is described as \"uses the first available provider with an API key\" in config comments, but the behavior may surprise operators:\n- If `themeExtraction.provider` is empty, fixed fallbacks are tried\n- Operators may expect auto-selection based on `cfg.Providers` enabled providers\n\n## Suggested Improvements\n\n1. If `themeExtraction.provider` is empty, iterate `cfg.Providers` checking `Enabled` and API keys\n2. Update documentation to clarify fallback behavior\n3. Consider adding `themeExtraction.fallbackProviders` config option\n\n## Priority\n\nLow - current behavior works, this is a UX improvement.\n\n## Related\n\n- PR #223: Theme extraction feature",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.744Z"
+}

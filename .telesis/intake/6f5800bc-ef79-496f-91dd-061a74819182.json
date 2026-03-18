@@ -1,0 +1,11 @@
+{
+  "id": "6f5800bc-ef79-496f-91dd-061a74819182",
+  "source": "github",
+  "sourceId": "336",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/336",
+  "title": "feat: add client-side rate limiting for platform API calls",
+  "body": "## Context\n\nPR #334 introduces platform API calls (device flow, config fetch, token refresh) without client-side rate limiting. While the server enforces rate limits, the CLI should be a good citizen and self-limit.\n\n## Proposal\n\nAdd `golang.org/x/time/rate` based client-side rate limiting:\n- Device flow initiation: max 1/minute\n- General API calls: configurable burst (e.g., 10 req/s burst, 2 req/s sustained)\n- Honor server `Retry-After` headers\n\n## Notes\n\n- RFC 8628 `slow_down` handling is already implemented in PR #334\n- Server-side rate limiting is the primary defense; this is defense-in-depth",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.727Z"
+}

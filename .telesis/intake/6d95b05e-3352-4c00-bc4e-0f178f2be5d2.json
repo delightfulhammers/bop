@@ -1,0 +1,11 @@
+{
+  "id": "6d95b05e-3352-4c00-bc4e-0f178f2be5d2",
+  "source": "github",
+  "sourceId": "251",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/251",
+  "title": "feat: add per-category blocking thresholds",
+  "body": "## Problem\n\nCurrently, blocking behavior is controlled by:\n- `blockThreshold: \"high\"` - global threshold (critical, high, medium, low, none)\n- `alwaysBlockCategories: [\"security\"]` - categories that block at ANY severity\n\nThere's no way to say \"block security findings at medium+, but other categories at high+\".\n\n## Current Workarounds\n\n| Option | Security Blocking | Other Categories |\n|--------|-------------------|------------------|\n| `alwaysBlockCategories: [\"security\"]` | All (including low) | high+ |\n| Remove security from list | high+ | high+ |\n| `blockThreshold: \"medium\"` | medium+ | medium+ (all categories) |\n\nNone provide fine-grained per-category control.\n\n## Proposed Solution\n\nAdd `categoryThresholds` config:\n\n```yaml\nreview:\n  blockThreshold: \"high\"  # default for unlisted categories\n  \n  categoryThresholds:\n    security: \"medium\"    # security blocks at medium+\n    bug: \"high\"           # bugs block at high+ (same as default)\n    # unlisted categories use blockThreshold\n```\n\n## Implementation Notes\n\n- `categoryThresholds` overrides `blockThreshold` for specific categories\n- `alwaysBlockCategories` still works (equivalent to threshold: \"low\")\n- Categories not in `categoryThresholds` use the global `blockThreshold`\n\n## Files to Modify\n\n- `internal/config/config.go` - add `CategoryThresholds map[string]string`\n- `internal/usecase/github/poster.go` or blocking logic - check per-category thresholds\n- `bop.yaml` - document new option",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.741Z"
+}

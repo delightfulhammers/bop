@@ -1,0 +1,13 @@
+{
+  "id": "fc221b75-9b56-4a67-a863-fe6d93055e33",
+  "source": "github",
+  "sourceId": "186",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/186",
+  "title": "Enhance reviewer personas with codebase-specific context",
+  "body": "## Summary\n\nReviewer personas (security, architecture, performance) lack codebase-specific context, causing them to flag patterns that are intentional design decisions.\n\n## Examples from PR #182\n\n1. **Security persona** doesn't know:\n   - This codebase delegates auth to GitHub API\n   - MCP tools run locally with user credentials\n   - GitHub markdown handles XSS sanitization\n\n2. **Architecture persona** doesn't know:\n   - Fingerprint has dual purpose (identity vs deduplication)\n   - \"Fail at boundary\" is the validation pattern\n   - Interface segregation is intentional for testability\n\n## Proposed Enhancement\n\n### Per-Repo Persona Context\nAdd optional `persona_context` section to `cr.yaml`:\n\n```yaml\nreviewers:\n  security:\n    provider: anthropic\n    persona: security\n    context: |\n      This codebase delegates authorization to GitHub API via GITHUB_TOKEN.\n      Input sanitization is handled by GitHub's markdown renderer.\n      MCP tools run locally - \"any authenticated user\" means the local user.\n      \n  architecture:\n    provider: anthropic\n    persona: architecture  \n    context: |\n      Fingerprints serve two purposes: identity (for blocking) and deduplication (for posting).\n      Validation follows \"fail at boundary\" - let GitHub API validate its own parameters.\n```\n\n### Benefits\n- Reduces false positives from repeated architectural misunderstandings\n- Personas become smarter about the specific codebase over time\n- Context is version-controlled with the code\n\n## Priority\n\nP1 - Medium effort, compounds value over time",
+  "labels": [
+    "enhancement"
+  ],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.747Z"
+}

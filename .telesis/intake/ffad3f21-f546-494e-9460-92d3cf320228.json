@@ -1,0 +1,14 @@
+{
+  "id": "ffad3f21-f546-494e-9460-92d3cf320228",
+  "source": "github",
+  "sourceId": "184",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/184",
+  "title": "Add architectural decision comments to reduce false-positive findings",
+  "body": "## Summary\n\nDuring PR #182 triage, the same findings kept resurfacing across 5 review rounds because the reviewer didn't understand architectural decisions. Add strategic comments to document these decisions.\n\n## Repeated Findings\n\n### 1. Authorization Checks (6+ occurrences)\nReviewer flags \"missing auth check\" but doesn't understand GitHub API token IS the auth layer.\n\n**Fix:** Add comment block explaining auth model:\n```go\n// Security: Authorization is handled by the GitHub API via GITHUB_TOKEN.\n// The token's permissions are authoritative - if the user lacks access,\n// GitHub returns 403/404. Adding a separate auth layer would be redundant.\n```\n\n### 2. Input Validation for API Parameters (4+ occurrences)\nOwner/Repo/line validation keeps surfacing.\n\n**Fix:** Add inline comments:\n```go\n// Validation: GitHub API validates owner/repo format and returns 404/422 for invalid values.\n// We intentionally don't duplicate this validation to avoid staleness.\n```\n\n### 3. XSS/Sanitization Concerns\nReviewer flags markdown injection risks.\n\n**Fix:** Document GitHub's sanitization:\n```go\n// Security: Content is rendered by GitHub's markdown, which sanitizes XSS vectors.\n```\n\n## Implementation\n\n1. Add a \"Security Model\" section to relevant handler files\n2. Use consistent annotation patterns (`// Security:`, `// Validation:`)\n3. Consider adding to CLAUDE.md so the reviewer learns the patterns\n\n## Priority\n\nP0 - Low effort, high impact on reducing triage noise",
+  "labels": [
+    "documentation",
+    "enhancement"
+  ],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.747Z"
+}

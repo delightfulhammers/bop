@@ -1,0 +1,11 @@
+{
+  "id": "482b404e-85bb-45fc-a4cc-eddc4dadf0fc",
+  "source": "github",
+  "sourceId": "226",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/226",
+  "title": "Add limit on findings processed in theme extraction",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `cf940c0c10fa30a0c080adffd8710fa3`)\n\n## Problem\n\nThe `ExtractThemes` method in `internal/adapter/theme/extractor.go` processes the entire findings slice without a limit. In scenarios with many prior findings (e.g., from automated tools or multiple bot runs), this could lead to:\n- Context window exhaustion\n- High token costs\n- Increased latency\n- Potential API timeouts\n\n## Current Implementation\n\n```go\nfunc (e *Extractor) ExtractThemes(ctx context.Context, findings []domain.TriagedFinding) ([]string, error) {\n    // No limit on findings processed\n    prompt := buildExtractionPrompt(findings, e.config.MaxThemes)\n    ...\n}\n```\n\n## Suggested Improvements\n\n1. Add `MaxFindings` config option (e.g., 50 most recent)\n2. Alternatively, implement summarization for large finding sets\n3. Consider prioritizing findings by severity/category\n\n## Priority\n\nMedium - theme extraction is a \"nice to have\" optimization; failing gracefully on large sets is acceptable but limiting would be better.\n\n## Related\n\n- PR #223: Theme extraction feature",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.744Z"
+}

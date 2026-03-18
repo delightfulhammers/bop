@@ -1,0 +1,11 @@
+{
+  "id": "00ff33d1-8b00-4b9f-a08f-563d26878f08",
+  "source": "github",
+  "sourceId": "239",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/239",
+  "title": "Add confidence scoring to findings",
+  "body": "## Context\n\nFrom PR #223 review experience: findings ranged from definite bugs to pure speculation, but all presented with equal weight.\n\n## Examples\n\n**High confidence (real bugs):**\n- Gemini API key not URL-encoded\n- UTF-8 truncation breaking multi-byte characters\n- Empty content not checked in OpenAI response\n\n**Low confidence (speculation):**\n- \"What if maxThemes is set to 1000\"\n- \"What if gpt-50 exists and doesn't support max_completion_tokens\"\n- \"HTTP/2 server push attacks\"\n\n## Problem\n\nWithout confidence scoring:\n- Users must manually assess each finding's validity\n- Speculative findings waste triage time\n- Real bugs can get lost in noise\n\n## Potential Solutions\n\n1. Add `confidence: high|medium|low` field to findings\n2. Require evidence for high confidence (code path, exploit, test case)\n3. Label speculative findings explicitly (\"Consider:\", \"Potential:\")\n4. Allow filtering by confidence in triage\n\n## Priority\n\nMedium - would improve signal-to-noise ratio.",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.742Z"
+}

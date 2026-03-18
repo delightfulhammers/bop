@@ -1,0 +1,11 @@
+{
+  "id": "87d4cc68-12ba-40d1-b168-b29a65c7247f",
+  "source": "github",
+  "sourceId": "272",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/272",
+  "title": "Extract auth context provider from MCP server adapter",
+  "body": "## Background\n\nFrom PR #268 code review finding.\n\n## Problem\n\nThe MCP server adapter directly embeds authentication concerns (loading tokens, refreshing, user/tenant accessors, mode gating). This increases coupling between:\n- Transport layer (MCP adapter)\n- Auth infrastructure\n\nThis makes it harder to test and reuse the same auth policy across CLI vs MCP tools.\n\n## Proposed Solution\n\n1. Introduce an `AuthContextProvider` interface in `internal/auth` or as a usecase:\n   ```go\n   type AuthContextProvider interface {\n       Load() (*StoredAuth, error)\n       Require() (*StoredAuth, error)  // Like Load but errors if not authenticated\n       UserID() string\n       TenantID() string\n       IsAuthenticated() bool\n   }\n   ```\n\n2. Inject this provider into the MCP server\n3. Keep MCP server focused on tool registration and request handling\n4. Reuse the same provider in CLI commands\n\n## Impact\n\n- Cleaner separation of concerns\n- Easier testing of auth logic\n- Consistent auth behavior across CLI and MCP\n\n## References\n\n- PR #268\n- Finding fingerprint: `6b2210505dce6859880292d3a08e4c81`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.738Z"
+}

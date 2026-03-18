@@ -1,0 +1,11 @@
+{
+  "id": "b0e1433c-0ca2-47e2-ab56-675660318f76",
+  "source": "github",
+  "sourceId": "244",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/244",
+  "title": "Refactor: Extract duplicate theme extraction logic in orchestrator",
+  "body": "## Summary\n\nThe orchestrator has two near-identical blocks for theme extraction logic that should be consolidated into a helper method.\n\n## Locations\n\n- `internal/usecase/review/orchestrator.go` lines ~565-600 (branch review path)\n- `internal/usecase/review/orchestrator.go` lines ~1084-1120 (PR review path)\n\n## Current State\n\nBoth blocks:\n1. Call `ThemeExtractor.ExtractThemes()`\n2. Handle errors with warning log\n3. Set `projectContext.ThemeContext` and deprecated `ExtractedThemes`\n4. Log extraction results\n\n## Proposed Solution\n\nExtract a helper method:\n\n```go\nfunc (o *Orchestrator) enrichWithThemeContext(\n    ctx context.Context,\n    triageCtx *triage.Context,\n    projectContext *ProjectContext,\n) {\n    // Consolidated theme extraction logic\n}\n```\n\n## Why This Matters\n\n- DRY violation increases maintenance cost\n- Risk of divergence if one block gets updated and the other doesn't\n- Future changes (e.g., new logging fields) must be applied twice\n\n## Origin\n\nIdentified during PR #243 code review (finding `d0e34b0ebacfcc9b4c4e4bef3c88a9ff`).",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.741Z"
+}

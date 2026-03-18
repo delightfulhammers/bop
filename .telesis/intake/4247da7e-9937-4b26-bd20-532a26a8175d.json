@@ -1,0 +1,12 @@
+{
+  "id": "4247da7e-9937-4b26-bd20-532a26a8175d",
+  "source": "github",
+  "sourceId": "317",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/317",
+  "title": "Improve semantic dedup error handling with recover() and detailed logging",
+  "body": "## Background\n\nFrom PR #314 code review finding: When semantic deduplication fails, the code logs a warning and treats all findings as unique. However:\n1. No panic recovery - if the comparer panics, the entire review process crashes\n2. Limited error context for debugging in production\n\n## Current Behavior\n\n```go\nif err != nil {\n    log.Printf(\"warning: semantic dedup failed: %v (treating all as unique)\", err)\n    return findings, 0, nil\n}\n```\n\n## Suggested Improvements\n\n1. Wrap `CompareAgainstExisting` in a `recover()` block\n2. Include candidate count and error details in warning logs\n3. Consider returning a wrapped error so callers can decide whether to fail fast\n\n## Affected Files\n\n- internal/usecase/github/poster.go (around line 984)\n\n## Labels\n\nenhancement, error-handling",
+  "labels": [],
+  "status": "approved",
+  "importedAt": "2026-03-17T21:38:07.733Z",
+  "approvedAt": "2026-03-17T21:38:45.894Z"
+}

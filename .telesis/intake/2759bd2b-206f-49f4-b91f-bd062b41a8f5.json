@@ -1,0 +1,11 @@
+{
+  "id": "2759bd2b-206f-49f4-b91f-bd062b41a8f5",
+  "source": "github",
+  "sourceId": "231",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/231",
+  "title": "Add metrics/observability for theme extraction failures",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `ea9573ad0d05ac99df6de54cec3b3ff0`)\n\n## Problem\n\nTheme extraction failure logs a warning but continues silently. There's no mechanism to alert operators that theme extraction is consistently failing, which could indicate a configuration or API issue.\n\n## Suggested Improvements\n\n1. Add metrics or error counting for theme extraction failures\n2. After N consecutive failures, escalate from warning to error level logging\n3. Expose theme extraction success rate in observability output\n4. Consider adding a health check endpoint\n\n## Priority\n\nMedium - observability enhancement for production monitoring.\n\n## Related\n\n- PR #223: Theme extraction feature",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.743Z"
+}

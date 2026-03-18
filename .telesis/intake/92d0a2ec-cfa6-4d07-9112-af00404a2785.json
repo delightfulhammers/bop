@@ -1,0 +1,11 @@
+{
+  "id": "92d0a2ec-cfa6-4d07-9112-af00404a2785",
+  "source": "github",
+  "sourceId": "315",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/315",
+  "title": "Add lazy log evaluation to avoid allocations when debug disabled",
+  "body": "## Background\n\nFrom PR #314 code review finding: Log allocations occur even when debug logging is disabled because map parameters are allocated before LogDebug is called.\n\n## Suggested Solution\n\nAdd an `IsDebugEnabled()` method to the Logger interface to guard allocations:\n\n```go\nif logger.IsDebugEnabled() {\n    logger.LogDebug(ctx, \"message\", map[string]interface{}{\n        \"expensive\": computeValue(),\n    })\n}\n```\n\nOr use a closure-based approach to defer evaluation:\n\n```go\nlogger.LogDebugLazy(ctx, \"message\", func() map[string]interface{} {\n    return map[string]interface{}{\"expensive\": computeValue()}\n})\n```\n\n## Affected Files\n\n- internal/usecase/review/verification.go (logVerificationDetails)\n- Potentially other debug logging call sites\n\n## Labels\n\nperformance, enhancement",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.733Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "02efb653-3614-46f1-89c1-a7e06ec517e3",
+  "source": "github",
+  "sourceId": "276",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/276",
+  "title": "Support explicit config field clearing in auth overlay merging",
+  "body": "## Background\n\nFrom PR #268 code review finding (outside diff).\n\n## Problem\n\nThe `chooseAuth` function in config overlay merging only overwrites fields when overlay values are non-empty. This means users cannot explicitly **clear** auth config fields via an overlay.\n\nFor example, if user config sets `auth.serviceUrl`, a repo-level config cannot unset it by providing an empty string.\n\n## Proposed Solution\n\nOptions:\n1. **Pointer fields**: Use `*string` in AuthConfig to distinguish \"unset\" from \"set empty\"\n2. **Explicit reset flag**: Add `auth.reset: true` option to clear all auth config\n3. **Viper IsSet**: Check if the key was explicitly provided in overlay using `viper.IsSet()`\n\nRecommended: Option 3 (Viper IsSet) as it's least invasive and works with existing config structure.\n\n```go\nfunc (c *Config) mergeAuthOverlay(overlay *viper.Viper) {\n    if overlay.IsSet(\"auth.serviceUrl\") {\n        c.Auth.ServiceURL = overlay.GetString(\"auth.serviceUrl\")\n    }\n    // ... etc\n}\n```\n\n## Impact\n\nEnables proper config composition where repo-level config can override or clear user-level auth settings.\n\n## References\n\n- PR #268\n- Finding fingerprint: `d259629f599a062beff7ef58de2049c1`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.737Z"
+}

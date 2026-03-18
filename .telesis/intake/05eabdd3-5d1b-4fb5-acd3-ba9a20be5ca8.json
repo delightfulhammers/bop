@@ -1,0 +1,11 @@
+{
+  "id": "05eabdd3-5d1b-4fb5-acd3-ba9a20be5ca8",
+  "source": "github",
+  "sourceId": "260",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/260",
+  "title": "perf: ListIssueComments fetches all pages for large PRs",
+  "body": "## Problem\n\n`ListIssueComments` in `internal/adapter/github/issue_comments.go` fetches all pages of issue comments for a PR. On PRs with extensive discussion histories (hundreds of comments), this operation will be slow and memory-intensive.\n\nThis impacts:\n- `ListAllFindings` (MCP tool for triage)\n- `PostReview` (calls it for out-of-diff finding deduplication)\n\n## Context\n\nWhile most PRs have <100 comments, real-world usage has shown PRs can accumulate 100+ findings during iterative development. Even with diligent PR sizing, this can occur.\n\n## Potential Solutions\n\n1. **GitHub GraphQL API**: Filter comments by author (bot user) server-side to reduce payload. However, adds complexity (auth changes, query building, pagination).\n\n2. **Caching**: Cache issue comments per PR with TTL, invalidate on post. Reduces repeated fetches during a triage session.\n\n3. **Lazy loading**: Only fetch issue comments when explicitly needed (e.g., when `list_findings` is called), not preemptively.\n\n4. **Pagination with early termination**: If we only need bot comments, could potentially stop pagination early if we've found enough (though REST API returns chronologically, not by author).\n\n## Origin\n\nIdentified during code review of PR #259 (out-of-diff findings feature).\n\nRelated finding: `b6f2a385e1801fbf6c00864cfdb13c23`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.740Z"
+}

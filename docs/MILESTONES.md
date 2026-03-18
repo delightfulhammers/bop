@@ -1,12 +1,12 @@
 # Bop — Milestones
 
-> This document defines the development roadmap from the current v0.12.3 beta state through stable v1.0 release and beyond. Each milestone has a clear goal, testable acceptance criteria, and an ordered build sequence. See [PRD.md](PRD.md) for full feature requirements and [ARCHITECTURE.md](ARCHITECTURE.md) for structural context.
+> This document defines the development roadmap from the current v0.12.4 beta state through stable v1.0 release and beyond. Each milestone has a clear goal, testable acceptance criteria, and an ordered build sequence. See [PRD.md](PRD.md) for full feature requirements and [ARCHITECTURE.md](ARCHITECTURE.md) for structural context.
 
 ---
 
 ## Current State
 
-**Version:** v0.12.3
+**Version:** v0.12.4
 **Status:** Feature-complete beta — all core capabilities are implemented and the project is in active beta testing with real users across solo developer, small team, and enterprise contexts.
 
 **Recent additions (post-beta baseline):**

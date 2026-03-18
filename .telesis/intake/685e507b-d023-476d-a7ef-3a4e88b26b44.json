@@ -1,0 +1,11 @@
+{
+  "id": "685e507b-d023-476d-a7ef-3a4e88b26b44",
+  "source": "github",
+  "sourceId": "218",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/218",
+  "title": "feat(provider): validate configured provider names and warn on unknown providers",
+  "body": "## Problem\n\nWhen a user configures an unknown provider name in their config, the factory silently ignores it:\n\n```yaml\nproviders:\n  typo-anthropic:  # Typo - should be \"anthropic\"\n    api_key: ${ANTHROPIC_API_KEY}\n```\n\nCurrent behavior:\n1. `isProviderEnabled(\"typo-anthropic\", cfg)` returns `true` (has API key)\n2. `buildDirectProviders()` has no case for \"typo-anthropic\"\n3. Provider is never created - **silent failure**\n\nThis creates confusing behavior where config suggests enablement but nothing happens.\n\n## Expected Behavior\n\nThe factory should warn or error when:\n1. A configured provider name is not in `providerMetadata`\n2. Especially when `Enabled: true` is explicitly set for an unknown provider\n\n## Suggested Implementation\n\n```go\nfunc (f *Factory) buildDirectProviders() {\n    // Validate configured providers against known providers\n    for name := range f.config.Providers {\n        if _, known := providerMetadata[name]; !known {\n            log.Warn(\"unknown provider configured, will be ignored\",\n                \"provider\", name,\n                \"known_providers\", maps.Keys(providerMetadata))\n        }\n    }\n    \n    // ... existing provider building logic\n}\n```\n\nOr more strictly, return an error during factory creation if an unknown provider has `Enabled: true`.\n\n## Origin\n\nCode review finding from PR #217: `16b7827d4788ef90607e505df5d47c0a`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.745Z"
+}

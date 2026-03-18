@@ -1,0 +1,11 @@
+{
+  "id": "af28d71c-f59b-4128-98ca-264a077cdff7",
+  "source": "github",
+  "sourceId": "245",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/245",
+  "title": "Scalability: Add MaxInputFindings limit for theme extraction",
+  "body": "## Summary\n\nThe theme extraction prompt includes all prior findings without a limit. For long-running projects with extensive review history, this could exceed LLM context limits or incur excessive token costs.\n\n## Current State\n\n`buildComprehensivePrompt()` iterates over all findings in the triage context:\n```go\nfor i, f := range findings {\n    // All findings included in prompt\n}\n```\n\n## Proposed Solution\n\nAdd a `MaxInputFindings` config option (default: 50-100) that limits extraction to the most recent N findings. This bounds prompt size while still providing sufficient context for theme extraction.\n\n```go\n// In ThemeExtractionConfig\nMaxInputFindings int `yaml:\"maxInputFindings\"` // Default: 100\n```\n\n## Current Mitigations\n\n1. Only recent triaged findings are loaded (not entire history)\n2. `MinFindingsForTheme` provides a lower bound\n3. Extraction model (Haiku) has generous context\n\nThese make this a low-priority issue, but worth addressing for projects with high review volume.\n\n## Origin\n\nIdentified during PR #243 code review (finding `d7c3f33608c2893d3f9c1a6cebf56f9c`).",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.741Z"
+}

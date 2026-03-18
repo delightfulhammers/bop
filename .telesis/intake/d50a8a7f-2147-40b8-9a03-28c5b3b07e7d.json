@@ -1,0 +1,11 @@
+{
+  "id": "d50a8a7f-2147-40b8-9a03-28c5b3b07e7d",
+  "source": "github",
+  "sourceId": "210",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/210",
+  "title": "UX: Improve directory handling for remote PR reviews",
+  "body": "## Context\n\nWhen using `cr review pr` to review a remote GitHub PR, the tool should work seamlessly regardless of the user's current working directory.\n\n## Current Behavior\n\nThe `cr review pr` command fetches the PR diff remotely via GitHub API, so it **doesn't require** a local checkout. However, the experience could be confusing if users are unsure whether they need to be in a specific directory.\n\n## Proposed Improvements\n\n### 1. Clear documentation\n\nDocument that `cr review pr` works from any directory since it fetches everything remotely.\n\n### 2. Helpful warnings/prompts\n\nWhen running from a git repo that doesn't match the PR's repo:\n- Option A: Just work (current behavior - correct)\n- Option B: Warn but proceed\n- Option C: Prompt with options\n\n### 3. Auto-clone for enhanced context (future)\n\nFor richer reviews, optionally:\n- Clone the repo to a temp directory\n- Gather more context (CLAUDE.md, test files, etc.)\n- Clean up after review\n\nThis would be opt-in due to:\n- Increased latency\n- Disk space usage\n- Only needed for maximum context quality\n\n## Questions to Resolve\n\n1. Is the current behavior (works from anywhere) well documented?\n2. Should we warn when in a different repo's directory?\n3. Is auto-clone worth the complexity?\n\n## Related\n\n- Part of Phase 3.5 Local Mode epic (#173)\n- User-raised concern about directory requirements\n\n## Labels\n\nenhancement, ux, documentation",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.746Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "ff9a0f95-fb61-4d26-98ce-34a360bba95e",
+  "source": "github",
+  "sourceId": "327",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/327",
+  "title": "Improve config fetching architecture and testability",
+  "body": "## Background\nPR #326 introduced config-service routing. Code review identified several valid improvements that are deferred to future work.\n\n## Improvements\n\n### Architecture\n- [ ] Rename `fetchPlatformConfigWithCache` to `fetchRemoteConfigWithCache` for clarity\n- [ ] Inject config service URL instead of reading from env directly (improves testability)\n\n### Performance (low priority - not in hot path)\n- [ ] Cache env var lookups in `init()` for `GetConfigServiceURL`\n- [ ] Reuse `auth.Client` instance across config fetches\n\n### Security (defense-in-depth, optional)\n- [ ] Consider certificate pinning for default SaaS URL (trade-offs: complicates cert rotation, breaks TLS inspection proxies)\n\n## Context\n- PR: #326\n- These are not bugs - they're improvements for cleanliness and maintainability\n- All items are low priority given current usage patterns",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.730Z"
+}

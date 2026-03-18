@@ -1,0 +1,13 @@
+{
+  "id": "76c80a94-5923-4cf5-95de-a3ee609e173f",
+  "source": "github",
+  "sourceId": "253",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/253",
+  "title": "feat(dedup): prioritize disputed findings in semantic dedup candidate selection",
+  "body": "## Description\n\nCurrently `FindCandidates()` fills the MaxCandidates budget in encounter order. If disputed/acknowledged findings are encountered late, they may overflow and bypass semantic comparison. This means previously-disputed findings could be re-posted if the LLM rephrases them.\n\n## Proposed Solution\n\n- Two-pass candidate selection in `FindCandidates()`\n- Pass 1: Collect candidates where existing finding is disputed/acknowledged (priority)\n- Pass 2: Fill remaining budget with open finding candidates\n- This ensures disputed findings always get semantic comparison even at scale\n\n## Files to Modify\n\n- `internal/usecase/dedup/candidates.go` - Modify `FindCandidates()` signature and logic\n- `internal/usecase/github/poster.go` - Pass `existingStatuses` to `FindCandidates()`\n- `internal/usecase/dedup/candidates_test.go` - Add priority ordering tests\n\n## Context\n\nPart of defense-in-depth against review noise at scale. See [platform#78](https://github.com/delightfulhammers/platform/pull/78) analysis.\n\nWhen a PR has 88+ findings (like platform#78), the 200-candidate budget (raised from 50) may still overflow. By prioritizing disputed findings, we ensure that acknowledged/disputed findings always get semantic comparison even when budget is tight.\n\n## Test Cases\n\n1. Disputed findings fill budget first\n2. Open findings fill remaining budget  \n3. Overflow only contains open findings when budget exceeded\n4. Mix of disputed/open handled correctly",
+  "labels": [
+    "enhancement"
+  ],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.741Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "68182999-5b87-4f9a-b8ea-01d34285a67b",
+  "source": "github",
+  "sourceId": "296",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/296",
+  "title": "Enforce private-repos entitlement",
+  "body": "## Context\n\nDuring validation of bop-platform integration (#247 in platform repo), we discovered that the `private-repos` entitlement is defined but never enforced.\n\n## Current State\n\n**Defined:**\n```go\n// internal/auth/entitlements.go\nEntitlementPrivateRepos = \"private-repos\"\n\nfunc (e *EntitlementChecker) CanReviewPrivateRepos() bool {\n    return e.HasEntitlement(EntitlementPrivateRepos)\n}\n```\n\n**Not Enforced:**\n- No code checks `CanReviewPrivateRepos()` before running a review\n- No repository visibility detection\n- Free users can review private repos (if they have access via GitHub token)\n\n## What Needs to Be Built\n\n### 1. Repository Visibility Detection\n```go\n// Detect if repo is private before review\nfunc isPrivateRepo(ctx context.Context, owner, repo string) (bool, error)\n```\n\nFor PR reviews, this can come from the GitHub API response.\nFor branch reviews, need to query GitHub API or infer from git remote.\n\n### 2. Entitlement Check at Review Entry Points\n```go\n// In PR review, branch review, and GitHub Action entry points\nif repoIsPrivate && checker != nil && !checker.CanReviewPrivateRepos() {\n    return fmt.Errorf(\"private repository access requires a paid plan\")\n}\n```\n\n### 3. Graceful Handling\n- Clear error message directing to upgrade\n- Don't leak that we detected it's private (security consideration?)\n\n## Affected Entry Points\n\n- `internal/adapter/cli/pr.go` - PR review command\n- `internal/adapter/cli/root.go` - Branch review command  \n- `internal/adapter/cli/github_action.go` - GitHub Action\n- `internal/adapter/mcp/server.go` - MCP server\n\n## Related\n\n- Platform issue #247: Validate bop integration with platform config API\n- bop issue #295: Implement remote config fetching",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.735Z"
+}

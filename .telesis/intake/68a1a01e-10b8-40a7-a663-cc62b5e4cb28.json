@@ -1,0 +1,11 @@
+{
+  "id": "68a1a01e-10b8-40a7-a663-cc62b5e4cb28",
+  "source": "github",
+  "sourceId": "269",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/269",
+  "title": "MCP server: Add runtime token refresh mechanism",
+  "body": "## Problem\n\nThe MCP server loads auth tokens once at startup. If:\n- User logs in after the MCP server starts\n- Token expires while server is running\n- Token is refreshed by CLI but server has stale copy\n\nThe server will not pick up these changes and may return auth errors until restarted.\n\n## Related PR\n\nRaised in code review for #268\n\n## Proposed Solution\n\nImplement on-demand auth loading in `RequireAuth()`:\n1. Check if `s.auth` is nil or expired\n2. Reload from `TokenStore` to pick up CLI-refreshed tokens\n3. If still expired and have refresh token, attempt refresh\n4. Cache result with short TTL to avoid file reads on every request\n\nThis allows auth changes to take effect without restarting the MCP server.\n\n## Acceptance Criteria\n\n- [ ] MCP server picks up tokens saved by `bop auth login` without restart\n- [ ] Token refresh works during long-running MCP sessions\n- [ ] No performance regression from excessive file reads",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.739Z"
+}

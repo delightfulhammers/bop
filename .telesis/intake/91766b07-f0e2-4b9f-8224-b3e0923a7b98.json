@@ -1,0 +1,11 @@
+{
+  "id": "91766b07-f0e2-4b9f-8224-b3e0923a7b98",
+  "source": "github",
+  "sourceId": "228",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/228",
+  "title": "Improve logging consistency in theme extractor",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `c7042d130922a94df09e7f1c45ef429d`)\n\n## Problem\n\nExtractor logs warnings via the global `log` package and then returns the error. The orchestrator also logs failures. This can lead to duplicate logs and inconsistency with the project's observability abstraction.\n\n## Suggested Improvements\n\n1. Return rich errors without logging inside the adapter\n2. Let the orchestrator/logging layer decide what to log\n3. Or inject a logger interface for testability/consistency\n\n## Priority\n\nLow - style preference, not a functional issue.\n\n## Related\n\n- PR #223: Theme extraction feature",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.744Z"
+}

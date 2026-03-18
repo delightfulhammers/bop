@@ -1,0 +1,11 @@
+{
+  "id": "5af77c57-c5c3-4cc0-a097-04c291f7e324",
+  "source": "github",
+  "sourceId": "220",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/220",
+  "title": "fix(ci): [skip code-review] trigger not detected in commit messages",
+  "body": "## Problem\n\nThe `[skip code-review]` trigger in commit messages is not being detected by the CI workflow, even though `cr check-skip` correctly parses it when tested locally.\n\n## Root Cause\n\nIn `.github/workflows/code-review.yml`, the `COMMIT_MSG` environment variable is empty when passed to `cr check-skip`, despite the \"Get head commit message\" step correctly capturing the message.\n\n**Observed in PR #219:**\n```\nreview  Get head commit message  [skip code-review] fix: address code review findings\n...\nreview  Check for skip trigger   env:\nreview  Check for skip trigger     COMMIT_MSG:      # <-- EMPTY!\n```\n\nThe workflow captures the message correctly but the variable isn't being passed through.\n\n## Reproduction\n\n1. Create a commit with `[skip code-review]` in the message\n2. Push to a PR\n3. Observe that the review still runs\n\n## Expected Behavior\n\nWhen `[skip code-review]` or `[skip-code-review]` appears in the commit message, PR title, or PR description, the review should be skipped.\n\n## Workflow Code (current)\n\n```yaml\n- name: Get head commit message\n  id: get-commit\n  run: |\n    echo \"message<<EOF\" >> $GITHUB_OUTPUT\n    git log -1 --format=%B ${{ github.event.pull_request.head.sha }}\n    echo \"EOF\" >> $GITHUB_OUTPUT\n\n- name: Check for skip trigger\n  id: skip-check\n  env:\n    COMMIT_MSG: ${{ steps.get-commit.outputs.message }}  # <-- Not working\n    PR_TITLE: ${{ github.event.pull_request.title }}\n    PR_BODY: ${{ github.event.pull_request.body }}\n  run: |\n    ./cr check-skip \\\n      --commit-message \"$COMMIT_MSG\" \\\n      ...\n```\n\n## Potential Fix\n\nThe GITHUB_OUTPUT heredoc syntax may have issues with multi-line commit messages. Consider:\n1. Using a single-line capture: `git log -1 --format=%s` (subject only)\n2. Base64 encoding the message\n3. Using `actions/github-script` to pass the value\n\n## Labels\n\n- bug\n- ci",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.745Z"
+}

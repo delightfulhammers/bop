@@ -1,0 +1,11 @@
+{
+  "id": "19415dd2-a97e-4fae-a51c-18e1bd2e05c2",
+  "source": "github",
+  "sourceId": "318",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/318",
+  "title": "Update StoredAuth for actor model",
+  "body": "## Summary\n\nUpdate the `StoredAuth` type and related auth code to support actor-based authorization.\n\n## Context\n\nTransitioning from tenant-based to actor-based authorization. The stored auth token needs to include identity and effective tier information.\n\n## Deliverables\n\n### Updated Types\n**File:** `internal/auth/types.go`\n\n```go\ntype StoredAuth struct {\n    Version       int       `json:\"version\"`  // Bump to 2\n    AccessToken   string    `json:\"access_token\"`\n    RefreshToken  string    `json:\"refresh_token\"`\n    ExpiresAt     time.Time `json:\"expires_at\"`\n\n    // Actor-based model (v2)\n    IdentityID    string   `json:\"identity_id\"`\n    GitHubActorID string   `json:\"github_actor_id\"`\n    EffectiveTier string   `json:\"effective_tier\"`\n    Entitlements  []string `json:\"entitlements\"`\n\n    // User info\n    Email    string `json:\"email\"`\n    Username string `json:\"username\"`\n}\n```\n\n### Migration\n\n- Version 1 (old) tokens should continue to work during transition\n- Client should handle both versions gracefully\n- Consider re-authentication prompt for v1 tokens\n\n### OIDC Client Updates\n**File:** `internal/auth/oidc.go`\n\nUpdate to handle new response format from platform including skip info:\n\n```go\ntype OIDCResult struct {\n    Auth   *StoredAuth\n    Skip   *SkipInfo\n}\n\ntype SkipInfo struct {\n    Reason  string\n    Message string\n    Comment string  // Markdown for PR comment\n}\n```\n\n## Acceptance Criteria\n\n- [ ] StoredAuth v2 with actor fields\n- [ ] Backward compatibility with v1 tokens\n- [ ] OIDC client parses new response format\n- [ ] Skip handling in OIDC flow\n- [ ] Unit tests for version migration\n- [ ] Unit tests for skip parsing\n\n## Related Platform Issue\n\n- delightfulhammers/platform#303 (Update OIDC exchange for actor lookup)\n- delightfulhammers/platform#304 (Skip behavior with PR comments)\n\n## Labels\n\n- `auth`\n- `phase-3`\n- `actor-model`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.732Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "50e4e139-f079-4fdc-acde-879961fcb6ad",
+  "source": "github",
+  "sourceId": "290",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/290",
+  "title": "feedback client: Add nil validation for tokenStore in NewClient",
+  "body": "## Context\nFrom PR #289 code review finding.\n\n## Problem\n`NewClient` accepts `tokenStore *auth.TokenStore` without validation. If constructed with nil (misconfiguration or future refactor), calling `Submit`/`List`/`Get` will panic on `c.tokenStore.Load()`.\n\n## Current State\nThe client is only constructed when `platformMode && tokenStore != nil` in main.go, so this doesn't panic in practice.\n\n## Proposed Solution\nChange `NewClient` signature to return `(*Client, error)` and validate:\n```go\nfunc NewClient(baseURL string, tokenStore *auth.TokenStore, opts ...ClientOption) (*Client, error) {\n    if tokenStore == nil {\n        return nil, fmt.Errorf(\"tokenStore is required\")\n    }\n    // ...\n}\n```\n\n## Priority\nLow - defensive improvement, not a bug in current usage.",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.736Z"
+}

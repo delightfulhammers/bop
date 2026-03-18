@@ -1,0 +1,14 @@
+{
+  "id": "3b42fb13-55bf-4fc9-9940-d64eaa7e5c92",
+  "source": "github",
+  "sourceId": "282",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/282",
+  "title": "refactor(cli): Extract shared auth enforcement to PersistentPreRunE",
+  "body": "## Context\n\nFrom PR #281 code review findings.\n\n## Problem\n\nAuth/entitlement gating logic is duplicated in `pr.go` and `root.go` (branch command). As more commands need auth enforcement, this duplication increases maintenance burden and risk of drift.\n\n## Suggested Solution\n\nExtract auth enforcement to a shared mechanism:\n\n1. **Option A: PersistentPreRunE** on the `review` command - new subcommands inherit enforcement automatically\n2. **Option B: Shared helper** like `requireCodeReviewEntitlement(authDeps)` called from each RunE\n3. **Option C: Decorator pattern** wrapping RunE functions\n\nOption A is preferred as it reduces boilerplate in command constructors.\n\n## Files Affected\n\n- `internal/adapter/cli/root.go` (review command, branch subcommand)\n- `internal/adapter/cli/pr.go`\n\n## References\n\n- PR #281 findings: `db66b480ab403c03b6fbf9490e0e211f`, `adf349c78472f534115ec2a1d22c0c0e`",
+  "labels": [
+    "enhancement",
+    "type:tech-debt"
+  ],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.737Z"
+}

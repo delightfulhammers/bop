@@ -1,0 +1,14 @@
+{
+  "id": "cd7627d4-9347-4f4f-8f1d-5f28ff706f42",
+  "source": "github",
+  "sourceId": "188",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/188",
+  "title": "Add security/architecture rationale annotation pattern",
+  "body": "## Summary\n\nCreate a standardized annotation pattern that allows developers to document security/architecture rationales in a way the reviewer can recognize and respect.\n\n## Proposed Patterns\n\n### Security Rationale\n```go\n// @security-rationale: auth-delegation\n// Authorization delegated to GitHub API. Token permissions are authoritative.\nfunc handlePostFindings(...) {\n```\n\n### Architecture Rationale  \n```go\n// @arch-rationale: fail-at-boundary\n// GitHub API validates owner/repo format. Duplicate validation would be redundant.\nif input.Owner == \"\" {\n```\n\n### Known Limitation\n```go\n// @known-limitation: issue#187\n// Full diff fetch is required for position mapping. Optimization tracked.\ndiff, err := s.deps.RemoteGitHubClient.GetPRDiff(...)\n```\n\n## Reviewer Integration\n\n1. Update reviewer prompts to recognize these annotations\n2. When a rationale annotation is present, the reviewer should:\n   - Acknowledge the documented decision\n   - Only flag if the annotation seems incorrect or outdated\n   - Reference the annotation in any related finding\n\n## Benefits\n\n- Self-documenting code decisions\n- Reduces repeated findings on intentional patterns\n- Creates searchable/auditable design decision log\n- Low friction - just a comment pattern\n\n## Alternative: Structured Annotations\n\nCould use structured format for machine parsing:\n```go\n// @rationale(type=security, id=auth-delegation, issue=#184)\n// Authorization delegated to GitHub API.\n```\n\n## Priority\n\nP2 - Low effort to implement, requires discipline to adopt",
+  "labels": [
+    "documentation",
+    "enhancement"
+  ],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.747Z"
+}

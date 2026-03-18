@@ -1,0 +1,11 @@
+{
+  "id": "da81e1d8-29c8-4354-8a3e-3910aa5bf150",
+  "source": "github",
+  "sourceId": "316",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/316",
+  "title": "Add DSN normalization and driver regression tests for SQLite",
+  "body": "## Background\n\nFrom PR #314 code review finding: Switching to modernc.org/sqlite changes DSN behavior. While the current implementation handles plain paths and `:memory:` correctly, callers might pass driver-specific DSNs that could behave differently.\n\n## Suggested Solution\n\n1. Add an adapter layer or validation around dbPath/DSN\n2. Document and normalize expected formats (plain file paths and `:memory:` only)\n3. Add targeted tests for NewStore with:\n   - `:memory:`\n   - Temp file path\n   - Path with existing query params\n   - Invalid DSN formats\n\n## Affected Files\n\n- internal/adapter/store/sqlite/store.go\n\n## Labels\n\nbug, testing",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.733Z"
+}

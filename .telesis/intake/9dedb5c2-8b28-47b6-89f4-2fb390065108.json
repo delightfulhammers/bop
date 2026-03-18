@@ -1,0 +1,13 @@
+{
+  "id": "9dedb5c2-8b28-47b6-89f4-2fb390065108",
+  "source": "github",
+  "sourceId": "173",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/173",
+  "title": "Phase 3.5: Local Mode - Epic",
+  "body": "## Overview\n\nPhase 3.5 returns code-reviewer to its original local-first vision, decoupling the review engine from GitHub Actions I/O.\n\n**Design Document:** `docs/design/05-PHASE-3.5-LOCAL-MODE.md`\n\n## Motivation\n\nPrimary use case: Review PRs in GitHub Enterprise repositories where setting up the GitHub Action isn't feasible. Secondary benefits:\n- Faster iteration during development (no push-wait-review cycle)\n- Review any public/accessible repo without owner cooperation\n- Foundation for coding assistant-driven review workflows\n\n## Sub-phases\n\n- [ ] **3.5a** Remote PR Review - `cr review pr owner/repo#N` #174\n- [ ] **3.5b** Session Storage - Local state tied to repo+branch #175\n- [ ] **3.5c** Interactive TUI - Select/edit findings before posting #176\n- [ ] **3.5d** MCP Review Tools - `review_pr`, `post_findings` tools #177\n- [ ] **3.5e** Streaming & Polish - UX improvements #178\n\n## Success Criteria\n\n1. Can review any accessible GitHub PR without Actions setup\n2. Can select/edit findings before posting\n3. Local reviews persist across runs until branch deleted\n4. Coding assistant can invoke reviews via MCP\n5. TUI is intuitive and responsive",
+  "labels": [
+    "epic"
+  ],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.748Z"
+}

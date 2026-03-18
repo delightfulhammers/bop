@@ -1,0 +1,11 @@
+{
+  "id": "3c6d8945-503b-4e60-90bb-9b81f12aaa78",
+  "source": "github",
+  "sourceId": "233",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/233",
+  "title": "Add per-finding description length limits in theme extractor",
+  "body": "## Context\n\nFrom PR #223 code review (fingerprint: `b2f08a8e4115579d1262a1fd2bd8babc`)\n\n## Problem\n\n`buildExtractionPrompt` in `internal/adapter/theme/extractor.go` concatenates finding descriptions directly into the prompt without length limits. A malicious or malformed finding with an extremely long description could exhaust the context window.\n\n## Current Mitigations\n\n- Theme output strings are already limited to 100 characters\n- Issue #226 tracks limiting the number of findings processed\n\n## Suggested Improvements\n\n1. Add per-finding description length limit (e.g., 500 chars)\n2. Truncate with ellipsis indicator\n3. Consider escaping special characters that might break prompt structure\n\n## Priority\n\nLow - defense-in-depth; existing mitigations provide some protection.\n\n## Related\n\n- PR #223: Theme extraction feature\n- Issue #226: Findings processing limit",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.742Z"
+}

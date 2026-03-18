@@ -1,0 +1,11 @@
+{
+  "id": "85bb92e5-a7f8-4f5d-9696-9c4094bb9a6e",
+  "source": "github",
+  "sourceId": "285",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/285",
+  "title": "Add typed errors for analytics error classification",
+  "body": "## Background\n\nFrom PR #284 code review findings (`7b2b767b`, `d51971e7`).\n\n## Problem\n\nThe `emitReviewFailed` function in `internal/usecase/review/orchestrator.go` uses string matching to classify errors:\n\n```go\nif strings.Contains(err.Error(), \"provider\") {\n    errCode = \"provider_error\"\n} else if strings.Contains(err.Error(), \"validation\") {\n    errCode = \"validation_error\"\n}\n```\n\nThis is fragile - an error message like \"failed to contact provider service\" would be classified as `provider_error` even if the actual issue was network-related.\n\n## Solution\n\n1. Define typed/sentinel errors in the relevant packages\n2. Use `errors.Is()` / `errors.As()` for classification\n3. Centralize error classification logic with tests\n\n## Files\n\n- `internal/usecase/review/orchestrator.go` - `classifyError` function\n- Potentially new error types in `internal/usecase/review/errors.go`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.736Z"
+}

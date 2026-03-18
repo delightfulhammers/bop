@@ -1,0 +1,11 @@
+{
+  "id": "cbf4d98b-d907-46d4-8308-03988f0db20a",
+  "source": "github",
+  "sourceId": "294",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/294",
+  "title": "feat: Branded PR comments via hosted GitHub App",
+  "body": "## Summary\n\nPR review comments currently appear as `github-actions[bot]`. We want them to appear as `bop-code-review[bot]` for brand recognition.\n\n## Current State\n\n- Created GitHub App `bop-code-review` (App ID: 2690951)\n- App is installed on `delightfulhammers` org\n- Private key downloaded locally\n\n## Rejected Approach\n\nRequiring users to configure App ID + private key as secrets. Too much friction for a cosmetic feature.\n\n## Recommended Approach\n\nHost the GitHub App credentials server-side and provide a token endpoint:\n\n1. **Backend endpoint**: `POST /api/v1/github/installation-token`\n   - Input: `{owner, repo}`\n   - Looks up if `bop-code-review` App is installed on that repo\n   - If installed, generates and returns an installation token\n   - No auth required (App installation IS the authorization)\n\n2. **User experience**:\n   - User clicks \"Install App\" link (one click)\n   - Action automatically gets tokens from our backend\n   - Comments appear branded with zero configuration\n\n3. **Action changes**:\n   - Call backend to get installation token\n   - Fall back to `GITHUB_TOKEN` if not installed\n\n## Implementation Notes\n\n- Store App private key in auth-service (or dedicated service)\n- Consider caching installation tokens (1 hour TTL)\n- Need graceful fallback when App not installed\n\n## Priority\n\nP2 - Nice to have for launch, but not blocking",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.735Z"
+}

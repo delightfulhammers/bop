@@ -1,0 +1,11 @@
+{
+  "id": "c6d3b4fb-f769-4bd3-a13f-a24ff2c81a35",
+  "source": "github",
+  "sourceId": "270",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/270",
+  "title": "Token store: Use atomic file writes to prevent race conditions",
+  "body": "## Problem\n\n`TokenStore.Save()` uses `os.WriteFile` which truncates and writes in place. This creates a race condition:\n- If MCP server refreshes token while CLI is reading `auth.json`\n- Reader may encounter partial/empty file causing auth failures\n\n## Related PR\n\nRaised in code review for #268\n\n## Proposed Solution\n\nUse atomic write pattern:\n1. Write to temporary file in same directory\n2. Use `os.Rename()` to atomically replace target file\n\n```go\nfunc (t *TokenStore) Save(auth *StoredAuth) error {\n    data, err := json.MarshalIndent(auth, \"\", \"  \")\n    if err != nil {\n        return err\n    }\n    \n    // Write to temp file first\n    tmpPath := t.path + \".tmp\"\n    if err := os.WriteFile(tmpPath, data, 0600); err != nil {\n        return err\n    }\n    \n    // Atomic rename\n    return os.Rename(tmpPath, t.path)\n}\n```\n\n## Acceptance Criteria\n\n- [ ] Token writes are atomic (no partial reads possible)\n- [ ] Temp file cleaned up on error\n- [ ] Works on all supported platforms",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.738Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "236db0b1-bc9f-400d-8c4f-8ba2b09888f6",
+  "source": "github",
+  "sourceId": "335",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/335",
+  "title": "feat: encrypt credentials at rest using system keychain",
+  "body": "## Context\n\nPR #334 stores platform credentials as plaintext JSON at `~/.config/bop/credentials.json` (0600 permissions). While file permissions restrict access, credentials at rest are not encrypted.\n\n## Proposal\n\nIntegrate OS-level secure storage:\n- **macOS**: Keychain via `github.com/zalando/go-keyring`\n- **Linux**: Secret Service (GNOME Keyring / KDE Wallet) via same library\n- **Windows**: Windows Credential Manager via same library\n- **Fallback**: Encrypted file storage with a user-derived key if keychain is unavailable\n\n## Acceptance Criteria\n\n- [ ] Credentials stored in OS keychain when available\n- [ ] Graceful fallback to encrypted file when keychain unavailable\n- [ ] Migration path from plaintext to encrypted storage\n- [ ] `bop auth status` shows storage method",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.729Z"
+}

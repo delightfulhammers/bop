@@ -1,0 +1,11 @@
+{
+  "id": "498b76b3-1e37-4a8d-b1a0-945ed9181273",
+  "source": "github",
+  "sourceId": "271",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/271",
+  "title": "Decouple auth command availability from platform configuration",
+  "body": "## Background\n\nFrom PR #268 code review finding.\n\n## Problem\n\nThe auth command group is only registered when `TokenStore` is non-nil, which requires platform mode to be enabled and `serviceUrl` to be configured. This prevents useful subcommands like `status` and `logout` from working when:\n- User has an existing token file but `serviceUrl` is not configured\n- Platform mode is partially configured\n\n## Proposed Solution\n\n1. Always register the auth command group when `TokenStore` can be initialized (even if `Client` is nil)\n2. Have each subcommand check its specific dependencies and show helpful configuration errors\n3. `logout` and `status` should work with just `TokenStore`\n4. `login` should show clear error if `Client` (serviceUrl) is missing\n\n## Impact\n\nImproves UX for users in edge cases where auth configuration is partial.\n\n## References\n\n- PR #268\n- Finding fingerprint: `be9322404f9b15213281204274be283c`",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.738Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "c3505933-557a-4c90-8370-dbcb20ed4205",
+  "source": "github",
+  "sourceId": "298",
+  "sourceUrl": "https://github.com/delightfulhammers/bop/issues/298",
+  "title": "Epic: Complete platform billing/entitlements integration",
+  "body": "## Context\n\nDuring validation of bop-platform integration (platform #247), we discovered that while the platform config API exists and bop has auth integration, **the billing/entitlements enforcement is largely unimplemented**.\n\nThis epic tracks the work needed to make paid features actually paid.\n\n## Current State\n\n| Feature | Platform | Bop | Status |\n|---------|----------|-----|--------|\n| Config API | ✅ Implemented | ❌ Not called | Gap |\n| `code-review` entitlement | ✅ In JWT | ✅ Checked | Working |\n| `private-repos` entitlement | ✅ In JWT | ❌ Not enforced | Gap |\n| `unlimited-reviews` entitlement | ✅ In JWT | ❌ No tracking | Gap |\n| `config-api` entitlement | ✅ In JWT | ❌ Not used | Gap |\n| Usage tracking | ❌ Not built | ❌ Not built | Gap |\n\n## Child Issues\n\n1. #295 - Implement remote config fetching from platform config API\n2. #296 - Enforce private-repos entitlement  \n3. #297 - Implement usage tracking and review limits enforcement\n\n## Design Work Needed\n\nBefore implementation, we need design decisions on:\n\n1. **Config merge strategy**: How do remote and local configs combine?\n2. **Tier limits**: What are the actual limits per plan?\n3. **Usage tracking location**: Local SQLite vs Platform API?\n4. **Failure modes**: What happens when platform is unreachable?\n5. **Upgrade UX**: How do we guide users to upgrade when hitting limits?\n\n## Priority\n\nThis is **critical for monetization**. Without this work:\n- Paying customers get no additional value\n- Free users have same capabilities as paid\n- No enforcement of plan limits\n\n## Related\n\n- Platform #247: Validate bop integration with platform config API\n- `~/.claude/plans/launch-implementation-plans.md` Section 3",
+  "labels": [],
+  "status": "pending",
+  "importedAt": "2026-03-17T21:38:07.734Z"
+}
