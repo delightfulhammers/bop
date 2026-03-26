@@ -490,8 +490,8 @@ func TestClient_ClearIssueCommentsCache(t *testing.T) {
 func TestClient_ListIssueComments_CacheNotPopulatedOnError(t *testing.T) {
 	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount.Add(1)
-		if callCount.Load() == 1 {
+		n := callCount.Add(1)
+		if n == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"error"}`))
 		} else {

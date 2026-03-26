@@ -28,22 +28,26 @@ type issueCommentsCacheKey struct {
 
 // issueCommentsCacheEntry holds cached results with a timestamp for TTL.
 type issueCommentsCacheEntry struct {
-	comments  []IssueComment
-	fetchedAt time.Time
+	comments   []IssueComment
+	fetchedAt  time.Time
+	generation uint64 // bumped on invalidation to detect stale write-backs
 }
 
 // issueCommentsCache provides a concurrency-safe in-memory cache for ListIssueComments.
 // Note: the lock is released before HTTP fetches on cache miss, so concurrent callers
 // for the same key may both fetch. This is acceptable for a performance-only cache —
 // use golang.org/x/sync/singleflight if single-flight semantics are needed.
+// A per-key generation counter prevents stale write-backs from overwriting invalidations.
 type issueCommentsCache struct {
-	mu      sync.Mutex
-	entries map[issueCommentsCacheKey]issueCommentsCacheEntry
+	mu          sync.Mutex
+	entries     map[issueCommentsCacheKey]issueCommentsCacheEntry
+	generations map[issueCommentsCacheKey]uint64 // current generation per key
 }
 
 func newIssueCommentsCache() *issueCommentsCache {
 	return &issueCommentsCache{
-		entries: make(map[issueCommentsCacheKey]issueCommentsCacheEntry),
+		entries:     make(map[issueCommentsCacheKey]issueCommentsCacheEntry),
+		generations: make(map[issueCommentsCacheKey]uint64),
 	}
 }
 
@@ -156,9 +160,11 @@ func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, prN
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
-	// Invalidate cache for this PR since a new comment was added
+	// Invalidate cache and bump generation so in-flight fetches won't
+	// overwrite with stale data (see issueCommentsCache generation comment).
 	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
 	c.issueCommentsCache.mu.Lock()
+	c.issueCommentsCache.generations[cacheKey]++
 	delete(c.issueCommentsCache.entries, cacheKey)
 	c.issueCommentsCache.mu.Unlock()
 
@@ -197,6 +203,10 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 	useCache := options.MaxPages == 0
 	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
 
+	// Snapshot generation before fetch so we can detect invalidations that
+	// occur while the lock is released during HTTP requests.
+	var genSnapshot uint64
+
 	if useCache {
 		c.issueCommentsCache.mu.Lock()
 		if entry, ok := c.issueCommentsCache.entries[cacheKey]; ok {
@@ -207,6 +217,7 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 				return result, nil
 			}
 		}
+		genSnapshot = c.issueCommentsCache.generations[cacheKey]
 		c.issueCommentsCache.mu.Unlock()
 	}
 
@@ -250,14 +261,25 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 		nextURL = next
 	}
 
-	// Only cache full (unlimited) fetches
+	// Only cache full (unlimited) fetches, and only if the key was not
+	// invalidated while the lock was released during HTTP requests.
 	if useCache {
 		cached := make([]IssueComment, len(allComments))
 		copy(cached, allComments)
+		now := time.Now()
 		c.issueCommentsCache.mu.Lock()
-		c.issueCommentsCache.entries[cacheKey] = issueCommentsCacheEntry{
-			comments:  cached,
-			fetchedAt: time.Now(),
+		if c.issueCommentsCache.generations[cacheKey] == genSnapshot {
+			c.issueCommentsCache.entries[cacheKey] = issueCommentsCacheEntry{
+				comments:   cached,
+				fetchedAt:  now,
+				generation: genSnapshot,
+			}
+		}
+		// Sweep expired entries to bound memory growth
+		for k, e := range c.issueCommentsCache.entries {
+			if now.Sub(e.fetchedAt) >= issueCommentsCacheTTL {
+				delete(c.issueCommentsCache.entries, k)
+			}
 		}
 		c.issueCommentsCache.mu.Unlock()
 	}
@@ -266,9 +288,11 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 }
 
 // ClearIssueCommentsCache removes all cached issue comment data.
+// Uses O(1) map replacement rather than per-key deletion.
 func (c *Client) ClearIssueCommentsCache() {
 	c.issueCommentsCache.mu.Lock()
 	c.issueCommentsCache.entries = make(map[issueCommentsCacheKey]issueCommentsCacheEntry)
+	c.issueCommentsCache.generations = make(map[issueCommentsCacheKey]uint64)
 	c.issueCommentsCache.mu.Unlock()
 }
 
