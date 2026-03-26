@@ -466,6 +466,12 @@ func TestClient_CreateIssueComment_InvalidatesCache(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), getCount.Load(), "expected cache invalidated after post")
 	assert.Len(t, comments, 2, "post-invalidation fetch should return fresh data with 2 comments")
+
+	// The fresh result should now be cached — a third call should be a cache hit
+	comments, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), getCount.Load(), "third call should be a cache hit — getCount unchanged")
+	assert.Len(t, comments, 2, "cached result should still have 2 comments")
 }
 
 func TestClient_ListIssueComments_EpochRejectsStaleWriteBack(t *testing.T) {
@@ -593,9 +599,17 @@ func TestClient_ListIssueComments_CacheNotPopulatedOnError(t *testing.T) {
 	assert.False(t, cached, "cache must not be populated after an error")
 
 	// Second call should still hit server (no stale cache)
-	_, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	comments, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), callCount.Load())
+
+	// Verify the successful call populated the cache with correct data
+	client.issueCommentsCache.mu.Lock()
+	entry, cached := client.issueCommentsCache.entries[key]
+	client.issueCommentsCache.mu.Unlock()
+	assert.True(t, cached, "cache should be populated after successful call")
+	assert.Len(t, entry.comments, 1, "cached entry should contain 1 comment")
+	assert.Len(t, comments, 1, "returned result should contain 1 comment")
 }
 
 // --- MaxPages option tests ---
