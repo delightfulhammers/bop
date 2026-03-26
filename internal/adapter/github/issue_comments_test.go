@@ -485,6 +485,14 @@ func TestClient_ListIssueComments_EpochRejectsStaleWriteBack(t *testing.T) {
 
 	fetchStarted := make(chan struct{})
 	fetchContinue := make(chan struct{})
+	t.Cleanup(func() {
+		// Ensure the channel is closed on test failure to prevent handler goroutine leaks.
+		select {
+		case <-fetchContinue:
+		default:
+			close(fetchContinue)
+		}
+	})
 	var getCount atomic.Int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

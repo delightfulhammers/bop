@@ -164,6 +164,11 @@ func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, prN
 
 	// Invalidate cache and bump epoch so in-flight fetches won't
 	// overwrite with stale data (see issueCommentsCache epoch comment).
+	// The global epoch means posting to any PR invalidates in-flight fetches
+	// for ALL PRs — this is conservative but correct (data is refetched, never
+	// stale). Per-key generations were tried but introduced a zero-aliasing bug
+	// on ClearIssueCommentsCache. In practice, bop serves one triage session
+	// at a time so cross-PR invalidation is a negligible extra fetch.
 	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
 	c.issueCommentsCache.mu.Lock()
 	c.issueCommentsCache.epoch++
