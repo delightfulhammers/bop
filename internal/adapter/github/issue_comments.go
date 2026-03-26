@@ -207,7 +207,9 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 
 	// Snapshot epoch before fetch so we can detect invalidations that
 	// occur while the lock is released during HTTP requests.
-	var epochSnapshot uint64
+	// Initialized to max value so an accidental use without a prior read
+	// will never match the epoch (sentinel pattern).
+	epochSnapshot := ^uint64(0)
 
 	if useCache {
 		c.issueCommentsCache.mu.Lock()

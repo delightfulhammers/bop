@@ -468,6 +468,75 @@ func TestClient_CreateIssueComment_InvalidatesCache(t *testing.T) {
 	assert.Len(t, comments, 2, "post-invalidation fetch should return fresh data with 2 comments")
 }
 
+func TestClient_ListIssueComments_EpochRejectsStaleWriteBack(t *testing.T) {
+	// Verifies that a concurrent invalidation during an in-flight fetch
+	// prevents the stale result from being written to the cache.
+	//
+	// Sequence: (1) ListIssueComments starts fetch, blocks mid-flight
+	// (2) CreateIssueComment bumps epoch and invalidates cache
+	// (3) fetch completes — stale data must NOT be cached
+	// (4) next ListIssueComments must hit the server again
+
+	fetchStarted := make(chan struct{})
+	fetchContinue := make(chan struct{})
+	var getCount atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			n := getCount.Add(1)
+			if n == 1 {
+				// First GET: signal that fetch started, then block until released
+				close(fetchStarted)
+				<-fetchContinue
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "stale data"}]`))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "stale data"}, {"id": 2, "body": "fresh data"}]`))
+			}
+		} else {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id": 99, "body": "new comment"}`))
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// Start a ListIssueComments in a goroutine — it will block mid-fetch
+	var firstResult []IssueComment
+	var firstErr error
+	done := make(chan struct{})
+	go func() {
+		firstResult, firstErr = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+		close(done)
+	}()
+
+	// Wait for the fetch to start
+	<-fetchStarted
+
+	// While the fetch is blocked, post a comment to bump the epoch
+	_, err := client.CreateIssueComment(context.Background(), "owner", "repo", 1, "new comment")
+	require.NoError(t, err)
+
+	// Release the blocked fetch
+	close(fetchContinue)
+	<-done
+
+	// The first fetch should succeed (returns data) but the stale result
+	// must NOT have been written to the cache because the epoch changed.
+	require.NoError(t, firstErr)
+	assert.Len(t, firstResult, 1)
+
+	// A subsequent call must hit the server (not return stale cached data)
+	comments, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), getCount.Load(), "second call must hit server — stale data should not have been cached")
+	assert.Len(t, comments, 2, "second call should return fresh data")
+}
+
 func TestClient_ClearIssueCommentsCache(t *testing.T) {
 	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
