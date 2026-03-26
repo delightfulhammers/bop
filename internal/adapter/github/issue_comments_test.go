@@ -617,7 +617,9 @@ func TestClient_ListIssueComments_CacheNotPopulatedOnError(t *testing.T) {
 	client.issueCommentsCache.mu.Unlock()
 	assert.True(t, cached, "cache should be populated after successful call")
 	assert.Len(t, entry.comments, 1, "cached entry should contain 1 comment")
+	assert.Equal(t, int64(1), entry.comments[0].ID, "cached comment ID should match server response")
 	assert.Len(t, comments, 1, "returned result should contain 1 comment")
+	assert.Equal(t, int64(1), comments[0].ID, "returned comment ID should match server response")
 }
 
 // --- MaxPages option tests ---
