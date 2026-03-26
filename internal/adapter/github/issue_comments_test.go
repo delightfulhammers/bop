@@ -528,8 +528,12 @@ func TestClient_ListIssueComments_EpochRejectsStaleWriteBack(t *testing.T) {
 		close(done)
 	}()
 
-	// Wait for the fetch to start
-	<-fetchStarted
+	// Wait for the fetch to start (with timeout to prevent CI hangs)
+	select {
+	case <-fetchStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for fetch to start")
+	}
 
 	// While the fetch is blocked, post a comment to bump the epoch
 	_, err := client.CreateIssueComment(context.Background(), "owner", "repo", 1, "new comment")
@@ -537,7 +541,11 @@ func TestClient_ListIssueComments_EpochRejectsStaleWriteBack(t *testing.T) {
 
 	// Release the blocked fetch
 	close(fetchContinue)
-	<-done
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for fetch to complete")
+	}
 
 	// The first fetch should succeed (returns data) but the stale result
 	// must NOT have been written to the cache because the epoch changed.
