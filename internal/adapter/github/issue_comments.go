@@ -275,13 +275,14 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 				comments:  cached,
 				fetchedAt: now,
 			}
-		}
-		// Sweep expired entries to bound memory growth (only when map is large
-		// enough to justify the iteration cost under the lock).
-		if len(c.issueCommentsCache.entries) > issueCommentsCacheSweepThreshold {
-			for k, e := range c.issueCommentsCache.entries {
-				if now.Sub(e.fetchedAt) >= issueCommentsCacheTTL {
-					delete(c.issueCommentsCache.entries, k)
+			// Sweep expired entries to bound memory growth (only after a
+			// successful write, and only when the map is large enough to
+			// justify the iteration cost under the lock).
+			if len(c.issueCommentsCache.entries) > issueCommentsCacheSweepThreshold {
+				for k, e := range c.issueCommentsCache.entries {
+					if now.Sub(e.fetchedAt) >= issueCommentsCacheTTL {
+						delete(c.issueCommentsCache.entries, k)
+					}
 				}
 			}
 		}
