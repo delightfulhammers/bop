@@ -25,9 +25,9 @@ A concurrency-safe, TTL-based in-memory cache for `ListIssueComments` results.
 
 4. **No single-flight coalescing.** Concurrent callers for the same key may both get a cache miss and both fetch. This is acceptable for a performance-only cache. The comment on the struct documents this explicitly. If single-flight semantics are needed in the future, use `golang.org/x/sync/singleflight`.
 
-5. **Generation counter prevents stale write-backs.** When `CreateIssueComment` invalidates a cache entry, it bumps a per-key generation counter. `ListIssueComments` snapshots the generation before releasing the lock for HTTP fetches, and only writes back if the generation hasn't changed. This prevents the race where: (a) fetch starts, (b) post invalidates, (c) fetch completes and overwrites with stale data.
+5. **Global epoch counter prevents stale write-backs.** Any invalidation (post or clear) bumps a single global `epoch` counter. `ListIssueComments` snapshots the epoch before releasing the lock for HTTP fetches, and only writes back if the epoch hasn't changed. This prevents the race where: (a) fetch starts, (b) post invalidates, (c) fetch completes and overwrites with stale data. A global epoch (vs per-key) avoids the zero-aliasing bug where `ClearIssueCommentsCache` resets per-key counters to 0, matching pre-clear snapshots.
 
-6. **Expired-entry sweep on write.** Each cache write sweeps all entries and removes those past TTL. This bounds memory growth without requiring a background goroutine or explicit eviction policy.
+6. **Threshold-gated expired-entry sweep on write.** When the cache exceeds 50 entries, the write path sweeps expired entries under the lock. The threshold avoids O(N) iteration cost on small caches. This bounds memory growth without a background goroutine.
 
 7. **Defensive copy on read and write.** The cached slice is copied when stored and when returned, preventing callers from mutating cached data.
 
@@ -73,23 +73,22 @@ issueCommentsCacheKey {
 }
 
 issueCommentsCacheEntry {
-    comments   []IssueComment   // defensive copy of fetched results
-    fetchedAt  time.Time         // for TTL expiration check
-    generation uint64            // matches generations[key] at write time
+    comments  []IssueComment   // defensive copy of fetched results
+    fetchedAt time.Time         // for TTL expiration check
 }
 
 issueCommentsCache {
-    mu          sync.Mutex
-    entries     map[issueCommentsCacheKey]issueCommentsCacheEntry
-    generations map[issueCommentsCacheKey]uint64  // bumped on invalidation
+    mu      sync.Mutex
+    entries map[issueCommentsCacheKey]issueCommentsCacheEntry
+    epoch   uint64  // bumped on any invalidation or clear
 }
 ```
 
 ## Cache Invalidation
 
-- **On post:** `CreateIssueComment` bumps the per-key generation counter and deletes the cache entry. The generation bump ensures any in-flight fetch won't overwrite with stale data.
-- **On TTL expiry:** Entries older than 2 minutes are treated as stale on the next read. Expired entries are also swept on every cache write.
-- **Explicit clear:** `ClearIssueCommentsCache()` removes all entries and resets all generations (used in tests).
+- **On post:** `CreateIssueComment` bumps the global epoch and deletes the cache entry. The epoch bump ensures any in-flight fetch won't overwrite with stale data.
+- **On TTL expiry:** Entries older than 2 minutes are treated as stale on the next read. Expired entries are swept when the cache exceeds 50 entries.
+- **Explicit clear:** `ClearIssueCommentsCache()` removes all entries and bumps the epoch (used in tests).
 
 ## Caller Behavior
 

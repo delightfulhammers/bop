@@ -28,26 +28,28 @@ type issueCommentsCacheKey struct {
 
 // issueCommentsCacheEntry holds cached results with a timestamp for TTL.
 type issueCommentsCacheEntry struct {
-	comments   []IssueComment
-	fetchedAt  time.Time
-	generation uint64 // bumped on invalidation to detect stale write-backs
+	comments  []IssueComment
+	fetchedAt time.Time
 }
 
 // issueCommentsCache provides a concurrency-safe in-memory cache for ListIssueComments.
 // Note: the lock is released before HTTP fetches on cache miss, so concurrent callers
 // for the same key may both fetch. This is acceptable for a performance-only cache —
 // use golang.org/x/sync/singleflight if single-flight semantics are needed.
-// A per-key generation counter prevents stale write-backs from overwriting invalidations.
+// A global epoch counter prevents stale write-backs from overwriting invalidations:
+// any invalidation or clear bumps the epoch, and write-backs only proceed if the
+// epoch hasn't changed since the fetch started.
 type issueCommentsCache struct {
-	mu          sync.Mutex
-	entries     map[issueCommentsCacheKey]issueCommentsCacheEntry
-	generations map[issueCommentsCacheKey]uint64 // current generation per key
+	mu      sync.Mutex
+	entries map[issueCommentsCacheKey]issueCommentsCacheEntry
+	epoch   uint64 // bumped on any invalidation or clear
 }
+
+const issueCommentsCacheSweepThreshold = 50
 
 func newIssueCommentsCache() *issueCommentsCache {
 	return &issueCommentsCache{
-		entries:     make(map[issueCommentsCacheKey]issueCommentsCacheEntry),
-		generations: make(map[issueCommentsCacheKey]uint64),
+		entries: make(map[issueCommentsCacheKey]issueCommentsCacheEntry),
 	}
 }
 
@@ -160,11 +162,11 @@ func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, prN
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
-	// Invalidate cache and bump generation so in-flight fetches won't
-	// overwrite with stale data (see issueCommentsCache generation comment).
+	// Invalidate cache and bump epoch so in-flight fetches won't
+	// overwrite with stale data (see issueCommentsCache epoch comment).
 	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
 	c.issueCommentsCache.mu.Lock()
-	c.issueCommentsCache.generations[cacheKey]++
+	c.issueCommentsCache.epoch++
 	delete(c.issueCommentsCache.entries, cacheKey)
 	c.issueCommentsCache.mu.Unlock()
 
@@ -203,9 +205,9 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 	useCache := options.MaxPages == 0
 	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
 
-	// Snapshot generation before fetch so we can detect invalidations that
+	// Snapshot epoch before fetch so we can detect invalidations that
 	// occur while the lock is released during HTTP requests.
-	var genSnapshot uint64
+	var epochSnapshot uint64
 
 	if useCache {
 		c.issueCommentsCache.mu.Lock()
@@ -217,7 +219,7 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 				return result, nil
 			}
 		}
-		genSnapshot = c.issueCommentsCache.generations[cacheKey]
+		epochSnapshot = c.issueCommentsCache.epoch
 		c.issueCommentsCache.mu.Unlock()
 	}
 
@@ -261,24 +263,26 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 		nextURL = next
 	}
 
-	// Only cache full (unlimited) fetches, and only if the key was not
-	// invalidated while the lock was released during HTTP requests.
+	// Only cache full (unlimited) fetches, and only if no invalidation
+	// occurred while the lock was released during HTTP requests.
 	if useCache {
 		cached := make([]IssueComment, len(allComments))
 		copy(cached, allComments)
 		now := time.Now()
 		c.issueCommentsCache.mu.Lock()
-		if c.issueCommentsCache.generations[cacheKey] == genSnapshot {
+		if c.issueCommentsCache.epoch == epochSnapshot {
 			c.issueCommentsCache.entries[cacheKey] = issueCommentsCacheEntry{
-				comments:   cached,
-				fetchedAt:  now,
-				generation: genSnapshot,
+				comments:  cached,
+				fetchedAt: now,
 			}
 		}
-		// Sweep expired entries to bound memory growth
-		for k, e := range c.issueCommentsCache.entries {
-			if now.Sub(e.fetchedAt) >= issueCommentsCacheTTL {
-				delete(c.issueCommentsCache.entries, k)
+		// Sweep expired entries to bound memory growth (only when map is large
+		// enough to justify the iteration cost under the lock).
+		if len(c.issueCommentsCache.entries) > issueCommentsCacheSweepThreshold {
+			for k, e := range c.issueCommentsCache.entries {
+				if now.Sub(e.fetchedAt) >= issueCommentsCacheTTL {
+					delete(c.issueCommentsCache.entries, k)
+				}
 			}
 		}
 		c.issueCommentsCache.mu.Unlock()
@@ -288,11 +292,11 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 }
 
 // ClearIssueCommentsCache removes all cached issue comment data.
-// Uses O(1) map replacement rather than per-key deletion.
+// Uses O(1) map replacement and bumps the epoch to prevent stale write-backs.
 func (c *Client) ClearIssueCommentsCache() {
 	c.issueCommentsCache.mu.Lock()
 	c.issueCommentsCache.entries = make(map[issueCommentsCacheKey]issueCommentsCacheEntry)
-	c.issueCommentsCache.generations = make(map[issueCommentsCacheKey]uint64)
+	c.issueCommentsCache.epoch++
 	c.issueCommentsCache.mu.Unlock()
 }
 

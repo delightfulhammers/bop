@@ -429,12 +429,18 @@ func TestClient_ListIssueComments_CacheTTLExpiry(t *testing.T) {
 }
 
 func TestClient_CreateIssueComment_InvalidatesCache(t *testing.T) {
-	var callCount atomic.Int32
+	var getCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
-			callCount.Add(1)
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+			n := getCount.Add(1)
+			// Return different data on each GET to prove fresh fetch after invalidation
+			if n == 1 {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}, {"id": 2, "body": "comment2"}]`))
+			}
 		} else {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id": 99, "body": "new comment"}`))
@@ -447,18 +453,19 @@ func TestClient_CreateIssueComment_InvalidatesCache(t *testing.T) {
 	client.SetMaxRetries(0)
 
 	// Populate cache
-	_, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	comments, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
 	require.NoError(t, err)
-	assert.Equal(t, int32(1), callCount.Load())
+	assert.Len(t, comments, 1, "first fetch returns 1 comment")
 
 	// Post a comment — should invalidate cache
 	_, err = client.CreateIssueComment(context.Background(), "owner", "repo", 1, "new comment")
 	require.NoError(t, err)
 
-	// Next list call should hit server again
-	_, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	// Next list call should hit server again and return updated data
+	comments, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
 	require.NoError(t, err)
-	assert.Equal(t, int32(2), callCount.Load(), "expected cache invalidated after post")
+	assert.Equal(t, int32(2), getCount.Load(), "expected cache invalidated after post")
+	assert.Len(t, comments, 2, "post-invalidation fetch should return fresh data with 2 comments")
 }
 
 func TestClient_ClearIssueCommentsCache(t *testing.T) {
@@ -547,6 +554,16 @@ func TestClient_ListIssueComments_MaxPages(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, comments, 3)
 	assert.Equal(t, int32(3), pageCount.Load())
+
+	// Partial fetches must NOT populate the cache — a subsequent unlimited
+	// call should hit the server, not return the 3-item partial result.
+	prevCount := pageCount.Load()
+	unlimitedComments, err := client.ListIssueComments(
+		context.Background(), "owner", "repo", 1,
+	)
+	require.NoError(t, err)
+	assert.Greater(t, pageCount.Load(), prevCount, "unlimited call should hit server, not return cached partial result")
+	assert.Greater(t, len(unlimitedComments), 3, "unlimited call should return more than the MaxPages result")
 }
 
 func TestClient_ListIssueComments_MaxPagesZeroUnlimited(t *testing.T) {
