@@ -585,6 +585,13 @@ func TestClient_ListIssueComments_CacheNotPopulatedOnError(t *testing.T) {
 	_, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
 	require.Error(t, err)
 
+	// Directly verify the cache is empty for this key
+	key := issueCommentsCacheKey{Owner: "owner", Repo: "repo", PRNumber: 1}
+	client.issueCommentsCache.mu.Lock()
+	_, cached := client.issueCommentsCache.entries[key]
+	client.issueCommentsCache.mu.Unlock()
+	assert.False(t, cached, "cache must not be populated after an error")
+
 	// Second call should still hit server (no stale cache)
 	_, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
 	require.NoError(t, err)
