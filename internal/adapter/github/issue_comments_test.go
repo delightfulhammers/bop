@@ -557,12 +557,12 @@ func TestClient_ListIssueComments_MaxPages(t *testing.T) {
 
 	// Partial fetches must NOT populate the cache — a subsequent unlimited
 	// call should hit the server, not return the 3-item partial result.
-	prevCount := pageCount.Load()
+	pageCount.Store(0)
 	unlimitedComments, err := client.ListIssueComments(
 		context.Background(), "owner", "repo", 1,
 	)
 	require.NoError(t, err)
-	assert.Greater(t, pageCount.Load(), prevCount, "unlimited call should hit server, not return cached partial result")
+	assert.Greater(t, pageCount.Load(), int32(0), "unlimited call must hit server, not return cached partial result")
 	assert.Greater(t, len(unlimitedComments), 3, "unlimited call should return more than the MaxPages result")
 }
 

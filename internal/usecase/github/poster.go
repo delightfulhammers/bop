@@ -26,10 +26,12 @@ type ReviewClient interface {
 // IssueCommentClient defines the interface for posting issue comments.
 // Issue comments are used for out-of-diff findings since they don't require diff positions.
 // This interface allows for mocking in tests.
-// Note: the triage import for ListIssueCommentsOptions creates a cross-usecase dependency.
-// This is intentional — the options type is defined in the triage port layer (where
-// IssueCommentReader lives) and cannot move to the adapter without creating a circular
-// dependency. Both usecase packages reference the same port type for interface consistency.
+//
+// Implementors must import "github.com/delightfulhammers/bop/internal/usecase/triage"
+// for the ListIssueCommentsOptions type. This cross-usecase dependency is intentional —
+// the options type is defined in the triage port layer (where IssueCommentReader lives)
+// and cannot move to the adapter without creating a circular dependency. Both usecase
+// packages reference the same port type for interface consistency.
 type IssueCommentClient interface {
 	CreateIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error)
 	ListIssueComments(ctx context.Context, owner, repo string, prNumber int, opts ...triage.ListIssueCommentsOptions) ([]github.IssueComment, error)
