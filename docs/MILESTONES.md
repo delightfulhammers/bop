@@ -14,6 +14,8 @@
 - GitHub Enterprise Server support via `GITHUB_API_URL`
 - MCP sampling fallback for zero-config MCP usage
 - Finding verification agent
+- Semantic dedup panic recovery with stack traces (#317)
+- Issue comments caching and pagination limits (#260, TDD-001)
 
 The milestones below are organized around hardening, stabilization, and release readiness rather than net-new feature development.
 

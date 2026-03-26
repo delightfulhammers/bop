@@ -10,10 +10,42 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	llmhttp "github.com/delightfulhammers/bop/internal/adapter/llm/http"
 	"github.com/delightfulhammers/bop/internal/usecase/triage"
 )
+
+const issueCommentsCacheTTL = 2 * time.Minute
+
+// issueCommentsCacheKey identifies a cached set of issue comments.
+type issueCommentsCacheKey struct {
+	Owner    string
+	Repo     string
+	PRNumber int
+}
+
+// issueCommentsCacheEntry holds cached results with a timestamp for TTL.
+type issueCommentsCacheEntry struct {
+	comments  []IssueComment
+	fetchedAt time.Time
+}
+
+// issueCommentsCache provides a concurrency-safe in-memory cache for ListIssueComments.
+// Note: the lock is released before HTTP fetches on cache miss, so concurrent callers
+// for the same key may both fetch. This is acceptable for a performance-only cache —
+// use golang.org/x/sync/singleflight if single-flight semantics are needed.
+type issueCommentsCache struct {
+	mu      sync.Mutex
+	entries map[issueCommentsCacheKey]issueCommentsCacheEntry
+}
+
+func newIssueCommentsCache() *issueCommentsCache {
+	return &issueCommentsCache{
+		entries: make(map[issueCommentsCacheKey]issueCommentsCacheEntry),
+	}
+}
 
 // outOfDiffPattern matches CR_OOD:true markers in comment bodies.
 var outOfDiffPattern = regexp.MustCompile(`CR_OOD:true`)
@@ -124,14 +156,26 @@ func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, prN
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
+	// Invalidate cache for this PR since a new comment was added
+	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
+	c.issueCommentsCache.mu.Lock()
+	delete(c.issueCommentsCache.entries, cacheKey)
+	c.issueCommentsCache.mu.Unlock()
+
 	return result.ID, nil
 }
 
-// ListIssueComments retrieves all issue comments on a PR.
+// ListIssueComments retrieves issue comments on a PR with in-memory caching.
 // GitHub API: GET /repos/{owner}/{repo}/issues/{issue_number}/comments
 // Note: PRs are treated as issues in the GitHub API, so we use the issues endpoint.
 // Returns comments in chronological order (oldest first).
-func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]IssueComment, error) {
+//
+// Accepts an optional ListIssueCommentsOptions to control pagination. If MaxPages
+// is set to a positive value, pagination stops after that many pages (caller-controlled
+// soft limit). MaxPages=0 means unlimited (up to the hard cap of maxPaginationPages).
+// When MaxPages is specified, caching is bypassed since partial results should not
+// be cached.
+func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNumber int, opts ...triage.ListIssueCommentsOptions) ([]IssueComment, error) {
 	// Validate inputs
 	if err := validatePathSegment(owner, "owner"); err != nil {
 		return nil, err
@@ -143,6 +187,29 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 		return nil, fmt.Errorf("invalid PR number: %d (must be positive)", prNumber)
 	}
 
+	// Merge options
+	var options triage.ListIssueCommentsOptions
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+
+	// Only use cache for unlimited (full) fetches
+	useCache := options.MaxPages == 0
+	cacheKey := issueCommentsCacheKey{Owner: owner, Repo: repo, PRNumber: prNumber}
+
+	if useCache {
+		c.issueCommentsCache.mu.Lock()
+		if entry, ok := c.issueCommentsCache.entries[cacheKey]; ok {
+			if time.Since(entry.fetchedAt) < issueCommentsCacheTTL {
+				result := make([]IssueComment, len(entry.comments))
+				copy(result, entry.comments)
+				c.issueCommentsCache.mu.Unlock()
+				return result, nil
+			}
+		}
+		c.issueCommentsCache.mu.Unlock()
+	}
+
 	var allComments []IssueComment
 	visitedURLs := make(map[string]bool)
 	pageCount := 0
@@ -152,7 +219,11 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 		c.baseURL, url.PathEscape(owner), url.PathEscape(repo), prNumber)
 
 	for nextURL != "" {
-		// Pagination loop protection
+		// Caller-controlled soft limit (checked before the hard cap)
+		if options.MaxPages > 0 && pageCount >= options.MaxPages {
+			break
+		}
+		// Hard cap safety limit
 		if pageCount >= maxPaginationPages {
 			return nil, fmt.Errorf("pagination limit exceeded (%d pages)", maxPaginationPages)
 		}
@@ -179,7 +250,26 @@ func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNu
 		nextURL = next
 	}
 
+	// Only cache full (unlimited) fetches
+	if useCache {
+		cached := make([]IssueComment, len(allComments))
+		copy(cached, allComments)
+		c.issueCommentsCache.mu.Lock()
+		c.issueCommentsCache.entries[cacheKey] = issueCommentsCacheEntry{
+			comments:  cached,
+			fetchedAt: time.Now(),
+		}
+		c.issueCommentsCache.mu.Unlock()
+	}
+
 	return allComments, nil
+}
+
+// ClearIssueCommentsCache removes all cached issue comment data.
+func (c *Client) ClearIssueCommentsCache() {
+	c.issueCommentsCache.mu.Lock()
+	c.issueCommentsCache.entries = make(map[issueCommentsCacheKey]issueCommentsCacheEntry)
+	c.issueCommentsCache.mu.Unlock()
 }
 
 // fetchIssueCommentsPage fetches a single page of issue comments.

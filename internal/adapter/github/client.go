@@ -99,10 +99,11 @@ func containsNonce(body, nonce string) bool {
 
 // Client is an HTTP client for the GitHub Pull Request Reviews API.
 type Client struct {
-	token      string
-	baseURL    string
-	httpClient *http.Client
-	retryConf  llmhttp.RetryConfig
+	token              string
+	baseURL            string
+	httpClient         *http.Client
+	retryConf          llmhttp.RetryConfig
+	issueCommentsCache *issueCommentsCache
 }
 
 // NewClient creates a new GitHub API client with the given token.
@@ -118,6 +119,7 @@ func NewClient(token string) *Client {
 			MaxBackoff:     32 * time.Second,
 			Multiplier:     2.0,
 		},
+		issueCommentsCache: newIssueCommentsCache(), // pointer — Client must not be copied
 	}
 }
 

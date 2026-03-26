@@ -127,13 +127,24 @@ type IssueCommentWriter interface {
 // with CR_OOD markers.
 // This is a port that must be implemented by the GitHub adapter layer.
 type IssueCommentReader interface {
-	// ListIssueComments retrieves all issue comments on a PR.
+	// ListIssueComments retrieves issue comments on a PR.
 	// Returns comments in chronological order (oldest first).
-	ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]IssueComment, error)
+	// Accepts optional ListIssueCommentsOptions to control pagination limits.
+	ListIssueComments(ctx context.Context, owner, repo string, prNumber int, opts ...ListIssueCommentsOptions) ([]IssueComment, error)
 
 	// GetIssueComment retrieves a single issue comment by ID.
 	// Returns ErrCommentNotFound if the comment doesn't exist.
 	GetIssueComment(ctx context.Context, owner, repo string, commentID int64) (*IssueComment, error)
+}
+
+// ListIssueCommentsOptions configures pagination behavior for ListIssueComments.
+// This type lives in the usecase port layer (not the adapter) because it represents
+// a caller-controlled data budget: the usecase tells the adapter how much data it
+// needs, which is a legitimate port-boundary concern. Moving it to the adapter would
+// create a circular dependency since the adapter already imports this package.
+type ListIssueCommentsOptions struct {
+	// MaxPages limits the number of pages fetched. 0 means unlimited.
+	MaxPages int
 }
 
 // IssueComment represents a GitHub issue comment (PR conversation comment).
