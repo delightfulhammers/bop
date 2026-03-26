@@ -165,6 +165,8 @@ Capabilities:
 - Trigger review re-requests
 - Build PR summaries
 
+Issue comment listing includes an in-memory cache with TTL-based expiration, automatically invalidated when new comments are posted. Callers can optionally limit pagination depth for performance-sensitive paths. These optimizations reduce API round-trips during triage sessions and on PRs with extensive comment histories.
+
 Authentication is via `GITHUB_TOKEN` sourced from the environment. In GitHub Actions, this is the automatically injected token with permissions extended as shown in the example workflow. In local and MCP usage, the developer supplies a PAT or token with equivalent permissions. GitHub Enterprise Server is supported via `GITHUB_API_URL`.
 
 #### 2.3.6 Verification Agent

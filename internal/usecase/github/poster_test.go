@@ -11,6 +11,7 @@ import (
 	"github.com/delightfulhammers/bop/internal/domain"
 	"github.com/delightfulhammers/bop/internal/usecase/dedup"
 	usecasegithub "github.com/delightfulhammers/bop/internal/usecase/github"
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -2138,7 +2139,7 @@ func TestReviewPoster_PostReview_DisputeInheritance_MixedFindings(t *testing.T) 
 type MockIssueCommentClient struct {
 	mu                     sync.Mutex
 	CreateIssueCommentFunc func(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error)
-	ListIssueCommentsFunc  func(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error)
+	ListIssueCommentsFunc  func(ctx context.Context, owner, repo string, prNumber int, opts ...triage.ListIssueCommentsOptions) ([]github.IssueComment, error)
 	CreatedComments        []string
 	NextCommentID          int64
 }
@@ -2155,9 +2156,9 @@ func (m *MockIssueCommentClient) CreateIssueComment(ctx context.Context, owner, 
 	return id, nil
 }
 
-func (m *MockIssueCommentClient) ListIssueComments(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error) {
+func (m *MockIssueCommentClient) ListIssueComments(ctx context.Context, owner, repo string, prNumber int, opts ...triage.ListIssueCommentsOptions) ([]github.IssueComment, error) {
 	if m.ListIssueCommentsFunc != nil {
-		return m.ListIssueCommentsFunc(ctx, owner, repo, prNumber)
+		return m.ListIssueCommentsFunc(ctx, owner, repo, prNumber, opts...)
 	}
 	return []github.IssueComment{}, nil
 }
@@ -2269,7 +2270,7 @@ func TestReviewPoster_PostReview_OutOfDiffDeduplicates(t *testing.T) {
 		},
 	}
 	mockIssueClient := &MockIssueCommentClient{
-		ListIssueCommentsFunc: func(ctx context.Context, owner, repo string, prNumber int) ([]github.IssueComment, error) {
+		ListIssueCommentsFunc: func(ctx context.Context, owner, repo string, prNumber int, opts ...triage.ListIssueCommentsOptions) ([]github.IssueComment, error) {
 			return []github.IssueComment{
 				{
 					ID:   100,

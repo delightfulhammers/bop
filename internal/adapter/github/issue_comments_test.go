@@ -3,10 +3,14 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/delightfulhammers/bop/internal/usecase/triage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -340,4 +344,363 @@ func TestIssueComment_IsOutOfDiffFinding(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// --- Cache tests ---
+
+func TestClient_ListIssueComments_CacheHit(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// First call — cache miss, should hit server
+	comments1, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Len(t, comments1, 1)
+	assert.Equal(t, int32(1), callCount.Load())
+
+	// Second call — cache hit, should NOT hit server
+	comments2, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Len(t, comments2, 1)
+	assert.Equal(t, int32(1), callCount.Load(), "expected cache hit, but server was called again")
+}
+
+func TestClient_ListIssueComments_CacheSeparateKeys(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// Different PR numbers should be separate cache entries
+	_, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	_, err = client.ListIssueComments(context.Background(), "owner", "repo", 2)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), callCount.Load())
+}
+
+func TestClient_ListIssueComments_CacheTTLExpiry(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// First call — populates cache
+	_, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), callCount.Load())
+
+	// Manually expire the cache entry
+	client.issueCommentsCache.mu.Lock()
+	key := issueCommentsCacheKey{Owner: "owner", Repo: "repo", PRNumber: 1}
+	if entry, ok := client.issueCommentsCache.entries[key]; ok {
+		entry.fetchedAt = time.Now().Add(-issueCommentsCacheTTL - time.Second)
+		client.issueCommentsCache.entries[key] = entry
+	}
+	client.issueCommentsCache.mu.Unlock()
+
+	// Second call — cache expired, should hit server
+	_, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), callCount.Load(), "expected cache miss after TTL expiry")
+}
+
+func TestClient_CreateIssueComment_InvalidatesCache(t *testing.T) {
+	var getCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			n := getCount.Add(1)
+			// Return different data on each GET to prove fresh fetch after invalidation
+			if n == 1 {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}, {"id": 2, "body": "comment2"}]`))
+			}
+		} else {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id": 99, "body": "new comment"}`))
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// Populate cache
+	comments, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Len(t, comments, 1, "first fetch returns 1 comment")
+
+	// Post a comment — should invalidate cache
+	_, err = client.CreateIssueComment(context.Background(), "owner", "repo", 1, "new comment")
+	require.NoError(t, err)
+
+	// Next list call should hit server again and return updated data
+	comments, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), getCount.Load(), "expected cache invalidated after post")
+	assert.Len(t, comments, 2, "post-invalidation fetch should return fresh data with 2 comments")
+
+	// The fresh result should now be cached — a third call should be a cache hit
+	comments, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), getCount.Load(), "third call should be a cache hit — getCount unchanged")
+	assert.Len(t, comments, 2, "cached result should still have 2 comments")
+}
+
+func TestClient_ListIssueComments_EpochRejectsStaleWriteBack(t *testing.T) {
+	// Verifies that a concurrent invalidation during an in-flight fetch
+	// prevents the stale result from being written to the cache.
+	//
+	// Sequence: (1) ListIssueComments starts fetch, blocks mid-flight
+	// (2) CreateIssueComment bumps epoch and invalidates cache
+	// (3) fetch completes — stale data must NOT be cached
+	// (4) next ListIssueComments must hit the server again
+
+	fetchStarted := make(chan struct{})
+	fetchContinue := make(chan struct{})
+	t.Cleanup(func() {
+		// Ensure the channel is closed on test failure to prevent handler goroutine leaks.
+		select {
+		case <-fetchContinue:
+		default:
+			close(fetchContinue)
+		}
+	})
+	var getCount atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			n := getCount.Add(1)
+			if n == 1 {
+				// First GET: signal that fetch started, then block until released
+				close(fetchStarted)
+				<-fetchContinue
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "stale data"}]`))
+			} else {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[{"id": 1, "body": "stale data"}, {"id": 2, "body": "fresh data"}]`))
+			}
+		} else {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id": 99, "body": "new comment"}`))
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// Start a ListIssueComments in a goroutine — it will block mid-fetch
+	var firstResult []IssueComment
+	var firstErr error
+	done := make(chan struct{})
+	go func() {
+		firstResult, firstErr = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+		close(done)
+	}()
+
+	// Wait for the fetch to start (with timeout to prevent CI hangs)
+	select {
+	case <-fetchStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for fetch to start")
+	}
+
+	// While the fetch is blocked, post a comment to bump the epoch
+	_, err := client.CreateIssueComment(context.Background(), "owner", "repo", 1, "new comment")
+	require.NoError(t, err)
+
+	// Release the blocked fetch
+	close(fetchContinue)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for fetch to complete")
+	}
+
+	// The first fetch should succeed (returns data) but the stale result
+	// must NOT have been written to the cache because the epoch changed.
+	require.NoError(t, firstErr)
+	assert.Len(t, firstResult, 1)
+
+	// A subsequent call must hit the server (not return stale cached data)
+	comments, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), getCount.Load(), "second call must hit server — stale data should not have been cached")
+	assert.Len(t, comments, 2, "second call should return fresh data")
+}
+
+func TestClient_ClearIssueCommentsCache(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// Populate cache
+	_, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+
+	// Clear cache
+	client.ClearIssueCommentsCache()
+
+	// Next call should hit server
+	_, err = client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), callCount.Load())
+}
+
+func TestClient_ListIssueComments_CacheNotPopulatedOnError(t *testing.T) {
+	var callCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := callCount.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"error"}`))
+		} else {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"id": 1, "body": "comment1"}]`))
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+
+	// First call fails — should not cache
+	_, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.Error(t, err)
+
+	// Directly verify the cache is empty for this key
+	key := issueCommentsCacheKey{Owner: "owner", Repo: "repo", PRNumber: 1}
+	client.issueCommentsCache.mu.Lock()
+	_, cached := client.issueCommentsCache.entries[key]
+	client.issueCommentsCache.mu.Unlock()
+	assert.False(t, cached, "cache must not be populated after an error")
+
+	// Second call should still hit server (no stale cache)
+	comments, err := client.ListIssueComments(context.Background(), "owner", "repo", 1)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), callCount.Load())
+
+	// Verify the successful call populated the cache with correct data
+	client.issueCommentsCache.mu.Lock()
+	entry, cached := client.issueCommentsCache.entries[key]
+	client.issueCommentsCache.mu.Unlock()
+	assert.True(t, cached, "cache should be populated after successful call")
+	assert.Len(t, entry.comments, 1, "cached entry should contain 1 comment")
+	assert.Equal(t, int64(1), entry.comments[0].ID, "cached comment ID should match server response")
+	assert.Len(t, comments, 1, "returned result should contain 1 comment")
+	assert.Equal(t, int64(1), comments[0].ID, "returned comment ID should match server response")
+}
+
+// --- MaxPages option tests ---
+
+func TestClient_ListIssueComments_MaxPages(t *testing.T) {
+	var pageCount atomic.Int32
+	server := httptest.NewUnstartedServer(nil)
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := pageCount.Add(1)
+		comment := fmt.Sprintf(`[{"id": %d, "body": "page %d"}]`, page, page)
+		// Always return a next link to simulate many pages
+		if page < 50 {
+			nextURL := fmt.Sprintf("%s%s?page=%d&per_page=100", server.URL, r.URL.Path, page+1)
+			w.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"next\"", nextURL))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(comment))
+	})
+	server.Start()
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+	client.ClearIssueCommentsCache() // Ensure no cache interference
+
+	// With MaxPages=3, should only fetch 3 pages
+	comments, err := client.ListIssueComments(
+		context.Background(), "owner", "repo", 1,
+		triage.ListIssueCommentsOptions{MaxPages: 3},
+	)
+	require.NoError(t, err)
+	assert.Len(t, comments, 3)
+	assert.Equal(t, int32(3), pageCount.Load())
+
+	// Partial fetches must NOT populate the cache — a subsequent unlimited
+	// call should hit the server, not return the 3-item partial result.
+	pageCount.Store(0)
+	unlimitedComments, err := client.ListIssueComments(
+		context.Background(), "owner", "repo", 1,
+	)
+	require.NoError(t, err)
+	assert.Greater(t, pageCount.Load(), int32(0), "unlimited call must hit server, not return cached partial result")
+	assert.Greater(t, len(unlimitedComments), 3, "unlimited call should return more than the MaxPages result")
+}
+
+func TestClient_ListIssueComments_MaxPagesZeroUnlimited(t *testing.T) {
+	// MaxPages=0 means unlimited (up to hard cap)
+	var pageCount atomic.Int32
+	totalPages := 5
+	server := httptest.NewUnstartedServer(nil)
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := int(pageCount.Add(1))
+		comment := fmt.Sprintf(`[{"id": %d, "body": "page %d"}]`, page, page)
+		if page < totalPages {
+			nextURL := fmt.Sprintf("%s%s?page=%d&per_page=100", server.URL, r.URL.Path, page+1)
+			w.Header().Set("Link", fmt.Sprintf("<%s>; rel=\"next\"", nextURL))
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(comment))
+	})
+	server.Start()
+	defer server.Close()
+
+	client := NewClient("test-token")
+	client.SetBaseURL(server.URL)
+	client.SetMaxRetries(0)
+	client.ClearIssueCommentsCache()
+
+	comments, err := client.ListIssueComments(
+		context.Background(), "owner", "repo", 1,
+		triage.ListIssueCommentsOptions{MaxPages: 0},
+	)
+	require.NoError(t, err)
+	assert.Len(t, comments, totalPages)
 }
