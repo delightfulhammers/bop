@@ -98,6 +98,8 @@ func containsNonce(body, nonce string) bool {
 }
 
 // Client is an HTTP client for the GitHub Pull Request Reviews API.
+// Must be constructed via NewClient — direct struct literal construction is
+// unsupported and will panic on cache access.
 type Client struct {
 	token              string
 	baseURL            string

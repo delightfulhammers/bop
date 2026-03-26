@@ -53,14 +53,6 @@ func newIssueCommentsCache() *issueCommentsCache {
 	}
 }
 
-// ensureIssueCommentsCache lazily initializes the cache if the Client was
-// constructed directly (not via NewClient). Prevents nil-pointer panics.
-func (c *Client) ensureIssueCommentsCache() {
-	if c.issueCommentsCache == nil {
-		c.issueCommentsCache = newIssueCommentsCache()
-	}
-}
-
 // outOfDiffPattern matches CR_OOD:true markers in comment bodies.
 var outOfDiffPattern = regexp.MustCompile(`CR_OOD:true`)
 
@@ -91,7 +83,6 @@ func (c IssueComment) IsOutOfDiffFinding() bool {
 // Note: PRs are treated as issues in the GitHub API, so we use the issues endpoint.
 // Returns the ID of the created comment.
 func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, prNumber int, body string) (int64, error) {
-	c.ensureIssueCommentsCache()
 	// Validate inputs
 	if err := validatePathSegment(owner, "owner"); err != nil {
 		return 0, err
@@ -193,7 +184,6 @@ func (c *Client) CreateIssueComment(ctx context.Context, owner, repo string, prN
 // When MaxPages is specified, caching is bypassed since partial results should not
 // be cached.
 func (c *Client) ListIssueComments(ctx context.Context, owner, repo string, prNumber int, opts ...triage.ListIssueCommentsOptions) ([]IssueComment, error) {
-	c.ensureIssueCommentsCache()
 	// Validate inputs
 	if err := validatePathSegment(owner, "owner"); err != nil {
 		return nil, err
